@@ -21,6 +21,7 @@ pub const MAX_TOKENS: usize = 4096;
 pub enum Token {
     Token(String),
     EndOfText,
+    CutOff,
 }
 
 #[derive(Debug, Default, Clone, Copy, Serialize)]

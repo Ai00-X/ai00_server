@@ -41,7 +41,8 @@ pub struct CompletionChoice {
 pub struct CompletionResponse {
     pub object: String,
     pub choices: Vec<CompletionChoice>,
-    pub usage: TokenCounter,
+    #[serde(rename = "usage")]
+    pub counter: TokenCounter,
 }
 
 pub async fn completions(
@@ -60,7 +61,7 @@ pub async fn completions(
         .unwrap();
 
     let prompt_tokens = prompt_tokens_receiver.recv_async().await.unwrap();
-    let mut usage = TokenCounter {
+    let mut counter = TokenCounter {
         prompt_tokens,
         completion_tokens: 0,
         total_tokens: prompt_tokens,
@@ -74,11 +75,14 @@ pub async fn completions(
         match token {
             crate::Token::Token(token) => {
                 text += &token;
-                usage.completion_tokens += 1;
-                usage.total_tokens += 1;
+                counter.completion_tokens += 1;
+                counter.total_tokens += 1;
             }
             crate::Token::EndOfText => {
                 finish_reason = FinishReason::Stop;
+            }
+            crate::Token::CutOff => {
+                finish_reason = FinishReason::Length;
             }
         }
     }
@@ -90,6 +94,6 @@ pub async fn completions(
             index: 0,
             finish_reason,
         }],
-        usage,
+        counter,
     })
 }
