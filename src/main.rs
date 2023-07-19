@@ -106,7 +106,6 @@ async fn model_task(receiver: Receiver<ThreadRequest>) -> Result<()> {
     let env = Environment::create().await?;
     let tokenizer = load_tokenizer()?;
     let model = load_model(&env)?;
-    print!("{:#?}", model.info());
 
     let mut state_cache = Trie::<&[u8], BackedModelState>::new();
 
