@@ -15,6 +15,8 @@ mod completion;
 use chat::{chat, ChatRequest};
 use completion::{completions, CompletionRequest};
 
+pub const MAX_TOKENS: usize = 4096;
+
 #[derive(Debug)]
 pub enum Token {
     Token(String),
@@ -41,7 +43,15 @@ pub enum RequestKind {
 
 pub struct ThreadRequest {
     pub request: RequestKind,
-    pub sender: flume::Sender<Token>,
+    pub prompt_tokens_sender: flume::Sender<usize>,
+    pub token_sender: flume::Sender<Token>,
+}
+
+#[derive(Debug, Default, Clone, Serialize)]
+pub struct TokenCounter {
+    pub prompt_tokens: usize,
+    pub completion_tokens: usize,
+    pub total_tokens: usize,
 }
 
 fn load_tokenizer() -> Result<Tokenizer> {

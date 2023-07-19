@@ -1,18 +1,19 @@
 use axum::{extract::State, Json};
-use serde::Deserialize;
+use futures_util::StreamExt;
+use serde::{Deserialize, Serialize};
 
-use crate::ThreadRequest;
+use crate::{FinishReason, ThreadRequest, TokenCounter};
 
 #[derive(Debug, Clone, Deserialize)]
 #[serde(default)]
 pub struct CompletionRequest {
-    prompt: Vec<String>,
-    max_tokens: usize,
-    stop: Vec<String>,
-    temperature: f32,
-    top_p: f32,
-    presence_penalty: f32,
-    frequency_penalty: f32,
+    pub prompt: Vec<String>,
+    pub max_tokens: usize,
+    pub stop: Vec<String>,
+    pub temperature: f32,
+    pub top_p: f32,
+    pub presence_penalty: f32,
+    pub frequency_penalty: f32,
 }
 
 impl Default for CompletionRequest {
@@ -29,8 +30,66 @@ impl Default for CompletionRequest {
     }
 }
 
+#[derive(Debug, Clone, Serialize)]
+pub struct CompletionChoice {
+    pub text: String,
+    pub index: usize,
+    pub finish_reason: FinishReason,
+}
+
+#[derive(Debug, Clone, Serialize)]
+pub struct CompletionResponse {
+    pub object: String,
+    pub choices: Vec<CompletionChoice>,
+    pub usage: TokenCounter,
+}
+
 pub async fn completions(
-    State(state): State<flume::Sender<ThreadRequest>>,
+    State(sender): State<flume::Sender<ThreadRequest>>,
     Json(request): Json<CompletionRequest>,
-) {
+) -> Json<CompletionResponse> {
+    let (prompt_tokens_sender, prompt_tokens_receiver) = flume::unbounded();
+    let (token_sender, token_receiver) = flume::unbounded();
+
+    sender
+        .send(ThreadRequest {
+            request: crate::RequestKind::Completion(request),
+            prompt_tokens_sender,
+            token_sender,
+        })
+        .unwrap();
+
+    let prompt_tokens = prompt_tokens_receiver.recv_async().await.unwrap();
+    let mut usage = TokenCounter {
+        prompt_tokens,
+        completion_tokens: 0,
+        total_tokens: prompt_tokens,
+    };
+
+    let mut finish_reason = FinishReason::Null;
+    let mut text = String::new();
+    let mut stream = token_receiver.into_stream();
+
+    while let Some(token) = stream.next().await {
+        match token {
+            crate::Token::Token(token) => {
+                text += &token;
+                usage.completion_tokens += 1;
+                usage.total_tokens += 1;
+            }
+            crate::Token::EndOfText => {
+                finish_reason = FinishReason::Stop;
+            }
+        }
+    }
+
+    Json(CompletionResponse {
+        object: "text_completion".into(),
+        choices: vec![CompletionChoice {
+            text,
+            index: 0,
+            finish_reason,
+        }],
+        usage,
+    })
 }
