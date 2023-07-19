@@ -36,7 +36,7 @@ pub struct ChatRecord {
 pub struct ChatRequest {
     pub messages: OptionArray<ChatRecord>,
     pub max_tokens: usize,
-    pub stop: Vec<String>,
+    pub stop: OptionArray<String>,
     pub temperature: f32,
     pub top_p: f32,
     pub presence_penalty: f32,
@@ -48,7 +48,7 @@ impl Default for ChatRequest {
         Self {
             messages: OptionArray::default(),
             max_tokens: 256,
-            stop: Vec::new(),
+            stop: OptionArray::default(),
             temperature: 1.0,
             top_p: 1.0,
             presence_penalty: 0.0,
