@@ -16,11 +16,7 @@ mod chat;
 mod completion;
 mod sampler;
 
-use crate::{
-    chat::{ChatRecord, ChatRequest},
-    completion::CompletionRequest,
-    sampler::Sampler,
-};
+use crate::{chat::ChatRequest, completion::CompletionRequest, sampler::Sampler};
 
 pub const MAX_TOKENS: usize = 4096;
 pub const PENALTY_COUNT: usize = 256;
@@ -79,6 +75,14 @@ pub struct ThreadRequest {
     pub token_sender: flume::Sender<Token>,
 }
 
+pub struct GenerateRequest {
+    pub prompt: String,
+    pub max_tokens: usize,
+    pub stop: Vec<String>,
+    pub sampler: Sampler,
+    pub occurrences: HashMap<u16, usize>,
+}
+
 #[derive(Debug, Default, Clone, Serialize)]
 pub struct TokenCounter {
     pub prompt_tokens: usize,
@@ -119,74 +123,26 @@ async fn model_task(receiver: Receiver<ThreadRequest>) -> Result<()> {
             Err(_) => continue,
         };
 
-        let (prompt, max_tokens, stop, sampler, mut occurrences) = match request {
-            RequestKind::Completion(CompletionRequest {
-                prompt,
-                max_tokens,
-                stop,
-                temperature,
-                top_p,
-                presence_penalty,
-                frequency_penalty,
-            }) => {
-                let prompt = Vec::from(prompt).join("");
-                let max_tokens = max_tokens.min(MAX_TOKENS);
-                (
-                    prompt,
-                    max_tokens,
-                    Vec::from(stop),
-                    Sampler {
-                        top_p,
-                        temperature,
-                        presence_penalty,
-                        frequency_penalty,
-                    },
-                    HashMap::new(),
-                )
-            }
-            RequestKind::Chat(ChatRequest {
-                messages,
-                max_tokens,
-                stop,
-                temperature,
-                top_p,
-                presence_penalty,
-                frequency_penalty,
-            }) => {
-                let messages = Vec::from(messages);
-                let model_text = messages
-                    .iter()
-                    .filter(|&record| record.role == chat::Role::Assistant)
-                    .map(|record| record.content.clone())
+        let GenerateRequest {
+            prompt,
+            max_tokens,
+            stop,
+            sampler,
+            mut occurrences,
+        } = match request {
+            RequestKind::Completion(request) => request.into(),
+            RequestKind::Chat(request) => {
+                let model_text = Vec::from(request.messages.clone())
+                    .into_iter()
+                    .filter(|record| record.role == chat::Role::Assistant)
+                    .map(|record| record.content)
                     .join(" ");
                 let model_tokens = tokenizer.encode(model_text.as_bytes()).unwrap_or_default();
                 let occurances = model_tokens.into_iter().counts();
 
-                let prompt = messages
-                    .into_iter()
-                    .map(|ChatRecord { role, content }| {
-                        let role = role.to_string();
-                        let content = content.trim();
-                        format!("{role}: {content}")
-                    })
-                    .join("\n\n");
-
-                let assistant = chat::Role::Assistant.to_string();
-                let prompt = prompt + &format!("\n\n{assistant}:");
-
-                let max_tokens = max_tokens.min(MAX_TOKENS);
-                (
-                    prompt,
-                    max_tokens,
-                    Vec::from(stop),
-                    Sampler {
-                        top_p,
-                        temperature,
-                        presence_penalty,
-                        frequency_penalty,
-                    },
-                    occurances,
-                )
+                let mut request = GenerateRequest::from(request);
+                request.occurrences = occurances;
+                request
             }
         };
 

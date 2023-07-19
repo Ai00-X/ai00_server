@@ -1,8 +1,11 @@
 use axum::{extract::State, Json};
 use futures_util::StreamExt;
+use itertools::Itertools;
 use serde::{Deserialize, Serialize};
 
-use crate::{FinishReason, OptionArray, ThreadRequest, TokenCounter};
+use crate::{
+    sampler::Sampler, FinishReason, GenerateRequest, OptionArray, ThreadRequest, TokenCounter,
+};
 
 #[derive(Debug, Default, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 pub enum Role {
@@ -48,11 +51,53 @@ impl Default for ChatRequest {
         Self {
             messages: OptionArray::default(),
             max_tokens: 256,
-            stop: OptionArray::default(),
+            stop: OptionArray::Item("\n\n".into()),
             temperature: 1.0,
             top_p: 1.0,
             presence_penalty: 0.0,
             frequency_penalty: 0.0,
+        }
+    }
+}
+
+impl From<ChatRequest> for GenerateRequest {
+    fn from(value: ChatRequest) -> Self {
+        let ChatRequest {
+            messages,
+            max_tokens,
+            stop,
+            temperature,
+            top_p,
+            presence_penalty,
+            frequency_penalty,
+        } = value;
+
+        let prompt = Vec::from(messages)
+            .into_iter()
+            .map(|ChatRecord { role, content }| {
+                let role = role.to_string();
+                let content = content.trim();
+                format!("{role}: {content}")
+            })
+            .join("\n\n");
+
+        let assistant = Role::Assistant.to_string();
+        let prompt = prompt + &format!("\n\n{assistant}:");
+
+        let max_tokens = max_tokens.min(crate::MAX_TOKENS);
+        let stop = stop.into();
+
+        Self {
+            prompt,
+            max_tokens,
+            stop,
+            sampler: Sampler {
+                top_p,
+                temperature,
+                presence_penalty,
+                frequency_penalty,
+            },
+            occurrences: Default::default(),
         }
     }
 }

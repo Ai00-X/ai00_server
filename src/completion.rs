@@ -2,7 +2,9 @@ use axum::{extract::State, Json};
 use futures_util::StreamExt;
 use serde::{Deserialize, Serialize};
 
-use crate::{FinishReason, OptionArray, ThreadRequest, TokenCounter};
+use crate::{
+    sampler::Sampler, FinishReason, GenerateRequest, OptionArray, ThreadRequest, TokenCounter,
+};
 
 #[derive(Debug, Clone, Deserialize)]
 #[serde(default)]
@@ -26,6 +28,37 @@ impl Default for CompletionRequest {
             top_p: 1.0,
             presence_penalty: 0.0,
             frequency_penalty: 0.0,
+        }
+    }
+}
+
+impl From<CompletionRequest> for GenerateRequest {
+    fn from(value: CompletionRequest) -> Self {
+        let CompletionRequest {
+            prompt,
+            max_tokens,
+            stop,
+            temperature,
+            top_p,
+            presence_penalty,
+            frequency_penalty,
+        } = value;
+
+        let prompt = Vec::from(prompt).join("");
+        let max_tokens = max_tokens.min(crate::MAX_TOKENS);
+        let stop = stop.into();
+
+        Self {
+            prompt,
+            max_tokens,
+            stop,
+            sampler: Sampler {
+                temperature,
+                top_p,
+                presence_penalty,
+                frequency_penalty,
+            },
+            occurrences: Default::default(),
         }
     }
 }
