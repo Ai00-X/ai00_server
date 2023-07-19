@@ -181,9 +181,11 @@ async fn model_task(receiver: Receiver<ThreadRequest>) -> Result<()> {
         let mut model_text = String::new();
 
         let mut tokens = tokenizer.encode(&remain).unwrap_or_default();
-        let _ = prompt_tokens_sender.send_async(tokens.len()).await;
+        if prompt_tokens_sender.send(tokens.len()).is_err() {
+            return Ok(());
+        }
 
-        'generate: {
+        'run: {
             for _ in 0..max_tokens {
                 let mut logits = model.run(&tokens, &state).unwrap_or_default();
                 for (&token, &count) in &occurrences {
@@ -204,15 +206,17 @@ async fn model_task(receiver: Receiver<ThreadRequest>) -> Result<()> {
                 let count = occurrences.get(&token).copied().unwrap_or_default();
                 occurrences.insert(token, count + 1);
 
-                let _ = token_sender.send_async(Token::Token(word)).await;
+                if token_sender.send(Token::Token(word)).is_err() {
+                    break 'run;
+                }
 
                 if stop.iter().any(|x| model_text.contains(x)) {
-                    let _ = token_sender.send_async(Token::EndOfText).await;
-                    break 'generate;
+                    let _ = token_sender.send(Token::EndOfText);
+                    break 'run;
                 }
             }
 
-            let _ = token_sender.send_async(Token::CutOff).await;
+            let _ = token_sender.send(Token::CutOff);
         }
 
         if let Ok(back) = state.back() {

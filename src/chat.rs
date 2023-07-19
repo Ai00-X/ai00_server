@@ -6,9 +6,12 @@ use crate::{FinishReason, ThreadRequest, TokenCounter};
 
 #[derive(Debug, Default, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 pub enum Role {
+    #[serde(alias = "system")]
     System,
     #[default]
+    #[serde(alias = "user")]
     User,
+    #[serde(alias = "assistant")]
     Assistant,
 }
 
@@ -76,13 +79,11 @@ pub async fn chat(
     let (prompt_tokens_sender, prompt_tokens_receiver) = flume::unbounded();
     let (token_sender, token_receiver) = flume::unbounded();
 
-    let _ = sender
-        .send_async(ThreadRequest {
-            request: crate::RequestKind::Chat(request.clone()),
-            prompt_tokens_sender,
-            token_sender,
-        })
-        .await;
+    let _ = sender.send(ThreadRequest {
+        request: crate::RequestKind::Chat(request.clone()),
+        prompt_tokens_sender,
+        token_sender,
+    });
 
     let prompt_tokens = prompt_tokens_receiver
         .recv_async()
@@ -107,9 +108,11 @@ pub async fn chat(
             }
             crate::Token::EndOfText => {
                 finish_reason = FinishReason::Stop;
+                break;
             }
             crate::Token::CutOff => {
                 finish_reason = FinishReason::Length;
+                break;
             }
         }
     }

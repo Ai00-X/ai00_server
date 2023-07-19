@@ -81,9 +81,11 @@ pub async fn completions(
             }
             crate::Token::EndOfText => {
                 finish_reason = FinishReason::Stop;
+                break;
             }
             crate::Token::CutOff => {
                 finish_reason = FinishReason::Length;
+                break;
             }
         }
     }

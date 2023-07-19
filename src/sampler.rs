@@ -20,7 +20,7 @@ impl Sampler {
         let sorted = probs
             .into_iter()
             .enumerate()
-            .sorted_unstable_by(|(_, x), (_, y)| x.total_cmp(&y).reverse())
+            .sorted_unstable_by(|(_, x), (_, y)| x.total_cmp(y).reverse())
             .scan((0, 0.0, 0.0), |(_, cum, _), (id, x)| {
                 if *cum > self.top_p {
                     None
