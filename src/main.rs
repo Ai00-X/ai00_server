@@ -98,7 +98,7 @@ fn load_model(env: &Environment) -> Result<Model> {
     let file = File::open("assets/models/RWKV-4-World-0.4B-v1-20230529-ctx4096.st")?;
     let map = unsafe { Mmap::map(&file)? };
     let model = env.create_model_from_bytes(&map)?;
-    println!("{:#?}", model.info());
+    print!("{:#?}\n\n", model.info());
     Ok(model)
 }
 
@@ -107,9 +107,6 @@ async fn model_task(receiver: Receiver<ThreadRequest>) -> Result<()> {
     let tokenizer = load_tokenizer()?;
     let model = load_model(&env)?;
 
-    print!("\n\n");
-    std::io::stdout().flush()?;
-
     let mut state_cache = Trie::<&[u8], BackedModelState>::new();
 
     loop {
@@ -117,7 +114,7 @@ async fn model_task(receiver: Receiver<ThreadRequest>) -> Result<()> {
             request,
             prompt_tokens_sender,
             token_sender,
-        } = match receiver.recv() {
+        } = match receiver.recv_async().await {
             Ok(request) => request,
             Err(_) => continue,
         };
@@ -199,22 +196,21 @@ async fn model_task(receiver: Receiver<ThreadRequest>) -> Result<()> {
         let state = model.create_state();
         let remain = {
             let prefix = state_cache.longest_common_prefix(prompt.as_bytes());
-            let mut prompt = prompt.as_bytes().to_vec();
-            if let Some((_, backed)) = state_cache.iter_prefix(prefix).last() {
-                match state.load(backed) {
-                    Ok(_) => prompt.split_off(prefix.len()),
-                    Err(_) => prompt,
-                }
+            let mut remain = prompt.as_bytes().to_vec();
+            if state_cache
+                .get(prefix)
+                .and_then(|backed| state.load(backed).ok())
+                .is_some()
+            {
+                remain.split_off(prefix.len())
             } else {
-                prompt
+                remain
             }
         };
         let mut model_text = String::new();
 
         let mut tokens = tokenizer.encode(&remain).unwrap_or_default();
-        if prompt_tokens_sender.send(tokens.len()).is_err() {
-            return Ok(());
-        }
+        let _ = prompt_tokens_sender.send(tokens.len());
 
         'run: {
             for _ in 0..max_tokens {
@@ -240,24 +236,15 @@ async fn model_task(receiver: Receiver<ThreadRequest>) -> Result<()> {
                 let count = occurrences.get(&token).copied().unwrap_or_default();
                 occurrences.insert(token, count + 1);
 
-                if token_sender.send(Token::Token(word)).is_err() {
-                    break 'run;
-                }
+                let _ = token_sender.send(Token::Token(word));
 
                 if stop.iter().any(|x| model_text.contains(x)) {
                     let _ = token_sender.send(Token::EndOfText);
-
-                    print!("[DONE]");
-                    std::io::stdout().flush()?;
-
                     break 'run;
                 }
             }
 
             let _ = token_sender.send(Token::CutOff);
-
-            print!("[DONE]");
-            std::io::stdout().flush()?;
         }
 
         print!("\n\n");
