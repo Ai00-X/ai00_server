@@ -83,7 +83,7 @@ async fn model_task(receiver: Receiver<ThreadRequest>) -> Result<()> {
     let model = load_model(&env)?;
     print!("{:#?}", model.info());
 
-    let state_cache = Trie::<&[u8], BackedModelState>::new();
+    let mut state_cache = Trie::<&[u8], BackedModelState>::new();
 
     loop {
         let ThreadRequest {
@@ -95,7 +95,7 @@ async fn model_task(receiver: Receiver<ThreadRequest>) -> Result<()> {
             Err(_) => continue,
         };
 
-        let (text, max_tokens, stop, sampler, mut occurrences) = match request {
+        let (prompt, max_tokens, stop, sampler, mut occurrences) = match request {
             RequestKind::Completion(CompletionRequest {
                 prompt,
                 max_tokens,
@@ -105,10 +105,10 @@ async fn model_task(receiver: Receiver<ThreadRequest>) -> Result<()> {
                 presence_penalty,
                 frequency_penalty,
             }) => {
-                let text = prompt.join("");
+                let prompt = prompt.join("");
                 let max_tokens = max_tokens.min(MAX_TOKENS);
                 (
-                    text,
+                    prompt,
                     max_tokens,
                     stop,
                     Sampler {
@@ -137,7 +137,7 @@ async fn model_task(receiver: Receiver<ThreadRequest>) -> Result<()> {
                 let model_tokens = tokenizer.encode(model_text.as_bytes()).unwrap_or_default();
                 let occurances = model_tokens.into_iter().counts();
 
-                let text = messages
+                let prompt = messages
                     .into_iter()
                     .map(|ChatRecord { role, content }| {
                         let role = role.to_string();
@@ -147,7 +147,7 @@ async fn model_task(receiver: Receiver<ThreadRequest>) -> Result<()> {
                     .join("\n\n");
 
                 let assistant = chat::Role::Assistant.to_string();
-                let text = text + &format!("\n\n{assistant}:");
+                let text = prompt + &format!("\n\n{assistant}:");
 
                 let max_tokens = max_tokens.min(MAX_TOKENS);
                 (
@@ -166,22 +166,21 @@ async fn model_task(receiver: Receiver<ThreadRequest>) -> Result<()> {
         };
 
         let state = model.create_state();
-        let (_prefix, remain_text) = {
-            let prefix = state_cache.longest_common_prefix(text.as_bytes());
-            let mut text = text.as_bytes().to_vec();
-            let remain_text = if let Some((_, backed)) = state_cache.iter_prefix(prefix).last() {
+        let remain = {
+            let prefix = state_cache.longest_common_prefix(prompt.as_bytes());
+            let mut prompt = prompt.as_bytes().to_vec();
+            if let Some((_, backed)) = state_cache.iter_prefix(prefix).last() {
                 match state.load(backed) {
-                    Ok(_) => text.split_off(prefix.len()),
-                    Err(_) => text,
+                    Ok(_) => prompt.split_off(prefix.len()),
+                    Err(_) => prompt,
                 }
             } else {
-                text
-            };
-            (prefix.to_vec(), remain_text)
+                prompt
+            }
         };
         let mut model_text = String::new();
 
-        let tokens = tokenizer.encode(&remain_text).unwrap_or_default();
+        let mut tokens = tokenizer.encode(&remain).unwrap_or_default();
         let _ = prompt_tokens_sender.send_async(tokens.len()).await;
 
         'generate: {
@@ -200,6 +199,7 @@ async fn model_task(receiver: Receiver<ThreadRequest>) -> Result<()> {
                     .and_then(|x| String::from_utf8(x).ok())
                     .unwrap_or_default();
                 model_text += &word;
+                tokens = vec![token];
 
                 let count = occurrences.get(&token).copied().unwrap_or_default();
                 occurrences.insert(token, count + 1);
@@ -213,6 +213,13 @@ async fn model_task(receiver: Receiver<ThreadRequest>) -> Result<()> {
             }
 
             let _ = token_sender.send_async(Token::CutOff).await;
+        }
+
+        if let Ok(back) = state.back() {
+            let mut prompt = prompt.as_bytes().to_vec();
+            let mut model_text = model_text.as_bytes().to_vec();
+            prompt.append(&mut model_text);
+            state_cache.insert(prompt.leak(), back);
         }
     }
 }
