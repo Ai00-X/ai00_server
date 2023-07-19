@@ -210,7 +210,7 @@ async fn model_task(receiver: Receiver<ThreadRequest>) -> Result<()> {
         let mut model_text = String::new();
 
         let mut tokens = tokenizer.encode(&remain).unwrap_or_default();
-        let _ = prompt_tokens_sender.send(tokens.len());
+        let _ = prompt_tokens_sender.send_async(tokens.len()).await;
 
         'run: {
             for _ in 0..max_tokens {
@@ -236,15 +236,15 @@ async fn model_task(receiver: Receiver<ThreadRequest>) -> Result<()> {
                 let count = occurrences.get(&token).copied().unwrap_or_default();
                 occurrences.insert(token, count + 1);
 
-                let _ = token_sender.send(Token::Token(word));
+                let _ = token_sender.send_async(Token::Token(word)).await;
 
                 if stop.iter().any(|x| model_text.contains(x)) {
-                    let _ = token_sender.send(Token::EndOfText);
+                    let _ = token_sender.send_async(Token::EndOfText).await;
                     break 'run;
                 }
             }
 
-            let _ = token_sender.send(Token::CutOff);
+            let _ = token_sender.send_async(Token::CutOff).await;
         }
 
         print!("\n\n");
