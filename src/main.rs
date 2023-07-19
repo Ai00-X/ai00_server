@@ -166,50 +166,54 @@ async fn model_task(receiver: Receiver<ThreadRequest>) -> Result<()> {
         };
 
         let state = model.create_state();
-        let remain_text = {
-            let mut key = text.as_bytes().to_vec();
+        let (_prefix, remain_text) = {
             let prefix = state_cache.longest_common_prefix(text.as_bytes());
-            if let Some((_, backed)) = state_cache.iter_prefix(prefix).last() {
+            let mut text = text.as_bytes().to_vec();
+            let remain_text = if let Some((_, backed)) = state_cache.iter_prefix(prefix).last() {
                 match state.load(backed) {
-                    Ok(_) => key.split_off(prefix.len()),
-                    Err(_) => key,
+                    Ok(_) => text.split_off(prefix.len()),
+                    Err(_) => text,
                 }
             } else {
-                key
-            }
+                text
+            };
+            (prefix.to_vec(), remain_text)
         };
         let mut model_text = String::new();
 
         let tokens = tokenizer.encode(&remain_text).unwrap_or_default();
         let _ = prompt_tokens_sender.send_async(tokens.len()).await;
 
-        for _ in 0..max_tokens {
-            let mut logits = model.run(&tokens, &state).unwrap_or_default();
-            for (&token, &count) in &occurrences {
-                let penalty = sampler.presence_penalty + sampler.frequency_penalty * count as f32;
-                logits[token as usize] -= penalty;
+        'generate: {
+            for _ in 0..max_tokens {
+                let mut logits = model.run(&tokens, &state).unwrap_or_default();
+                for (&token, &count) in &occurrences {
+                    let penalty =
+                        sampler.presence_penalty + sampler.frequency_penalty * count as f32;
+                    logits[token as usize] -= penalty;
+                }
+
+                let token = sampler.sample(logits);
+                let word = tokenizer
+                    .decode(&[token])
+                    .ok()
+                    .and_then(|x| String::from_utf8(x).ok())
+                    .unwrap_or_default();
+                model_text += &word;
+
+                let count = occurrences.get(&token).copied().unwrap_or_default();
+                occurrences.insert(token, count + 1);
+
+                let _ = token_sender.send_async(Token::Token(word)).await;
+
+                if stop.iter().any(|x| model_text.contains(x)) {
+                    let _ = token_sender.send_async(Token::EndOfText).await;
+                    break 'generate;
+                }
             }
 
-            let token = sampler.sample(logits);
-            let word = tokenizer
-                .decode(&[token])
-                .ok()
-                .and_then(|x| String::from_utf8(x).ok())
-                .unwrap_or_default();
-            model_text += &word;
-
-            let count = occurrences.get(&token).copied().unwrap_or_default();
-            occurrences.insert(token, count + 1);
-
-            let _ = token_sender.send_async(Token::Token(word)).await;
-
-            if stop.iter().any(|x| model_text.contains(x)) {
-                let _ = token_sender.send_async(Token::EndOfText).await;
-                break;
-            }
+            let _ = token_sender.send_async(Token::CutOff).await;
         }
-
-        let _ = token_sender.send_async(Token::CutOff).await;
     }
 }
 
