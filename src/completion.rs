@@ -52,15 +52,16 @@ pub async fn completions(
     let (prompt_tokens_sender, prompt_tokens_receiver) = flume::unbounded();
     let (token_sender, token_receiver) = flume::unbounded();
 
-    sender
-        .send(ThreadRequest {
-            request: crate::RequestKind::Completion(request),
-            prompt_tokens_sender,
-            token_sender,
-        })
-        .unwrap();
+    let _ = sender.send(ThreadRequest {
+        request: crate::RequestKind::Completion(request),
+        prompt_tokens_sender,
+        token_sender,
+    });
 
-    let prompt_tokens = prompt_tokens_receiver.recv_async().await.unwrap();
+    let prompt_tokens = prompt_tokens_receiver
+        .recv_async()
+        .await
+        .unwrap_or_default();
     let mut counter = TokenCounter {
         prompt_tokens,
         completion_tokens: 0,

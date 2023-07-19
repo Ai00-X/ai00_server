@@ -12,6 +12,16 @@ pub enum Role {
     Assistant,
 }
 
+impl std::fmt::Display for Role {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Role::System => write!(f, "System"),
+            Role::User => write!(f, "User"),
+            Role::Assistant => write!(f, "Assistant"),
+        }
+    }
+}
+
 #[derive(Default, Debug, Clone, Serialize, Deserialize)]
 pub struct ChatRecord {
     pub role: Role,
@@ -28,7 +38,6 @@ pub struct ChatRequest {
     pub top_p: f32,
     pub presence_penalty: f32,
     pub frequency_penalty: f32,
-    pub stream: bool,
 }
 
 impl Default for ChatRequest {
@@ -41,7 +50,6 @@ impl Default for ChatRequest {
             top_p: 1.0,
             presence_penalty: 0.0,
             frequency_penalty: 0.0,
-            stream: false,
         }
     }
 }
@@ -68,15 +76,16 @@ pub async fn chat(
     let (prompt_tokens_sender, prompt_tokens_receiver) = flume::unbounded();
     let (token_sender, token_receiver) = flume::unbounded();
 
-    sender
-        .send(ThreadRequest {
-            request: crate::RequestKind::Chat(request.clone()),
-            prompt_tokens_sender,
-            token_sender,
-        })
-        .unwrap();
+    let _ = sender.send(ThreadRequest {
+        request: crate::RequestKind::Chat(request.clone()),
+        prompt_tokens_sender,
+        token_sender,
+    });
 
-    let prompt_tokens = prompt_tokens_receiver.recv_async().await.unwrap();
+    let prompt_tokens = prompt_tokens_receiver
+        .recv_async()
+        .await
+        .unwrap_or_default();
     let mut counter = TokenCounter {
         prompt_tokens,
         completion_tokens: 0,
