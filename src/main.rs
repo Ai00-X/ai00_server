@@ -4,7 +4,7 @@ use flume::Receiver;
 use itertools::Itertools;
 use memmap::Mmap;
 use qp_trie::Trie;
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 use std::{
     collections::HashMap,
     fs::File,
@@ -16,9 +16,11 @@ mod chat;
 mod completion;
 mod sampler;
 
-use chat::{chat, ChatRecord, ChatRequest};
-use completion::{completions, CompletionRequest};
-use sampler::Sampler;
+use crate::{
+    chat::{ChatRecord, ChatRequest},
+    completion::CompletionRequest,
+    sampler::Sampler,
+};
 
 pub const MAX_TOKENS: usize = 4096;
 pub const PENALTY_COUNT: usize = 256;
@@ -31,6 +33,7 @@ pub enum Token {
 }
 
 #[derive(Debug, Default, Clone, Copy, Serialize)]
+#[serde(rename_all = "snake_case")]
 pub enum FinishReason {
     /// API returned complete model output.
     #[default]
@@ -41,6 +44,28 @@ pub enum FinishReason {
     ContentFilter,
     /// API response still in progress or incomplete.
     Null,
+}
+
+#[derive(Debug, Default, Clone, Serialize, Deserialize)]
+#[serde(untagged)]
+pub enum OptionArray<T: std::fmt::Debug + Clone + Serialize> {
+    #[default]
+    None,
+    Item(T),
+    Array(Vec<T>),
+}
+
+impl<T> From<OptionArray<T>> for Vec<T>
+where
+    T: std::fmt::Debug + Clone + Serialize,
+{
+    fn from(value: OptionArray<T>) -> Self {
+        match value {
+            OptionArray::None => vec![],
+            OptionArray::Item(item) => vec![item],
+            OptionArray::Array(vec) => vec,
+        }
+    }
 }
 
 pub enum RequestKind {
@@ -105,12 +130,12 @@ async fn model_task(receiver: Receiver<ThreadRequest>) -> Result<()> {
                 presence_penalty,
                 frequency_penalty,
             }) => {
-                let prompt = prompt.join("");
+                let prompt = Vec::from(prompt).join("");
                 let max_tokens = max_tokens.min(MAX_TOKENS);
                 (
                     prompt,
                     max_tokens,
-                    stop,
+                    Vec::from(stop),
                     Sampler {
                         top_p,
                         temperature,
@@ -129,6 +154,7 @@ async fn model_task(receiver: Receiver<ThreadRequest>) -> Result<()> {
                 presence_penalty,
                 frequency_penalty,
             }) => {
+                let messages = Vec::from(messages);
                 let model_text = messages
                     .iter()
                     .filter(|&record| record.role == chat::Role::Assistant)
@@ -147,13 +173,13 @@ async fn model_task(receiver: Receiver<ThreadRequest>) -> Result<()> {
                     .join("\n\n");
 
                 let assistant = chat::Role::Assistant.to_string();
-                let text = prompt + &format!("\n\n{assistant}:");
+                let prompt = prompt + &format!("\n\n{assistant}:");
 
                 let max_tokens = max_tokens.min(MAX_TOKENS);
                 (
-                    text,
+                    prompt,
                     max_tokens,
-                    stop,
+                    Vec::from(stop),
                     Sampler {
                         top_p,
                         temperature,
@@ -234,8 +260,8 @@ async fn main() -> Result<()> {
     let handle = tokio::task::spawn(model_task(receiver));
 
     let app = Router::new()
-        .route("/completions", post(completions))
-        .route("/chat/completions", post(chat))
+        .route("/completions", post(completion::completions))
+        .route("/chat/completions", post(chat::chat_completions))
         .with_state(sender);
     axum::Server::bind(&"0.0.0.0:3000".parse().unwrap())
         .serve(app.into_make_service())

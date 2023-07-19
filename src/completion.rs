@@ -2,14 +2,14 @@ use axum::{extract::State, Json};
 use futures_util::StreamExt;
 use serde::{Deserialize, Serialize};
 
-use crate::{FinishReason, ThreadRequest, TokenCounter};
+use crate::{FinishReason, OptionArray, ThreadRequest, TokenCounter};
 
 #[derive(Debug, Clone, Deserialize)]
 #[serde(default)]
 pub struct CompletionRequest {
-    pub prompt: Vec<String>,
+    pub prompt: OptionArray<String>,
     pub max_tokens: usize,
-    pub stop: Vec<String>,
+    pub stop: OptionArray<String>,
     pub temperature: f32,
     pub top_p: f32,
     pub presence_penalty: f32,
@@ -19,9 +19,9 @@ pub struct CompletionRequest {
 impl Default for CompletionRequest {
     fn default() -> Self {
         Self {
-            prompt: Vec::new(),
+            prompt: OptionArray::default(),
             max_tokens: 256,
-            stop: Vec::new(),
+            stop: OptionArray::default(),
             temperature: 1.0,
             top_p: 1.0,
             presence_penalty: 0.0,

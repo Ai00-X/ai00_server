@@ -2,7 +2,7 @@ use axum::{extract::State, Json};
 use futures_util::StreamExt;
 use serde::{Deserialize, Serialize};
 
-use crate::{FinishReason, ThreadRequest, TokenCounter};
+use crate::{FinishReason, OptionArray, ThreadRequest, TokenCounter};
 
 #[derive(Debug, Default, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 pub enum Role {
@@ -34,7 +34,7 @@ pub struct ChatRecord {
 #[derive(Debug, Clone, Deserialize)]
 #[serde(default)]
 pub struct ChatRequest {
-    pub messages: Vec<ChatRecord>,
+    pub messages: OptionArray<ChatRecord>,
     pub max_tokens: usize,
     pub stop: Vec<String>,
     pub temperature: f32,
@@ -46,7 +46,7 @@ pub struct ChatRequest {
 impl Default for ChatRequest {
     fn default() -> Self {
         Self {
-            messages: Vec::new(),
+            messages: OptionArray::default(),
             max_tokens: 256,
             stop: Vec::new(),
             temperature: 1.0,
@@ -72,7 +72,7 @@ pub struct ChatResponse {
     pub counter: TokenCounter,
 }
 
-pub async fn chat(
+pub async fn chat_completions(
     State(sender): State<flume::Sender<ThreadRequest>>,
     Json(request): Json<ChatRequest>,
 ) -> Json<ChatResponse> {
