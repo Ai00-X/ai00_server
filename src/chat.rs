@@ -4,7 +4,7 @@ use serde::{Deserialize, Serialize};
 
 use crate::{FinishReason, ThreadRequest, TokenCounter};
 
-#[derive(Debug, Default, Clone, Copy, Serialize, Deserialize)]
+#[derive(Debug, Default, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 pub enum Role {
     System,
     #[default]
@@ -76,11 +76,13 @@ pub async fn chat(
     let (prompt_tokens_sender, prompt_tokens_receiver) = flume::unbounded();
     let (token_sender, token_receiver) = flume::unbounded();
 
-    let _ = sender.send(ThreadRequest {
-        request: crate::RequestKind::Chat(request.clone()),
-        prompt_tokens_sender,
-        token_sender,
-    });
+    let _ = sender
+        .send_async(ThreadRequest {
+            request: crate::RequestKind::Chat(request.clone()),
+            prompt_tokens_sender,
+            token_sender,
+        })
+        .await;
 
     let prompt_tokens = prompt_tokens_receiver
         .recv_async()

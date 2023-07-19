@@ -6,6 +6,7 @@ use memmap::Mmap;
 use qp_trie::Trie;
 use serde::Serialize;
 use std::{
+    collections::HashMap,
     fs::File,
     io::{BufReader, Read},
 };
@@ -20,6 +21,7 @@ use completion::{completions, CompletionRequest};
 use sampler::Sampler;
 
 pub const MAX_TOKENS: usize = 4096;
+pub const PENALTY_COUNT: usize = 256;
 
 #[derive(Debug)]
 pub enum Token {
@@ -81,7 +83,7 @@ async fn model_task(receiver: Receiver<ThreadRequest>) -> Result<()> {
     let model = load_model(&env)?;
     print!("{:#?}", model.info());
 
-    let state_cache = Trie::<Vec<u8>, BackedModelState>::new();
+    let state_cache = Trie::<&[u8], BackedModelState>::new();
 
     loop {
         let ThreadRequest {
@@ -93,7 +95,7 @@ async fn model_task(receiver: Receiver<ThreadRequest>) -> Result<()> {
             Err(_) => continue,
         };
 
-        let (text, max_tokens, stop, sampler) = match request {
+        let (text, max_tokens, stop, sampler, mut occurrences) = match request {
             RequestKind::Completion(CompletionRequest {
                 prompt,
                 max_tokens,
@@ -115,6 +117,7 @@ async fn model_task(receiver: Receiver<ThreadRequest>) -> Result<()> {
                         presence_penalty,
                         frequency_penalty,
                     },
+                    HashMap::new(),
                 )
             }
             RequestKind::Chat(ChatRequest {
@@ -126,6 +129,14 @@ async fn model_task(receiver: Receiver<ThreadRequest>) -> Result<()> {
                 presence_penalty,
                 frequency_penalty,
             }) => {
+                let model_text = messages
+                    .iter()
+                    .filter(|&record| record.role == chat::Role::Assistant)
+                    .map(|record| record.content.clone())
+                    .join(" ");
+                let model_tokens = tokenizer.encode(model_text.as_bytes()).unwrap_or_default();
+                let occurances = model_tokens.into_iter().counts();
+
                 let text = messages
                     .into_iter()
                     .map(|ChatRecord { role, content }| {
@@ -136,7 +147,7 @@ async fn model_task(receiver: Receiver<ThreadRequest>) -> Result<()> {
                     .join("\n\n");
 
                 let assistant = chat::Role::Assistant.to_string();
-                let text = text + &format!("\n\n{assistant}: ");
+                let text = text + &format!("\n\n{assistant}:");
 
                 let max_tokens = max_tokens.min(MAX_TOKENS);
                 (
@@ -149,6 +160,7 @@ async fn model_task(receiver: Receiver<ThreadRequest>) -> Result<()> {
                         presence_penalty,
                         frequency_penalty,
                     },
+                    occurances,
                 )
             }
         };
@@ -156,20 +168,49 @@ async fn model_task(receiver: Receiver<ThreadRequest>) -> Result<()> {
         let state = model.create_state();
         let remain_text = {
             let mut key = text.as_bytes().to_vec();
-            if let Some((prefix, backed)) = state_cache.iter_prefix(&key).last() {
+            let prefix = state_cache.longest_common_prefix(text.as_bytes());
+            if let Some((_, backed)) = state_cache.iter_prefix(prefix).last() {
                 match state.load(backed) {
-                    Ok(_) => String::from_utf8(key.split_off(prefix.len())).unwrap_or(text),
-                    Err(_) => text,
+                    Ok(_) => key.split_off(prefix.len()),
+                    Err(_) => key,
                 }
             } else {
-                text
+                key
             }
         };
+        let mut model_text = String::new();
 
-        let tokens = tokenizer.encode(remain_text.as_bytes()).unwrap_or_default();
+        let tokens = tokenizer.encode(&remain_text).unwrap_or_default();
+        let _ = prompt_tokens_sender.send_async(tokens.len()).await;
+
+        for _ in 0..max_tokens {
+            let mut logits = model.run(&tokens, &state).unwrap_or_default();
+            for (&token, &count) in &occurrences {
+                let penalty = sampler.presence_penalty + sampler.frequency_penalty * count as f32;
+                logits[token as usize] -= penalty;
+            }
+
+            let token = sampler.sample(logits);
+            let word = tokenizer
+                .decode(&[token])
+                .ok()
+                .and_then(|x| String::from_utf8(x).ok())
+                .unwrap_or_default();
+            model_text += &word;
+
+            let count = occurrences.get(&token).copied().unwrap_or_default();
+            occurrences.insert(token, count + 1);
+
+            let _ = token_sender.send_async(Token::Token(word)).await;
+
+            if stop.iter().any(|x| model_text.contains(x)) {
+                let _ = token_sender.send_async(Token::EndOfText).await;
+                break;
+            }
+        }
+
+        let _ = token_sender.send_async(Token::CutOff).await;
     }
-
-    Ok(())
 }
 
 #[tokio::main]
