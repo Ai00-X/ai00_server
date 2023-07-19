@@ -17,11 +17,13 @@ exclude = ["assets"]
 axum = "0.6.11"
 tokio = { version = "1", features = ["full"] }
 web-rwkv = { git = "https://github.com/cryscan/web-rwkv" }
+memmap = "0.7"
 clap = { version = "4.3", features = ["derive"] }
 serde = { version = "1.0", features = ["derive"] }
 fastrand = "*"
 flume = "0.10"
 futures-util = "0.3"
+anyhow = "1"
 
 [profile.release]
 lto = true
