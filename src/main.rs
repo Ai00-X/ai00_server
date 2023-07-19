@@ -8,7 +8,7 @@ use serde::{Deserialize, Serialize};
 use std::{
     collections::HashMap,
     fs::File,
-    io::{BufReader, Read},
+    io::{BufReader, Read, Write},
 };
 use web_rwkv::{BackedModelState, Environment, Model, Tokenizer};
 
@@ -107,6 +107,9 @@ async fn model_task(receiver: Receiver<ThreadRequest>) -> Result<()> {
     let tokenizer = load_tokenizer()?;
     let model = load_model(&env)?;
 
+    print!("\n\n");
+    std::io::stdout().flush()?;
+
     let mut state_cache = Trie::<&[u8], BackedModelState>::new();
 
     loop {
@@ -190,6 +193,9 @@ async fn model_task(receiver: Receiver<ThreadRequest>) -> Result<()> {
             }
         };
 
+        println!("{:#?}", sampler);
+        std::io::stdout().flush()?;
+
         let state = model.create_state();
         let remain = {
             let prefix = state_cache.longest_common_prefix(prompt.as_bytes());
@@ -228,6 +234,9 @@ async fn model_task(receiver: Receiver<ThreadRequest>) -> Result<()> {
                 model_text += &word;
                 tokens = vec![token];
 
+                print!("{}", word);
+                std::io::stdout().flush()?;
+
                 let count = occurrences.get(&token).copied().unwrap_or_default();
                 occurrences.insert(token, count + 1);
 
@@ -237,12 +246,22 @@ async fn model_task(receiver: Receiver<ThreadRequest>) -> Result<()> {
 
                 if stop.iter().any(|x| model_text.contains(x)) {
                     let _ = token_sender.send(Token::EndOfText);
+
+                    print!("[DONE]");
+                    std::io::stdout().flush()?;
+
                     break 'run;
                 }
             }
 
             let _ = token_sender.send(Token::CutOff);
+
+            print!("[DONE]");
+            std::io::stdout().flush()?;
         }
+
+        print!("\n\n");
+        std::io::stdout().flush()?;
 
         if let Ok(back) = state.back() {
             let mut prompt = prompt.as_bytes().to_vec();
