@@ -19,7 +19,7 @@ mod sampler;
 use crate::{chat::ChatRequest, completion::CompletionRequest, sampler::Sampler};
 
 pub const MAX_TOKENS: usize = 4096;
-pub const PENALTY_COUNT: usize = 256;
+pub const MAX_PENALTY_COUNT: usize = 1024;
 
 #[derive(Debug)]
 pub enum Token {
@@ -138,7 +138,11 @@ async fn model_task(receiver: Receiver<ThreadRequest>) -> Result<()> {
                     .map(|record| record.content)
                     .join(" ");
                 let model_tokens = tokenizer.encode(model_text.as_bytes()).unwrap_or_default();
-                let occurances = model_tokens.into_iter().counts();
+                let occurances = model_tokens
+                    .into_iter()
+                    .rev()
+                    .take(MAX_PENALTY_COUNT)
+                    .counts();
 
                 let mut request = GenerateRequest::from(request);
                 request.occurrences = occurances;
