@@ -10,7 +10,7 @@ pub struct Sampler {
 
 impl Sampler {
     fn softmax(data: Vec<f32>) -> Vec<f32> {
-        let exp: Vec<_> = data.into_iter().map(f32::exp).collect();
+        let exp = data.into_iter().map(f32::exp).collect_vec();
         let sum: f32 = exp.iter().sum();
         exp.into_iter().map(|x| x / sum).collect()
     }
@@ -33,14 +33,14 @@ impl Sampler {
             .collect_vec();
 
         let sum: f32 = sorted.iter().map(|(_, x)| x).sum();
-        let sorted: Vec<_> = sorted
+        let sorted = sorted
             .into_iter()
             .map(|(id, x)| (id, x / sum))
             .scan((0, 0.0), |(_, cum), (id, x)| {
                 *cum += x;
                 Some((id, *cum))
             })
-            .collect();
+            .collect_vec();
 
         let rand = fastrand::f32();
         let token = sorted
