@@ -102,11 +102,11 @@ pub async fn completions(
                 text += &token;
                 counter.completion_tokens += 1;
             }
-            Token::EndOfText => {
+            Token::Stop => {
                 finish_reason = FinishReason::Stop;
                 break;
             }
-            Token::CutOff => {
+            Token::CutOff | Token::EndOfText => {
                 finish_reason = FinishReason::Length;
                 break;
             }

@@ -25,8 +25,9 @@ pub const MAX_PENALTY_COUNT: usize = 1024;
 pub enum Token {
     PromptTokenCount(usize),
     Token(String),
-    EndOfText,
+    Stop,
     CutOff,
+    EndOfText,
 }
 
 #[derive(Debug, Default, Clone, Copy, Serialize)]
@@ -197,13 +198,15 @@ fn model_task(env: Environment, receiver: Receiver<ThreadRequest>) -> Result<()>
                 let _ = token_sender.send(Token::Token(word));
 
                 if stop.iter().any(|x| model_text.contains(x)) {
-                    let _ = token_sender.send(Token::EndOfText);
+                    let _ = token_sender.send(Token::Stop);
                     break 'run;
                 }
             }
 
             let _ = token_sender.send(Token::CutOff);
         }
+
+        let _ = token_sender.send(Token::EndOfText);
 
         print!("\n\n");
         std::io::stdout().flush()?;

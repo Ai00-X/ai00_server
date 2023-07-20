@@ -146,11 +146,11 @@ pub async fn chat_completions(
                 text += &token;
                 counter.completion_tokens += 1;
             }
-            Token::EndOfText => {
+            Token::Stop => {
                 finish_reason = FinishReason::Stop;
                 break;
             }
-            Token::CutOff => {
+            Token::CutOff | Token::EndOfText => {
                 finish_reason = FinishReason::Length;
                 break;
             }
@@ -223,10 +223,11 @@ pub async fn chunk_chat_completions(
                 finish_reason: FinishReason::Length,
                 ..Default::default()
             },
-            Token::EndOfText => ChunkChatChoice {
+            Token::Stop => ChunkChatChoice {
                 finish_reason: FinishReason::Stop,
                 ..Default::default()
             },
+            Token::EndOfText => return Ok(Event::default().data("[DONE]")),
         };
 
         Event::default()
