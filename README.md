@@ -11,7 +11,9 @@
 
 基于 [web-rwkv](https://github.com/cryscan/web-rwkv) 项目
 
+[模型下载](https://huggingface.co/cgisky/RWKV-safetensors-fp16)
 
+------
 
 An API server based on the RWKV model.
 
@@ -21,7 +23,9 @@ API interface compatible with Openai's API .
 
 Based on  [web-rwkv](https://github.com/cryscan/web-rwkv)  project
 
+[download models](https://huggingface.co/cgisky/RWKV-safetensors-fp16)
 
+------
 
 RWKV モデルに基づく API サーバー。
 
@@ -31,5 +35,5 @@ OpenaiのAPIと互換性のあるAPIインターフェース。
 
 プロジェクトに基づく [web-rwkv](https://github.com/cryscan/web-rwkv) 
 
-
+[モデルのダウンロード](https://huggingface.co/cgisky/RWKV-safetensors-fp16)
 
