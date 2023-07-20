@@ -23,6 +23,7 @@ pub const MAX_PENALTY_COUNT: usize = 1024;
 
 #[derive(Debug)]
 pub enum Token {
+    PromptTokenCount(usize),
     Token(String),
     EndOfText,
     CutOff,
@@ -71,7 +72,6 @@ pub enum RequestKind {
 
 pub struct ThreadRequest {
     pub request: RequestKind,
-    pub prompt_tokens_sender: flume::Sender<usize>,
     pub token_sender: flume::Sender<Token>,
 }
 
@@ -106,8 +106,7 @@ fn load_model(env: &Environment) -> Result<Model> {
     Ok(model)
 }
 
-async fn model_task(receiver: Receiver<ThreadRequest>) -> Result<()> {
-    let env = Environment::create().await?;
+fn model_task(env: Environment, receiver: Receiver<ThreadRequest>) -> Result<()> {
     let tokenizer = load_tokenizer()?;
     let model = load_model(&env)?;
 
@@ -116,9 +115,8 @@ async fn model_task(receiver: Receiver<ThreadRequest>) -> Result<()> {
     loop {
         let ThreadRequest {
             request,
-            prompt_tokens_sender,
             token_sender,
-        } = match receiver.recv_async().await {
+        } = match receiver.recv() {
             Ok(request) => request,
             Err(_) => continue,
         };
@@ -170,7 +168,7 @@ async fn model_task(receiver: Receiver<ThreadRequest>) -> Result<()> {
         let mut model_text = String::new();
 
         let mut tokens = tokenizer.encode(&remain).unwrap_or_default();
-        let _ = prompt_tokens_sender.send_async(tokens.len()).await;
+        let _ = token_sender.send(Token::PromptTokenCount(tokens.len()));
 
         'run: {
             for _ in 0..max_tokens {
@@ -196,15 +194,15 @@ async fn model_task(receiver: Receiver<ThreadRequest>) -> Result<()> {
                 let count = occurrences.get(&token).copied().unwrap_or_default();
                 occurrences.insert(token, count + 1);
 
-                let _ = token_sender.send_async(Token::Token(word)).await;
+                let _ = token_sender.send(Token::Token(word));
 
                 if stop.iter().any(|x| model_text.contains(x)) {
-                    let _ = token_sender.send_async(Token::EndOfText).await;
+                    let _ = token_sender.send(Token::EndOfText);
                     break 'run;
                 }
             }
 
-            let _ = token_sender.send_async(Token::CutOff).await;
+            let _ = token_sender.send(Token::CutOff);
         }
 
         print!("\n\n");
@@ -222,16 +220,17 @@ async fn model_task(receiver: Receiver<ThreadRequest>) -> Result<()> {
 #[tokio::main]
 async fn main() -> Result<()> {
     let (sender, receiver) = flume::unbounded::<ThreadRequest>();
-    let handle = tokio::task::spawn(model_task(receiver));
+    let env = Environment::create().await?;
+    let _handle = std::thread::spawn(move || model_task(env, receiver));
 
     let app = Router::new()
         .route("/completions", post(completion::completions))
         .route("/chat/completions", post(chat::chat_completions))
+        .route("/v1/chat/completions", post(chat::chunk_chat_completions))
         .with_state(sender);
     axum::Server::bind(&"0.0.0.0:3000".parse().unwrap())
         .serve(app.into_make_service())
         .await?;
 
-    handle.await??;
     Ok(())
 }

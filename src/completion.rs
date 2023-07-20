@@ -3,7 +3,8 @@ use futures_util::StreamExt;
 use serde::{Deserialize, Serialize};
 
 use crate::{
-    sampler::Sampler, FinishReason, GenerateRequest, OptionArray, ThreadRequest, TokenCounter,
+    sampler::Sampler, FinishReason, GenerateRequest, OptionArray, RequestKind, ThreadRequest,
+    Token, TokenCounter,
 };
 
 #[derive(Debug, Clone, Deserialize)]
@@ -82,46 +83,37 @@ pub async fn completions(
     State(sender): State<flume::Sender<ThreadRequest>>,
     Json(request): Json<CompletionRequest>,
 ) -> Json<CompletionResponse> {
-    let (prompt_tokens_sender, prompt_tokens_receiver) = flume::unbounded();
     let (token_sender, token_receiver) = flume::unbounded();
 
     let _ = sender.send(ThreadRequest {
-        request: crate::RequestKind::Completion(request),
-        prompt_tokens_sender,
+        request: RequestKind::Completion(request),
         token_sender,
     });
 
-    let prompt_tokens = prompt_tokens_receiver
-        .recv_async()
-        .await
-        .unwrap_or_default();
-    let mut counter = TokenCounter {
-        prompt_tokens,
-        completion_tokens: 0,
-        total_tokens: prompt_tokens,
-    };
-
+    let mut counter = TokenCounter::default();
     let mut finish_reason = FinishReason::Null;
     let mut text = String::new();
     let mut stream = token_receiver.into_stream();
 
     while let Some(token) = stream.next().await {
         match token {
-            crate::Token::Token(token) => {
+            Token::PromptTokenCount(prompt_tokens) => counter.prompt_tokens = prompt_tokens,
+            Token::Token(token) => {
                 text += &token;
                 counter.completion_tokens += 1;
-                counter.total_tokens += 1;
             }
-            crate::Token::EndOfText => {
+            Token::EndOfText => {
                 finish_reason = FinishReason::Stop;
                 break;
             }
-            crate::Token::CutOff => {
+            Token::CutOff => {
                 finish_reason = FinishReason::Length;
                 break;
             }
         }
     }
+
+    counter.total_tokens = counter.prompt_tokens + counter.completion_tokens;
 
     Json(CompletionResponse {
         object: "text_completion".into(),
