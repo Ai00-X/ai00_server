@@ -2,13 +2,27 @@
 中文  |  English  |  日本語 | 
 
 
-一个基于RWKV模型的 API server。
+AI00 RWKV Server 是一个基于RWKV模型的API服务器，它支持VULKAN推理加速，可以在所有支持VULKAN的GPU上运行。它无需臃肿的pytorch CUDA等运行环境，小巧身材，开箱即用！它兼容Openai的ChatGPT API接口。
 
-支持VULKAN推理加速，可以在所有支持VULKAN的GPU上运行。
+如果您正在寻找一个快速、高效、易于使用的API服务器，那么RWKV API Server是您的最佳选择。它可以用于各种任务，包括聊天机器人、文本生成、翻译和问答。
 
-无需臃肿的pytorch  CUDA 等运行环境，小巧身材，开箱即用！
+立即加入RWKV API Server社区，体验AI的魅力！
 
-兼容Openai的 ChatGPT API 接口。
+##特色
+
+基于RWKV模型，具有高性能和准确性
+支持VULKAN推理加速，可以提高性能
+无需臃肿的pytorch CUDA等运行环境，小巧身材，开箱即用！
+兼容Openai的ChatGPT API接口
+
+##用途
+
+聊天机器人
+文本生成
+翻译
+问答
+
+##其他
 
 基于 [web-rwkv](https://github.com/cryscan/web-rwkv) 项目
 
