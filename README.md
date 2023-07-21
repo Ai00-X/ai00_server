@@ -16,11 +16,11 @@ AI00 RWKV Server 是一个基于[RWKV模型](https://github.com/BlinkDL/ChatRWKV
 
 
 
-AI00 RWKV Server is based on the [RWKV model]（ https://github.com/BlinkDL/ChatRWKV ）Inference API server for.
+AI00 RWKV Server is based on the [RWKV model](https://github.com/BlinkDL/ChatRWKV) Inference API server for.
 
 Supports VULKAN inference acceleration and can run on all GPUs that support VULKAN.
 
-No need for bulky Pytorch CUDA and other running environments, compact body, ready to use out of the box!
+No need for bulky Pytorch or CUDA and other running environments, compact body, ready to use out of the box!
 
 Compatible with Openai's ChatGPT API interface.
 
@@ -68,8 +68,12 @@ git clone https://github.com/cgisky1980/ai00_rwkv_serve.git
 cd ai00_rwkv_serve
 ```
 [下载模型 （download models）](https://huggingface.co/cgisky/RWKV-safetensors-fp16)
+
 把模型放在（put model file as）  \assets\models\RWKV-4-World-0.4B-v1-20230529-ctx4096.st
-目前模型路径和名称写死，后面可以在启动参数指定(At present, the model path and name are written dead, and can be specified in the startup parameters later on)
+
+目前模型路径和名称写死，后面可以在启动参数指定
+
+(At present, the model path and name are written dead, and can be specified in the startup parameters later on)
 
 ```bash
 cargo b -r
