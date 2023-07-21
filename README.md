@@ -1,6 +1,4 @@
 # AI00 RWKV Server
-中文  |  English  |  日本語 | 
-
 
 AI00 RWKV Server 是一个基于RWKV模型的API服务器，它支持VULKAN推理加速，可以在所有支持VULKAN的GPU上运行。它无需臃肿的pytorch CUDA等运行环境，小巧身材，开箱即用！它兼容Openai的ChatGPT API接口。
 
@@ -8,21 +6,23 @@ AI00 RWKV Server 是一个基于RWKV模型的API服务器，它支持VULKAN推�
 
 立即加入RWKV API Server社区，体验AI的魅力！
 
-##特色
+## 特色
 
-基于RWKV模型，具有高性能和准确性
-支持VULKAN推理加速，可以提高性能
-无需臃肿的pytorch CUDA等运行环境，小巧身材，开箱即用！
-兼容Openai的ChatGPT API接口
+- 基于RWKV模型，具有高性能和准确性
 
-##用途
+- 支持VULKAN推理加速，不用该死的CUDA也能享受GPU加速！
+- 无需臃肿的pytorch CUDA等运行环境，小巧身材，开箱即用！
+- 兼容Openai的ChatGPT API接口
 
-聊天机器人
-文本生成
-翻译
-问答
+## 用途
 
-##其他
+- 聊天机器人
+- 文本生成
+- 翻译
+- 问答
+- 其他所有你能想到的LLM能干的事
+
+## 其他
 
 基于 [web-rwkv](https://github.com/cryscan/web-rwkv) 项目
 
@@ -34,14 +34,16 @@ AI00 RWKV Server 是一个基于RWKV模型的API服务器，它支持VULKAN推�
 
 安装了cargo 编译环境
 
-```
+```bash
 git clone https://github.com/cgisky1980/ai00_rwkv_serve.git
 
 cd ai00_rwkv_serve
+```
+[下载模型](https://huggingface.co/cgisky/RWKV-safetensors-fp16)
+把模型放在  \assets\models\RWKV-4-World-0.4B-v1-20230529-ctx4096.st
+目前模型路径和名称写死，后面可以在启动参数指定
 
-// put model in \assets\models\RWKV-4-World-0.4B-v1-20230529-ctx4096.st
-// 目前模型路径和名称写死，后面可以在启动参数指定
-
+```bash
 cargo b -r
 
 ./target/release/ai00_server.exe
@@ -59,28 +61,3 @@ API 服务开启于 3000 端口
 /v1/completions
 
 /completions
-
-------
-
-An API server based on the RWKV model.
-
-Supports VULKAN inference acceleration. So can run RWKV on all GPUs that support VULKAN.
-
-API interface compatible with Openai's API .
-
-Based on  [web-rwkv](https://github.com/cryscan/web-rwkv)  project
-
-[download models](https://huggingface.co/cgisky/RWKV-safetensors-fp16)
-
-------
-
-RWKV モデルに基づく API サーバー。
-
-VULKAN推論アクセラレーションをサポートします。そのため、VULKANをサポートするすべてのGPUでRWKVを実行できます。
-
-OpenaiのAPIと互換性のあるAPIインターフェース。
-
-プロジェクトに基づく [web-rwkv](https://github.com/cryscan/web-rwkv) 
-
-[モデルのダウンロード](https://huggingface.co/cgisky/RWKV-safetensors-fp16)
-
