@@ -20,14 +20,20 @@ git clone https://github.com/cgisky1980/ai00_rwkv_serve.git
 
 cd ai00_rwkv_serve
 
-// put model in \assets\models
+// put model in \assets\models\RWKV-4-World-0.4B-v1-20230529-ctx4096.st
+// 目前模型路径和名称写死，后面可以在启动参数指定
 
 cargo b -r
 
 ./target/release/ai00_server.exe
 
 ```
-
+API 服务开启于 3000 端口
+目前可用api
+/v1/chat/completions
+/chat/completions
+/v1/completions
+/completions
 ------
 
 An API server based on the RWKV model.
