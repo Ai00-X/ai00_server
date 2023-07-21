@@ -40,7 +40,7 @@ pub struct ChatRecord {
     pub content: String,
 }
 
-#[derive(Debug, Clone, Deserialize)]
+#[derive(Debug, Deserialize)]
 #[serde(default)]
 pub struct ChatRequest {
     pub messages: OptionArray<ChatRecord>,
@@ -107,18 +107,19 @@ impl From<ChatRequest> for GenerateRequest {
                 frequency_penalty,
             },
             occurrences: Default::default(),
+            embedding: false,
         }
     }
 }
 
-#[derive(Debug, Clone, Serialize)]
+#[derive(Debug, Serialize)]
 pub struct ChatChoice {
     pub message: ChatRecord,
     pub index: usize,
     pub finish_reason: FinishReason,
 }
 
-#[derive(Debug, Clone, Serialize)]
+#[derive(Debug, Serialize)]
 pub struct ChatResponse {
     pub object: String,
     pub model: String,
@@ -138,29 +139,25 @@ pub async fn chat_completions_one(
         token_sender,
     });
 
-    let mut counter = TokenCounter::default();
+    let mut token_counter = TokenCounter::default();
     let mut finish_reason = FinishReason::Null;
     let mut text = String::new();
     let mut stream = token_receiver.into_stream();
 
     while let Some(token) = stream.next().await {
         match token {
-            Token::Start { prompt_tokens } => counter.prompt_tokens = prompt_tokens,
+            Token::Start => {}
             Token::Token(token) => {
                 text += &token;
-                counter.completion_tokens += 1;
             }
-            Token::Stop(reason) => {
+            Token::Stop(reason, counter) => {
                 finish_reason = reason;
+                token_counter = counter;
                 break;
             }
-            Token::EndOfText => {
-                break;
-            }
+            _ => unreachable!(),
         }
     }
-
-    counter.total_tokens = counter.prompt_tokens + counter.completion_tokens;
 
     Json(ChatResponse {
         object: "chat.completion".into(),
@@ -173,7 +170,7 @@ pub async fn chat_completions_one(
             index: 0,
             finish_reason,
         }],
-        counter,
+        counter: token_counter,
     })
 }
 
@@ -214,7 +211,7 @@ pub async fn chat_completions_stream(
 
     let stream = token_receiver.into_stream().map(move |token| {
         let choice = match token {
-            Token::Start { .. } => PartialChatChoice {
+            Token::Start => PartialChatChoice {
                 delta: PartialChatRecord::Role(Role::Assistant),
                 ..Default::default()
             },
@@ -222,11 +219,12 @@ pub async fn chat_completions_stream(
                 delta: PartialChatRecord::Content(token),
                 ..Default::default()
             },
-            Token::Stop(finish_reason) => PartialChatChoice {
+            Token::Stop(finish_reason, _) => PartialChatChoice {
                 finish_reason,
                 ..Default::default()
             },
-            Token::EndOfText => return Ok(Event::default().data(" [DONE]")),
+            Token::Done => return Ok(Event::default().data(" [DONE]")),
+            _ => unreachable!(),
         };
 
         let json = serde_json::to_string(&PartialChatResponse {

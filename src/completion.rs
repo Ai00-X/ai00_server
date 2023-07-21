@@ -12,7 +12,7 @@ use crate::{
     ThreadRequest, ThreadState, Token, TokenCounter,
 };
 
-#[derive(Debug, Clone, Deserialize)]
+#[derive(Debug, Deserialize)]
 #[serde(default)]
 pub struct CompletionRequest {
     pub prompt: OptionArray<String>,
@@ -68,18 +68,19 @@ impl From<CompletionRequest> for GenerateRequest {
                 frequency_penalty,
             },
             occurrences: Default::default(),
+            embedding: false,
         }
     }
 }
 
-#[derive(Debug, Clone, Serialize)]
+#[derive(Debug, Serialize)]
 pub struct CompletionChoice {
     pub text: String,
     pub index: usize,
     pub finish_reason: FinishReason,
 }
 
-#[derive(Debug, Clone, Serialize)]
+#[derive(Debug, Serialize)]
 pub struct CompletionResponse {
     pub object: String,
     pub model: String,
@@ -99,29 +100,25 @@ pub async fn completions_one(
         token_sender,
     });
 
-    let mut counter = TokenCounter::default();
+    let mut token_counter = TokenCounter::default();
     let mut finish_reason = FinishReason::Null;
     let mut text = String::new();
     let mut stream = token_receiver.into_stream();
 
     while let Some(token) = stream.next().await {
         match token {
-            Token::Start { prompt_tokens } => counter.prompt_tokens = prompt_tokens,
+            Token::Start => {}
             Token::Token(token) => {
                 text += &token;
-                counter.completion_tokens += 1;
             }
-            Token::Stop(reason) => {
+            Token::Stop(reason, counter) => {
                 finish_reason = reason;
+                token_counter = counter;
                 break;
             }
-            Token::EndOfText => {
-                break;
-            }
+            _ => unreachable!(),
         }
     }
-
-    counter.total_tokens = counter.prompt_tokens + counter.completion_tokens;
 
     Json(CompletionResponse {
         object: "text_completion".into(),
@@ -131,7 +128,7 @@ pub async fn completions_one(
             index: 0,
             finish_reason,
         }],
-        counter,
+        counter: token_counter,
     })
 }
 
@@ -171,16 +168,16 @@ pub async fn completions_stream(
 
     let stream = token_receiver.into_stream().skip(1).map(move |token| {
         let choice = match token {
-            Token::Start { .. } => Default::default(),
             Token::Token(token) => PartialCompletionChoice {
                 delta: PartialCompletionRecord::Content(token),
                 ..Default::default()
             },
-            Token::Stop(finish_reason) => PartialCompletionChoice {
+            Token::Stop(finish_reason, _) => PartialCompletionChoice {
                 finish_reason,
                 ..Default::default()
             },
-            Token::EndOfText => return Ok(Event::default().data(" [DONE]")),
+            Token::Done => return Ok(Event::default().data(" [DONE]")),
+            _ => unreachable!(),
         };
 
         let json = serde_json::to_string(&PartialCompletionResponse {

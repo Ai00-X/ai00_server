@@ -23,19 +23,23 @@ use web_rwkv::{BackedModelState, Environment, Model, Tokenizer};
 
 mod chat;
 mod completion;
+mod embedding;
 mod sampler;
 
-use crate::{chat::ChatRequest, completion::CompletionRequest, sampler::Sampler};
+use crate::{
+    chat::ChatRequest, completion::CompletionRequest, embedding::EmbeddingRequest, sampler::Sampler,
+};
 
 pub const MAX_TOKENS: usize = 4096;
 pub const MAX_PENALTY_COUNT: usize = 1024;
 
 #[derive(Debug)]
 pub enum Token {
-    Start { prompt_tokens: usize },
+    Start,
     Token(String),
-    Stop(FinishReason),
-    EndOfText,
+    Stop(FinishReason, TokenCounter),
+    Embed(Vec<f32>),
+    Done,
 }
 
 #[derive(Debug, Default, Clone, Copy, Serialize)]
@@ -77,6 +81,7 @@ where
 pub enum RequestKind {
     Completion(CompletionRequest),
     Chat(ChatRequest),
+    Embedding(EmbeddingRequest),
 }
 
 pub struct ThreadRequest {
@@ -90,6 +95,7 @@ pub struct GenerateRequest {
     pub stop: Vec<String>,
     pub sampler: Sampler,
     pub occurrences: HashMap<u16, usize>,
+    pub embedding: bool,
 }
 
 #[derive(Debug, Default, Clone, Serialize)]
@@ -167,6 +173,7 @@ fn model_task(
             stop,
             sampler,
             mut occurrences,
+            embedding,
         } = match request {
             RequestKind::Completion(request) => request.into(),
             RequestKind::Chat(request) => {
@@ -186,6 +193,7 @@ fn model_task(
                 request.occurrences = occurances;
                 request
             }
+            RequestKind::Embedding(request) => request.into(),
         };
 
         println!("{:#?}", sampler);
@@ -206,13 +214,15 @@ fn model_task(
             }
         };
         let mut model_text = String::new();
+        let mut token_counter = TokenCounter::default();
 
         let mut tokens = tokenizer.encode(&remain).unwrap_or_default();
-        let _ = token_sender.send(Token::Start {
-            prompt_tokens: tokens.len(),
-        });
+        let _ = token_sender.send(Token::Start);
 
         'run: {
+            token_counter.prompt_tokens = tokens.len();
+            token_counter.total_tokens = tokens.len();
+
             for _ in 0..max_tokens {
                 let mut logits = model.run(&tokens, &state).unwrap_or_default();
                 for (&token, &count) in &occurrences {
@@ -227,37 +237,47 @@ fn model_task(
                     .ok()
                     .and_then(|x| String::from_utf8(x).ok())
                     .unwrap_or_default();
-                model_text += &word;
-                tokens = vec![token];
 
                 print!("{}", word);
                 std::io::stdout().flush()?;
+
+                model_text += &word;
+                token_counter.completion_tokens += 1;
+                token_counter.total_tokens += 1;
 
                 let count = occurrences.get(&token).copied().unwrap_or_default();
                 occurrences.insert(token, count + 1);
 
                 let _ = token_sender.send(Token::Token(word));
+                tokens = vec![token];
 
                 if stop.iter().any(|x| model_text.contains(x)) {
-                    let _ = token_sender.send(Token::Stop(FinishReason::Stop));
+                    let _ = token_sender.send(Token::Stop(FinishReason::Stop, token_counter));
                     break 'run;
                 }
             }
 
-            let _ = token_sender.send(Token::Stop(FinishReason::Length));
+            let _ = token_sender.send(Token::Stop(FinishReason::Length, token_counter));
         }
-
-        let _ = token_sender.send(Token::EndOfText);
 
         print!("\n\n");
         std::io::stdout().flush()?;
 
         if let Ok(back) = state.back() {
+            if embedding {
+                let num_layer = model.info().num_layers;
+                let num_emb = model.info().num_emb;
+                let embedding = back.0[num_layer - 3][4 * num_emb..].to_vec();
+                let _ = token_sender.send(Token::Embed(embedding));
+            }
+
             let mut prompt = prompt.as_bytes().to_vec();
             let mut model_text = model_text.as_bytes().to_vec();
             prompt.append(&mut model_text);
             state_cache.insert(prompt.leak(), back);
         }
+
+        let _ = token_sender.send(Token::Done);
     }
 }
 
@@ -301,6 +321,8 @@ async fn main() -> Result<()> {
         .route("/v1/completions", post(completion::completions))
         .route("/chat/completions", post(chat::chat_completions))
         .route("/v1/chat/completions", post(chat::chat_completions))
+        .route("/embeddings", post(embedding::embeddings))
+        .route("/v1/embeddings", post(embedding::embeddings))
         .with_state(ThreadState { sender, model_name });
     axum::Server::bind(&format!("0.0.0.0:{0}", args.port).parse().unwrap())
         .serve(app.into_make_service())

@@ -8,6 +8,17 @@ pub struct Sampler {
     pub frequency_penalty: f32,
 }
 
+impl Default for Sampler {
+    fn default() -> Self {
+        Self {
+            top_p: 1.0,
+            temperature: 1.0,
+            presence_penalty: 0.0,
+            frequency_penalty: 0.0,
+        }
+    }
+}
+
 impl Sampler {
     fn softmax(data: Vec<f32>) -> Vec<f32> {
         let exp = data.into_iter().map(f32::exp).collect_vec();
