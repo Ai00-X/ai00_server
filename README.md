@@ -1,39 +1,81 @@
-# AI00 RWKV Server
-中文  |  English  |  日本語 | 
+# 💯AI00 RWKV Server
 
+AI00 RWKV Server 是一个基于[RWKV模型](https://github.com/BlinkDL/ChatRWKV)的推理API服务器。
 
+支持VULKAN推理加速，可以在所有支持VULKAN的GPU上运行。不用N卡！！！A卡甚至集成显卡都可加速！！！
 
-一个基于RWKV模型的 API server。
+无需臃肿的pytorch CUDA等运行环境，小巧身材，开箱即用！
 
-支持VULKAN推理加速，可以在所有支持VULKAN的GPU上运行。
+兼容Openai的ChatGPT API接口。
 
-兼容Openai的 ChatGPT API 接口。
+100% 开源可商用，采用MIT协议。
+
+如果您正在寻找一个快速、高效、易于使用的LLM API服务器，那么 AI00 RWKV Server 是您的最佳选择。它可以用于各种任务，包括聊天机器人、文本生成、翻译和问答。
+
+立即加入 AI00 RWKV Server 社区，体验AI的魅力！
+
+交流QQ群： 30920262
+
+## 💥特色
+
+- 基于RWKV模型，具有高性能和准确性
+
+- 支持VULKAN推理加速，不用该死的CUDA也能享受GPU加速！支持A卡、集成显卡等一切支持VULKAN的GPU
+- 无需臃肿的pytorch CUDA等运行环境，小巧身材，开箱即用！
+- 兼容Openai的ChatGPT API接口
+
+## ⭕用途
+
+- 聊天机器人
+- 文本生成
+- 翻译
+- 问答
+- 其他所有你能想到的LLM能干的事
+
+## 👻其他
 
 基于 [web-rwkv](https://github.com/cryscan/web-rwkv) 项目
 
 [模型下载](https://huggingface.co/cgisky/RWKV-safetensors-fp16)
 
-------
 
-An API server based on the RWKV model.
-
-Supports VULKAN inference acceleration. So can run RWKV on all GPUs that support VULKAN.
-
-API interface compatible with Openai's API .
-
-Based on  [web-rwkv](https://github.com/cryscan/web-rwkv)  project
-
-[download models](https://huggingface.co/cgisky/RWKV-safetensors-fp16)
 
 ------
 
-RWKV モデルに基づく API サーバー。
 
-VULKAN推論アクセラレーションをサポートします。そのため、VULKANをサポートするすべてのGPUでRWKVを実行できます。
 
-OpenaiのAPIと互換性のあるAPIインターフェース。
+# 📜**安装**
 
-プロジェクトに基づく [web-rwkv](https://github.com/cryscan/web-rwkv) 
+安装了cargo 编译环境
 
-[モデルのダウンロード](https://huggingface.co/cgisky/RWKV-safetensors-fp16)
+```bash
+git clone https://github.com/cgisky1980/ai00_rwkv_serve.git
 
+cd ai00_rwkv_serve
+```
+[下载模型](https://huggingface.co/cgisky/RWKV-safetensors-fp16)
+把模型放在  \assets\models\RWKV-4-World-0.4B-v1-20230529-ctx4096.st
+目前模型路径和名称写死，后面可以在启动参数指定
+
+然后进行编译
+
+```bash
+cargo b -r
+```
+
+编译完成后运行
+```bash
+./target/release/ai00_server.exe
+```
+
+API 服务开启于 3000 端口
+
+目前可用api
+
+/v1/chat/completions
+
+/chat/completions
+
+/v1/completions
+
+/completions
