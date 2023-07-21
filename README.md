@@ -28,12 +28,19 @@ cargo b -r
 ./target/release/ai00_server.exe
 
 ```
+
 API 服务开启于 3000 端口
+
 目前可用api
+
 /v1/chat/completions
+
 /chat/completions
+
 /v1/completions
+
 /completions
+
 ------
 
 An API server based on the RWKV model.
