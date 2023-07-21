@@ -4,6 +4,7 @@ use axum::{
     routing::post,
     BoxError, Json, Router,
 };
+use clap::Parser;
 use flume::Receiver;
 use futures_util::Stream;
 use itertools::Itertools;
@@ -12,8 +13,11 @@ use qp_trie::Trie;
 use serde::{Deserialize, Serialize};
 use std::{
     collections::HashMap,
+    ffi::OsStr,
     fs::File,
     io::{BufReader, Read, Write},
+    path::PathBuf,
+    str::FromStr,
 };
 use web_rwkv::{BackedModelState, Environment, Model, Tokenizer};
 
@@ -28,10 +32,9 @@ pub const MAX_PENALTY_COUNT: usize = 1024;
 
 #[derive(Debug)]
 pub enum Token {
-    PromptTokenCount(usize),
+    Start { prompt_tokens: usize },
     Token(String),
-    Stop,
-    CutOff,
+    Stop(FinishReason),
     EndOfText,
 }
 
@@ -39,13 +42,13 @@ pub enum Token {
 #[serde(rename_all = "snake_case")]
 pub enum FinishReason {
     /// API returned complete model output.
-    #[default]
     Stop,
     /// Incomplete model output due to max_tokens parameter or token limit.
     Length,
     /// Omitted content due to a flag from our content filters.
     ContentFilter,
     /// API response still in progress or incomplete.
+    #[default]
     Null,
 }
 
@@ -96,6 +99,7 @@ pub struct TokenCounter {
     pub total_tokens: usize,
 }
 
+#[derive(Debug)]
 pub enum EitherResponse<T, S> {
     Json(Json<T>),
     Sse(Sse<S>),
@@ -115,6 +119,12 @@ where
     }
 }
 
+#[derive(Debug, Clone)]
+pub struct ThreadState {
+    pub sender: flume::Sender<ThreadRequest>,
+    pub model_name: String,
+}
+
 fn load_tokenizer() -> Result<Tokenizer> {
     let file = File::open("assets/rwkv_vocab_v20230424.json")?;
     let mut reader = BufReader::new(file);
@@ -123,17 +133,21 @@ fn load_tokenizer() -> Result<Tokenizer> {
     Ok(Tokenizer::new(&contents)?)
 }
 
-fn load_model(env: &Environment) -> Result<Model> {
-    let file = File::open("assets/models/RWKV-4-World-0.4B-v1-20230529-ctx4096.st")?;
+fn load_model(env: &Environment, path: PathBuf) -> Result<Model> {
+    let file = File::open(path)?;
     let map = unsafe { Mmap::map(&file)? };
     let model = env.create_model_from_bytes(&map)?;
     print!("{:#?}\n\n", model.info());
     Ok(model)
 }
 
-fn model_task(env: Environment, receiver: Receiver<ThreadRequest>) -> Result<()> {
+fn model_task(
+    env: Environment,
+    model_path: PathBuf,
+    receiver: Receiver<ThreadRequest>,
+) -> Result<()> {
     let tokenizer = load_tokenizer()?;
-    let model = load_model(&env)?;
+    let model = load_model(&env, model_path)?;
 
     let mut state_cache = Trie::<&[u8], BackedModelState>::new();
 
@@ -193,7 +207,9 @@ fn model_task(env: Environment, receiver: Receiver<ThreadRequest>) -> Result<()>
         let mut model_text = String::new();
 
         let mut tokens = tokenizer.encode(&remain).unwrap_or_default();
-        let _ = token_sender.send(Token::PromptTokenCount(tokens.len()));
+        let _ = token_sender.send(Token::Start {
+            prompt_tokens: tokens.len(),
+        });
 
         'run: {
             for _ in 0..max_tokens {
@@ -222,12 +238,12 @@ fn model_task(env: Environment, receiver: Receiver<ThreadRequest>) -> Result<()>
                 let _ = token_sender.send(Token::Token(word));
 
                 if stop.iter().any(|x| model_text.contains(x)) {
-                    let _ = token_sender.send(Token::Stop);
+                    let _ = token_sender.send(Token::Stop(FinishReason::Stop));
                     break 'run;
                 }
             }
 
-            let _ = token_sender.send(Token::CutOff);
+            let _ = token_sender.send(Token::Stop(FinishReason::Length));
         }
 
         let _ = token_sender.send(Token::EndOfText);
@@ -244,17 +260,38 @@ fn model_task(env: Environment, receiver: Receiver<ThreadRequest>) -> Result<()>
     }
 }
 
+#[derive(Parser, Debug, Clone)]
+#[command(author, version, about, long_about = None)]
+struct Args {
+    #[arg(long, short, value_name = "FILE")]
+    model: Option<String>,
+}
+
 #[tokio::main]
 async fn main() -> Result<()> {
+    let args = Args::parse();
+    let model_path = PathBuf::from(
+        args.model
+            .unwrap_or("assets/models/RWKV-4-World-0.4B-v1-20230529-ctx4096.st".into()),
+    );
+    let model_name = model_path
+        .file_name()
+        .and_then(OsStr::to_str)
+        .map(String::from_str)
+        .and_then(Result::ok)
+        .map(|name| name.replace(".st", ""))
+        .unwrap();
+
     let (sender, receiver) = flume::unbounded::<ThreadRequest>();
     let env = Environment::create().await?;
-    let _handle = std::thread::spawn(move || model_task(env, receiver));
+    let _handle = std::thread::spawn(move || model_task(env, model_path, receiver));
 
     let app = Router::new()
         .route("/completions", post(completion::completions))
+        .route("/v1/completions", post(completion::completions))
         .route("/chat/completions", post(chat::chat_completions))
         .route("/v1/chat/completions", post(chat::chat_completions))
-        .with_state(sender);
+        .with_state(ThreadState { sender, model_name });
     axum::Server::bind(&"0.0.0.0:3000".parse().unwrap())
         .serve(app.into_make_service())
         .await?;

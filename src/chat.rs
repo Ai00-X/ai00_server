@@ -10,7 +10,7 @@ use serde::{Deserialize, Serialize};
 
 use crate::{
     sampler::Sampler, EitherResponse, FinishReason, GenerateRequest, OptionArray, RequestKind,
-    ThreadRequest, Token, TokenCounter,
+    ThreadRequest, ThreadState, Token, TokenCounter,
 };
 
 #[derive(Debug, Default, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
@@ -121,13 +121,14 @@ pub struct ChatChoice {
 #[derive(Debug, Clone, Serialize)]
 pub struct ChatResponse {
     pub object: String,
+    pub model: String,
     pub choices: Vec<ChatChoice>,
     #[serde(rename = "usage")]
     pub counter: TokenCounter,
 }
 
 pub async fn chat_completions_one(
-    State(sender): State<flume::Sender<ThreadRequest>>,
+    State(ThreadState { sender, model_name }): State<ThreadState>,
     Json(request): Json<ChatRequest>,
 ) -> Json<ChatResponse> {
     let (token_sender, token_receiver) = flume::unbounded();
@@ -144,17 +145,16 @@ pub async fn chat_completions_one(
 
     while let Some(token) = stream.next().await {
         match token {
-            Token::PromptTokenCount(prompt_tokens) => counter.prompt_tokens = prompt_tokens,
+            Token::Start { prompt_tokens } => counter.prompt_tokens = prompt_tokens,
             Token::Token(token) => {
                 text += &token;
                 counter.completion_tokens += 1;
             }
-            Token::Stop => {
-                finish_reason = FinishReason::Stop;
+            Token::Stop(reason) => {
+                finish_reason = reason;
                 break;
             }
-            Token::CutOff | Token::EndOfText => {
-                finish_reason = FinishReason::Length;
+            Token::EndOfText => {
                 break;
             }
         }
@@ -164,6 +164,7 @@ pub async fn chat_completions_one(
 
     Json(ChatResponse {
         object: "chat.completion".into(),
+        model: model_name,
         choices: vec![ChatChoice {
             message: ChatRecord {
                 role: Role::Assistant,
@@ -176,9 +177,9 @@ pub async fn chat_completions_one(
     })
 }
 
-#[derive(Default, Debug, Clone, Serialize)]
+#[derive(Debug, Default, Serialize)]
 #[serde(rename_all = "snake_case")]
-pub enum ChunkChatRecord {
+pub enum PartialChatRecord {
     #[default]
     #[serde(rename = "")]
     None,
@@ -186,21 +187,22 @@ pub enum ChunkChatRecord {
     Content(String),
 }
 
-#[derive(Debug, Default, Clone, Serialize)]
-pub struct ChunkChatChoice {
-    pub delta: ChunkChatRecord,
+#[derive(Debug, Default, Serialize)]
+pub struct PartialChatChoice {
+    pub delta: PartialChatRecord,
     pub index: usize,
     pub finish_reason: FinishReason,
 }
 
-#[derive(Debug, Clone, Serialize)]
-pub struct ChunkChatResponse {
+#[derive(Debug, Serialize)]
+pub struct PartialChatResponse {
     pub object: String,
-    pub choices: Vec<ChunkChatChoice>,
+    pub model: String,
+    pub choices: Vec<PartialChatChoice>,
 }
 
 pub async fn chat_completions_stream(
-    State(sender): State<flume::Sender<ThreadRequest>>,
+    State(ThreadState { sender, model_name }): State<ThreadState>,
     Json(request): Json<ChatRequest>,
 ) -> Sse<impl Stream<Item = Result<Event>>> {
     let (token_sender, token_receiver) = flume::unbounded();
@@ -210,32 +212,27 @@ pub async fn chat_completions_stream(
         token_sender,
     });
 
-    let stream = token_receiver.into_stream().map(|token| {
+    let stream = token_receiver.into_stream().map(move |token| {
         let choice = match token {
-            Token::PromptTokenCount(_) => ChunkChatChoice {
-                delta: ChunkChatRecord::Role(Role::Assistant),
-                index: 0,
-                finish_reason: FinishReason::Null,
-            },
-            Token::Token(token) => ChunkChatChoice {
-                delta: ChunkChatRecord::Content(token),
-                index: 0,
-                finish_reason: FinishReason::Null,
-            },
-            Token::CutOff => ChunkChatChoice {
-                finish_reason: FinishReason::Length,
+            Token::Start { .. } => PartialChatChoice {
+                delta: PartialChatRecord::Role(Role::Assistant),
                 ..Default::default()
             },
-            Token::Stop => ChunkChatChoice {
-                finish_reason: FinishReason::Stop,
+            Token::Token(token) => PartialChatChoice {
+                delta: PartialChatRecord::Content(token),
+                ..Default::default()
+            },
+            Token::Stop(finish_reason) => PartialChatChoice {
+                finish_reason,
                 ..Default::default()
             },
             Token::EndOfText => return Ok(Event::default().data("[DONE]")),
         };
 
         Event::default()
-            .json_data(ChunkChatResponse {
+            .json_data(PartialChatResponse {
                 object: "chat.completion.chunk".into(),
+                model: model_name.clone(),
                 choices: vec![choice],
             })
             .map_err(|err| err.into())
@@ -245,7 +242,7 @@ pub async fn chat_completions_stream(
 }
 
 pub async fn chat_completions(
-    state: State<flume::Sender<ThreadRequest>>,
+    state: State<ThreadState>,
     Json(request): Json<ChatRequest>,
 ) -> impl IntoResponse {
     if request.stream {

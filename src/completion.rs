@@ -1,10 +1,15 @@
-use axum::{extract::State, Json};
-use futures_util::StreamExt;
+use anyhow::Result;
+use axum::{
+    extract::State,
+    response::{sse::Event, IntoResponse, Sse},
+    Json,
+};
+use futures_util::{Stream, StreamExt};
 use serde::{Deserialize, Serialize};
 
 use crate::{
-    sampler::Sampler, FinishReason, GenerateRequest, OptionArray, RequestKind, ThreadRequest,
-    Token, TokenCounter,
+    sampler::Sampler, EitherResponse, FinishReason, GenerateRequest, OptionArray, RequestKind,
+    ThreadRequest, ThreadState, Token, TokenCounter,
 };
 
 #[derive(Debug, Clone, Deserialize)]
@@ -13,6 +18,7 @@ pub struct CompletionRequest {
     pub prompt: OptionArray<String>,
     pub max_tokens: usize,
     pub stop: OptionArray<String>,
+    pub stream: bool,
     pub temperature: f32,
     pub top_p: f32,
     pub presence_penalty: f32,
@@ -25,6 +31,7 @@ impl Default for CompletionRequest {
             prompt: OptionArray::default(),
             max_tokens: 256,
             stop: OptionArray::default(),
+            stream: false,
             temperature: 1.0,
             top_p: 1.0,
             presence_penalty: 0.0,
@@ -43,6 +50,7 @@ impl From<CompletionRequest> for GenerateRequest {
             top_p,
             presence_penalty,
             frequency_penalty,
+            ..
         } = value;
 
         let prompt = Vec::from(prompt).join("");
@@ -74,13 +82,14 @@ pub struct CompletionChoice {
 #[derive(Debug, Clone, Serialize)]
 pub struct CompletionResponse {
     pub object: String,
+    pub model: String,
     pub choices: Vec<CompletionChoice>,
     #[serde(rename = "usage")]
     pub counter: TokenCounter,
 }
 
-pub async fn completions(
-    State(sender): State<flume::Sender<ThreadRequest>>,
+pub async fn completions_one(
+    State(ThreadState { sender, model_name }): State<ThreadState>,
     Json(request): Json<CompletionRequest>,
 ) -> Json<CompletionResponse> {
     let (token_sender, token_receiver) = flume::unbounded();
@@ -97,17 +106,16 @@ pub async fn completions(
 
     while let Some(token) = stream.next().await {
         match token {
-            Token::PromptTokenCount(prompt_tokens) => counter.prompt_tokens = prompt_tokens,
+            Token::Start { prompt_tokens } => counter.prompt_tokens = prompt_tokens,
             Token::Token(token) => {
                 text += &token;
                 counter.completion_tokens += 1;
             }
-            Token::Stop => {
-                finish_reason = FinishReason::Stop;
+            Token::Stop(reason) => {
+                finish_reason = reason;
                 break;
             }
-            Token::CutOff | Token::EndOfText => {
-                finish_reason = FinishReason::Length;
+            Token::EndOfText => {
                 break;
             }
         }
@@ -117,6 +125,7 @@ pub async fn completions(
 
     Json(CompletionResponse {
         object: "text_completion".into(),
+        model: model_name,
         choices: vec![CompletionChoice {
             text,
             index: 0,
@@ -124,4 +133,75 @@ pub async fn completions(
         }],
         counter,
     })
+}
+
+#[derive(Debug, Default, Serialize)]
+#[serde(rename_all = "snake_case")]
+pub enum PartialCompletionRecord {
+    #[default]
+    #[serde(rename = "")]
+    None,
+    Content(String),
+}
+
+#[derive(Debug, Default, Serialize)]
+pub struct PartialCompletionChoice {
+    pub delta: PartialCompletionRecord,
+    pub index: usize,
+    pub finish_reason: FinishReason,
+}
+
+#[derive(Debug, Serialize)]
+pub struct PartialCompletionResponse {
+    pub object: String,
+    pub model: String,
+    pub choices: Vec<PartialCompletionChoice>,
+}
+
+pub async fn completions_stream(
+    State(ThreadState { sender, model_name }): State<ThreadState>,
+    Json(request): Json<CompletionRequest>,
+) -> Sse<impl Stream<Item = Result<Event>>> {
+    let (token_sender, token_receiver) = flume::unbounded();
+
+    let _ = sender.send(ThreadRequest {
+        request: RequestKind::Completion(request),
+        token_sender,
+    });
+
+    let stream = token_receiver.into_stream().skip(1).map(move |token| {
+        let choice = match token {
+            Token::Start { .. } => Default::default(),
+            Token::Token(token) => PartialCompletionChoice {
+                delta: PartialCompletionRecord::Content(token),
+                ..Default::default()
+            },
+            Token::Stop(finish_reason) => PartialCompletionChoice {
+                finish_reason,
+                ..Default::default()
+            },
+            Token::EndOfText => return Ok(Event::default().data("[DONE]")),
+        };
+
+        Event::default()
+            .json_data(PartialCompletionResponse {
+                object: "text_completion.chunk".into(),
+                model: model_name.clone(),
+                choices: vec![choice],
+            })
+            .map_err(|err| err.into())
+    });
+
+    Sse::new(stream)
+}
+
+pub async fn completions(
+    state: State<ThreadState>,
+    Json(request): Json<CompletionRequest>,
+) -> impl IntoResponse {
+    if request.stream {
+        EitherResponse::Sse(completions_stream(state, Json(request)).await)
+    } else {
+        EitherResponse::Json(completions_one(state, Json(request)).await)
+    }
 }
