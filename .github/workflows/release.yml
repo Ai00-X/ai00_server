@@ -78,7 +78,7 @@ jobs:
       - name: Create tarball (Linux)
         if: matrix.build == 'linux'
         run: |
-          mv ./target/release/${{ env.RELEASE_BIN }} ./dist/${{ env.RELEASE_BIN }}
+          mv ./target/${{ env.LINUX_TARGET }}/release/${{ env.RELEASE_BIN }} ./dist/${{ env.RELEASE_BIN }}
           mv ${{ env.RELEASE_ADDS }} ./dist
           7z a -tzip ./${{ env.RELEASE_DIR }}/${{ env.RELEASE_BIN }}-${{ steps.get_version.outputs.VERSION }}-${{ env.LINUX_TARGET }}.zip ./dist
       - name: Create tarball (Windows)
