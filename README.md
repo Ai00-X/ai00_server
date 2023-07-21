@@ -55,11 +55,15 @@ cd ai00_rwkv_serve
 把模型放在  \assets\models\RWKV-4-World-0.4B-v1-20230529-ctx4096.st
 目前模型路径和名称写死，后面可以在启动参数指定
 
+然后进行编译
+
 ```bash
 cargo b -r
+```
 
+编译完成后运行
+```bash
 ./target/release/ai00_server.exe
-
 ```
 
 API 服务开启于 3000 端口
