@@ -180,16 +180,15 @@ pub async fn completions_stream(
                 finish_reason,
                 ..Default::default()
             },
-            Token::EndOfText => return Ok(Event::default().data("[DONE]")),
+            Token::EndOfText => return Ok(Event::default().data(" [DONE]")),
         };
 
-        Event::default()
-            .json_data(PartialCompletionResponse {
-                object: "text_completion.chunk".into(),
-                model: model_name.clone(),
-                choices: vec![choice],
-            })
-            .map_err(|err| err.into())
+        let json = serde_json::to_string(&PartialCompletionResponse {
+            object: "text_completion.chunk".into(),
+            model: model_name.clone(),
+            choices: vec![choice],
+        })?;
+        Ok(Event::default().data(format!(" {json}")))
     });
 
     Sse::new(stream)

@@ -226,16 +226,15 @@ pub async fn chat_completions_stream(
                 finish_reason,
                 ..Default::default()
             },
-            Token::EndOfText => return Ok(Event::default().data("[DONE]")),
+            Token::EndOfText => return Ok(Event::default().data(" [DONE]")),
         };
 
-        Event::default()
-            .json_data(PartialChatResponse {
-                object: "chat.completion.chunk".into(),
-                model: model_name.clone(),
-                choices: vec![choice],
-            })
-            .map_err(|err| err.into())
+        let json = serde_json::to_string(&PartialChatResponse {
+            object: "chat.completion.chunk".into(),
+            model: model_name.clone(),
+            choices: vec![choice],
+        })?;
+        Ok(Event::default().data(format!(" {json}")))
     });
 
     Sse::new(stream)
