@@ -2,11 +2,13 @@
 
 AI00 RWKV Server 是一个基于[RWKV模型](https://github.com/BlinkDL/ChatRWKV)的推理API服务器。
 
-支持VULKAN推理加速，可以在所有支持VULKAN的GPU上运行。
+支持VULKAN推理加速，可以在所有支持VULKAN的GPU上运行。不用N卡！！！A卡甚至集成显卡都可加速！！！
 
 无需臃肿的pytorch CUDA等运行环境，小巧身材，开箱即用！
 
 兼容Openai的ChatGPT API接口。
+
+100% 开源可商用，采用MIT协议。
 
 如果您正在寻找一个快速、高效、易于使用的LLM API服务器，那么 AI00 RWKV Server 是您的最佳选择。它可以用于各种任务，包括聊天机器人、文本生成、翻译和问答。
 
@@ -18,7 +20,7 @@ AI00 RWKV Server 是一个基于[RWKV模型](https://github.com/BlinkDL/ChatRWKV
 
 - 基于RWKV模型，具有高性能和准确性
 
-- 支持VULKAN推理加速，不用该死的CUDA也能享受GPU加速！
+- 支持VULKAN推理加速，不用该死的CUDA也能享受GPU加速！支持A卡、集成显卡等一切支持VULKAN的GPU
 - 无需臃肿的pytorch CUDA等运行环境，小巧身材，开箱即用！
 - 兼容Openai的ChatGPT API接口
 
