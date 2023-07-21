@@ -1,6 +1,11 @@
 use anyhow::Result;
-use axum::{routing::post, Router};
+use axum::{
+    response::{sse::Event, IntoResponse, Response, Sse},
+    routing::post,
+    BoxError, Json, Router,
+};
 use flume::Receiver;
+use futures_util::Stream;
 use itertools::Itertools;
 use memmap::Mmap;
 use qp_trie::Trie;
@@ -46,7 +51,7 @@ pub enum FinishReason {
 
 #[derive(Debug, Default, Clone, Serialize, Deserialize)]
 #[serde(untagged)]
-pub enum OptionArray<T: std::fmt::Debug + Clone + Serialize> {
+pub enum OptionArray<T> {
     #[default]
     None,
     Item(T),
@@ -89,6 +94,25 @@ pub struct TokenCounter {
     pub prompt_tokens: usize,
     pub completion_tokens: usize,
     pub total_tokens: usize,
+}
+
+pub enum EitherResponse<T, S> {
+    Json(Json<T>),
+    Sse(Sse<S>),
+}
+
+impl<T, S, E> IntoResponse for EitherResponse<T, S>
+where
+    T: Serialize,
+    S: Stream<Item = Result<Event, E>> + Send + 'static,
+    E: Into<BoxError>,
+{
+    fn into_response(self) -> Response {
+        match self {
+            EitherResponse::Json(json) => json.into_response(),
+            EitherResponse::Sse(sse) => sse.into_response(),
+        }
+    }
 }
 
 fn load_tokenizer() -> Result<Tokenizer> {
@@ -229,7 +253,7 @@ async fn main() -> Result<()> {
     let app = Router::new()
         .route("/completions", post(completion::completions))
         .route("/chat/completions", post(chat::chat_completions))
-        .route("/v1/chat/completions", post(chat::chunk_chat_completions))
+        .route("/v1/chat/completions", post(chat::chat_completions))
         .with_state(sender);
     axum::Server::bind(&"0.0.0.0:3000".parse().unwrap())
         .serve(app.into_make_service())

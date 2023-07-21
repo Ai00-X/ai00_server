@@ -1,7 +1,7 @@
 use anyhow::Result;
 use axum::{
     extract::State,
-    response::{sse::Event, Sse},
+    response::{sse::Event, IntoResponse, Sse},
     Json,
 };
 use futures_util::{Stream, StreamExt};
@@ -9,8 +9,8 @@ use itertools::Itertools;
 use serde::{Deserialize, Serialize};
 
 use crate::{
-    sampler::Sampler, FinishReason, GenerateRequest, OptionArray, RequestKind, ThreadRequest,
-    Token, TokenCounter,
+    sampler::Sampler, EitherResponse, FinishReason, GenerateRequest, OptionArray, RequestKind,
+    ThreadRequest, Token, TokenCounter,
 };
 
 #[derive(Debug, Default, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
@@ -46,6 +46,7 @@ pub struct ChatRequest {
     pub messages: OptionArray<ChatRecord>,
     pub max_tokens: usize,
     pub stop: OptionArray<String>,
+    pub stream: bool,
     pub temperature: f32,
     pub top_p: f32,
     pub presence_penalty: f32,
@@ -58,6 +59,7 @@ impl Default for ChatRequest {
             messages: OptionArray::default(),
             max_tokens: 256,
             stop: OptionArray::Item("\n\n".into()),
+            stream: false,
             temperature: 1.0,
             top_p: 1.0,
             presence_penalty: 0.0,
@@ -76,6 +78,7 @@ impl From<ChatRequest> for GenerateRequest {
             top_p,
             presence_penalty,
             frequency_penalty,
+            ..
         } = value;
 
         let prompt = Vec::from(messages)
@@ -123,7 +126,7 @@ pub struct ChatResponse {
     pub counter: TokenCounter,
 }
 
-pub async fn chat_completions(
+pub async fn chat_completions_one(
     State(sender): State<flume::Sender<ThreadRequest>>,
     Json(request): Json<ChatRequest>,
 ) -> Json<ChatResponse> {
@@ -196,7 +199,7 @@ pub struct ChunkChatResponse {
     pub choices: Vec<ChunkChatChoice>,
 }
 
-pub async fn chunk_chat_completions(
+pub async fn chat_completions_stream(
     State(sender): State<flume::Sender<ThreadRequest>>,
     Json(request): Json<ChatRequest>,
 ) -> Sse<impl Stream<Item = Result<Event>>> {
@@ -239,4 +242,15 @@ pub async fn chunk_chat_completions(
     });
 
     Sse::new(stream)
+}
+
+pub async fn chat_completions(
+    state: State<flume::Sender<ThreadRequest>>,
+    Json(request): Json<ChatRequest>,
+) -> impl IntoResponse {
+    if request.stream {
+        EitherResponse::Sse(chat_completions_stream(state, Json(request)).await)
+    } else {
+        EitherResponse::Json(chat_completions_one(state, Json(request)).await)
+    }
 }
