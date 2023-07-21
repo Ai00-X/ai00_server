@@ -125,8 +125,8 @@ pub struct ThreadState {
     pub model_name: String,
 }
 
-fn load_tokenizer() -> Result<Tokenizer> {
-    let file = File::open("assets/rwkv_vocab_v20230424.json")?;
+fn load_tokenizer(path: PathBuf) -> Result<Tokenizer> {
+    let file = File::open(path)?;
     let mut reader = BufReader::new(file);
     let mut contents = String::new();
     reader.read_to_string(&mut contents)?;
@@ -143,11 +143,12 @@ fn load_model(env: &Environment, path: PathBuf) -> Result<Model> {
 
 fn model_task(
     env: Environment,
-    model_path: PathBuf,
+    model: PathBuf,
+    tokenizer: PathBuf,
     receiver: Receiver<ThreadRequest>,
 ) -> Result<()> {
-    let tokenizer = load_tokenizer()?;
-    let model = load_model(&env, model_path)?;
+    let tokenizer = load_tokenizer(tokenizer)?;
+    let model = load_model(&env, model)?;
 
     let mut state_cache = Trie::<&[u8], BackedModelState>::new();
 
@@ -265,6 +266,8 @@ fn model_task(
 struct Args {
     #[arg(long, short, value_name = "FILE")]
     model: Option<String>,
+    #[arg(long, short, value_name = "FILE")]
+    tokenizer: Option<String>,
     #[arg(long, short, default_value_t = 3000)]
     port: u16,
 }
@@ -284,9 +287,14 @@ async fn main() -> Result<()> {
         .map(|name| name.replace(".st", ""))
         .unwrap();
 
+    let tokenizer_path = PathBuf::from(
+        args.tokenizer
+            .unwrap_or("assets/rwkv_vocab_v20230424.json".into()),
+    );
+
     let (sender, receiver) = flume::unbounded::<ThreadRequest>();
     let env = Environment::create().await?;
-    let _handle = std::thread::spawn(move || model_task(env, model_path, receiver));
+    let _handle = std::thread::spawn(move || model_task(env, model_path, tokenizer_path, receiver));
 
     let app = Router::new()
         .route("/completions", post(completion::completions))
