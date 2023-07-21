@@ -265,6 +265,8 @@ fn model_task(
 struct Args {
     #[arg(long, short, value_name = "FILE")]
     model: Option<String>,
+    #[arg(long, short, default_value_t = 3000)]
+    port: u16,
 }
 
 #[tokio::main]
@@ -292,7 +294,7 @@ async fn main() -> Result<()> {
         .route("/chat/completions", post(chat::chat_completions))
         .route("/v1/chat/completions", post(chat::chat_completions))
         .with_state(ThreadState { sender, model_name });
-    axum::Server::bind(&"0.0.0.0:3000".parse().unwrap())
+    axum::Server::bind(&format!("0.0.0.0:{0}", args.port).parse().unwrap())
         .serve(app.into_make_service())
         .await?;
 
