@@ -8,9 +8,9 @@ AI00 RWKV Server 是一个基于[RWKV模型](https://github.com/BlinkDL/ChatRWKV
 
 兼容Openai的ChatGPT API接口。
 
-如果您正在寻找一个快速、高效、易于使用的API服务器，那么RWKV API Server是您的最佳选择。它可以用于各种任务，包括聊天机器人、文本生成、翻译和问答。
+如果您正在寻找一个快速、高效、易于使用的API服务器，那么AI00 RWKV Server是您的最佳选择。它可以用于各种任务，包括聊天机器人、文本生成、翻译和问答。
 
-立即加入RWKV API Server社区，体验AI的魅力！
+立即加入AI00 RWKV Server社区，体验AI的魅力！
 
 交流QQ群： 30920262
 
@@ -24,9 +24,9 @@ No need for bulky Pytorch or CUDA and other running environments, compact body, 
 
 Compatible with Openai's ChatGPT API interface.
 
-If you are looking for a fast, efficient, and easy-to-use API server, then RWKV API Server is your best choice. It can be used for various tasks, including Chatbot, text generation, translation and question answering.
+If you are looking for a fast, efficient, and easy-to-use API server, thenAI00 RWKV Server is your best choice. It can be used for various tasks, including Chatbot, text generation, translation and question answering.
 
-Join the RWKV API Server community now and experience the charm of AI!
+Join the AI00 RWKV Server community now and experience the charm of AI!
 
 ## 💥特色 Characteristic
 
