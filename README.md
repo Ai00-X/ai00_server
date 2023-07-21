@@ -13,6 +13,21 @@
 
 [模型下载](https://huggingface.co/cgisky/RWKV-safetensors-fp16)
 
+
+# 用法
+```
+git clone https://github.com/cgisky1980/ai00_rwkv_serve.git
+
+cd ai00_rwkv_serve
+
+// put model in \assets\models
+
+cargo b -r
+
+./target/release/ai00_server.exe
+
+```
+
 ------
 
 An API server based on the RWKV model.
