@@ -2,10 +2,11 @@
 中文  |  English  |  日本語 | 
 
 
-
 一个基于RWKV模型的 API server。
 
 支持VULKAN推理加速，可以在所有支持VULKAN的GPU上运行。
+
+无需臃肿的pytorch  CUDA 等运行环境，小巧身材，开箱即用！
 
 兼容Openai的 ChatGPT API 接口。
 
@@ -13,8 +14,12 @@
 
 [模型下载](https://huggingface.co/cgisky/RWKV-safetensors-fp16)
 
+交流QQ群： 30920262
 
-# 用法
+# 安装
+
+安装了cargo 编译环境
+
 ```
 git clone https://github.com/cgisky1980/ai00_rwkv_serve.git
 
