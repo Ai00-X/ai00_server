@@ -16,6 +16,7 @@ use std::{
     ffi::OsStr,
     fs::File,
     io::{BufReader, Read, Write},
+    net::SocketAddr,
     path::PathBuf,
     str::FromStr,
 };
@@ -324,9 +325,10 @@ async fn main() -> Result<()> {
         .route("/embeddings", post(embedding::embeddings))
         .route("/v1/embeddings", post(embedding::embeddings))
         .with_state(ThreadState { sender, model_name });
-    axum::Server::bind(&format!("0.0.0.0:{0}", args.port).parse().unwrap())
-        .serve(app.into_make_service())
-        .await?;
+
+    let addr = SocketAddr::from(([127, 0, 0, 1], args.port));
+    let listener = tokio::net::TcpListener::bind(addr).await?;
+    axum::serve(listener, app).await?;
 
     Ok(())
 }

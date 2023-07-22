@@ -223,7 +223,7 @@ pub async fn chat_completions_stream(
                 finish_reason,
                 ..Default::default()
             },
-            Token::Done => return Ok(Event::default().data(" [DONE]")),
+            Token::Done => return Ok(Event::default().data("[DONE]")),
             _ => unreachable!(),
         };
 
@@ -232,7 +232,7 @@ pub async fn chat_completions_stream(
             model: model_name.clone(),
             choices: vec![choice],
         })?;
-        Ok(Event::default().data(format!(" {json}")))
+        Ok(Event::default().data(json))
     });
 
     Sse::new(stream)
