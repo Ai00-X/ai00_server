@@ -1,6 +1,6 @@
 [package]
 name = "ai00_server"
-version = "0.1.1"
+version = "0.1.2"
 edition = "2021"
 authors = ["Gu ZhenNiu <448885@qq.com>"]
 license = "MIT OR Apache-2.0"
@@ -8,7 +8,7 @@ description = "An implementation of the RWKV language model in pure WebGPU."
 homepage = "https://github.com/cryscan/web-rwkv"
 repository = "https://github.com/cryscan/web-rwkv"
 keywords = ["deep-learning", "language", "model", "rwkv"]
-categories = ["deep-learning", "rendering"]
+categories = ["science"]
 exclude = ["assets"]
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
