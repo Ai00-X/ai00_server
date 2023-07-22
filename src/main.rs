@@ -226,6 +226,10 @@ fn model_task(
             token_counter.total_tokens = tokens.len();
 
             for _ in 0..max_tokens {
+                if token_sender.is_disconnected() {
+                    break 'run;
+                }
+
                 let mut logits = model.run(&tokens, &state).unwrap_or_default();
                 for (&token, &count) in &occurrences {
                     let penalty =
