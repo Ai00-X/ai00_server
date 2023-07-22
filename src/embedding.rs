@@ -16,7 +16,7 @@ impl From<EmbeddingRequest> for GenerateRequest {
     fn from(value: EmbeddingRequest) -> Self {
         Self {
             prompt: Vec::from(value.input).join(""),
-            max_tokens: 0,
+            max_tokens: 1,
             stop: Default::default(),
             sampler: Default::default(),
             occurrences: Default::default(),
