@@ -20,6 +20,7 @@ use std::{
     path::PathBuf,
     str::FromStr,
 };
+use tower_http::cors::CorsLayer;
 use web_rwkv::{BackedModelState, Environment, Model, Tokenizer};
 
 mod chat;
@@ -324,6 +325,7 @@ async fn main() -> Result<()> {
         .route("/v1/chat/completions", post(chat::chat_completions))
         .route("/embeddings", post(embedding::embeddings))
         .route("/v1/embeddings", post(embedding::embeddings))
+        .layer(CorsLayer::permissive())
         .with_state(ThreadState { sender, model_name });
 
     let addr = SocketAddr::from(([127, 0, 0, 1], args.port));
