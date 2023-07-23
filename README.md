@@ -149,3 +149,8 @@ API 服务开启于 3000 端口, 数据输入已经输出格式遵循Openai API 
 ## Stargazers over time
 
 [![Stargazers over time](https://starchart.cc/cgisky1980/ai00_rwkv_server.svg)](https://starchart.cc/cgisky1980/ai00_rwkv_server)
+
+
+## BTW
+
+[什么是 AI00](https://github.com/cgisky1980/ai00_rwkv_server/blob/main/ai00.md)
