@@ -1,7 +1,7 @@
 use anyhow::Result;
 use axum::{
     extract::State,
-    response::{sse::Event, IntoResponse, Sse},
+    response::{sse::Event, IntoResponse, Response, Sse},
     Json,
 };
 use futures_util::{Stream, StreamExt};
@@ -9,8 +9,8 @@ use itertools::Itertools;
 use serde::{Deserialize, Serialize};
 
 use crate::{
-    sampler::Sampler, EitherResponse, FinishReason, GenerateRequest, OptionArray, RequestKind,
-    ThreadRequest, ThreadState, Token, TokenCounter,
+    sampler::Sampler, FinishReason, GenerateRequest, OptionArray, RequestKind, ThreadRequest,
+    ThreadState, Token, TokenCounter,
 };
 
 #[derive(Debug, Default, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
@@ -128,7 +128,7 @@ pub struct ChatResponse {
     pub counter: TokenCounter,
 }
 
-pub async fn chat_completions_one(
+async fn chat_completions_one(
     State(ThreadState { sender, model_name }): State<ThreadState>,
     Json(request): Json<ChatRequest>,
 ) -> Json<ChatResponse> {
@@ -198,7 +198,7 @@ pub struct PartialChatResponse {
     pub choices: Vec<PartialChatChoice>,
 }
 
-pub async fn chat_completions_stream(
+async fn chat_completions_stream(
     State(ThreadState { sender, model_name }): State<ThreadState>,
     Json(request): Json<ChatRequest>,
 ) -> Sse<impl Stream<Item = Result<Event>>> {
@@ -241,10 +241,14 @@ pub async fn chat_completions_stream(
 pub async fn chat_completions(
     state: State<ThreadState>,
     Json(request): Json<ChatRequest>,
-) -> impl IntoResponse {
+) -> Response {
     if request.stream {
-        EitherResponse::Sse(chat_completions_stream(state, Json(request)).await)
+        chat_completions_stream(state, Json(request))
+            .await
+            .into_response()
     } else {
-        EitherResponse::Json(chat_completions_one(state, Json(request)).await)
+        chat_completions_one(state, Json(request))
+            .await
+            .into_response()
     }
 }

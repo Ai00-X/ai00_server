@@ -15,6 +15,7 @@ exclude = ["assets"]
 
 [dependencies]
 axum = { git = "https://github.com/cryscan/axum", branch = "sse-leading-space" }
+tower = { version = "0.4", features = ["util"] }
 tower-http = { version = "0.4", features = ["full"] }
 tokio = { version = "1", features = ["full"] }
 web-rwkv = "0.1.12"

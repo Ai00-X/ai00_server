@@ -1,12 +1,7 @@
 use anyhow::Result;
-use axum::{
-    response::{sse::Event, IntoResponse, Response, Sse},
-    routing::post,
-    BoxError, Json, Router,
-};
+use axum::{routing::post, Router};
 use clap::Parser;
 use flume::Receiver;
-use futures_util::Stream;
 use itertools::Itertools;
 use memmap::Mmap;
 use qp_trie::Trie;
@@ -20,7 +15,7 @@ use std::{
     path::PathBuf,
     str::FromStr,
 };
-use tower_http::cors::CorsLayer;
+use tower_http::{cors::CorsLayer, services::ServeDir};
 use web_rwkv::{BackedModelState, Environment, Model, Tokenizer};
 
 mod chat;
@@ -105,26 +100,6 @@ pub struct TokenCounter {
     pub prompt_tokens: usize,
     pub completion_tokens: usize,
     pub total_tokens: usize,
-}
-
-#[derive(Debug)]
-pub enum EitherResponse<T, S> {
-    Json(Json<T>),
-    Sse(Sse<S>),
-}
-
-impl<T, S, E> IntoResponse for EitherResponse<T, S>
-where
-    T: Serialize,
-    S: Stream<Item = Result<Event, E>> + Send + 'static,
-    E: Into<BoxError>,
-{
-    fn into_response(self) -> Response {
-        match self {
-            EitherResponse::Json(json) => json.into_response(),
-            EitherResponse::Sse(sse) => sse.into_response(),
-        }
-    }
 }
 
 #[derive(Debug, Clone)]
@@ -320,7 +295,7 @@ async fn main() -> Result<()> {
 
     let (sender, receiver) = flume::unbounded::<ThreadRequest>();
     let env = Environment::create().await?;
-    let _handle = std::thread::spawn(move || model_task(env, model_path, tokenizer_path, receiver));
+    std::thread::spawn(move || model_task(env, model_path, tokenizer_path, receiver));
 
     let app = Router::new()
         .route("/completions", post(completion::completions))
@@ -329,6 +304,7 @@ async fn main() -> Result<()> {
         .route("/v1/chat/completions", post(chat::chat_completions))
         .route("/embeddings", post(embedding::embeddings))
         .route("/v1/embeddings", post(embedding::embeddings))
+        .fallback_service(ServeDir::new("assets/www"))
         .layer(CorsLayer::permissive())
         .with_state(ThreadState { sender, model_name });
 

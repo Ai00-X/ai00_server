@@ -1,15 +1,15 @@
 use anyhow::Result;
 use axum::{
     extract::State,
-    response::{sse::Event, IntoResponse, Sse},
+    response::{sse::Event, IntoResponse, Response, Sse},
     Json,
 };
 use futures_util::{Stream, StreamExt};
 use serde::{Deserialize, Serialize};
 
 use crate::{
-    sampler::Sampler, EitherResponse, FinishReason, GenerateRequest, OptionArray, RequestKind,
-    ThreadRequest, ThreadState, Token, TokenCounter,
+    sampler::Sampler, FinishReason, GenerateRequest, OptionArray, RequestKind, ThreadRequest,
+    ThreadState, Token, TokenCounter,
 };
 
 #[derive(Debug, Deserialize)]
@@ -89,7 +89,7 @@ pub struct CompletionResponse {
     pub counter: TokenCounter,
 }
 
-pub async fn completions_one(
+async fn completions_one(
     State(ThreadState { sender, model_name }): State<ThreadState>,
     Json(request): Json<CompletionRequest>,
 ) -> Json<CompletionResponse> {
@@ -155,7 +155,7 @@ pub struct PartialCompletionResponse {
     pub choices: Vec<PartialCompletionChoice>,
 }
 
-pub async fn completions_stream(
+async fn completions_stream(
     State(ThreadState { sender, model_name }): State<ThreadState>,
     Json(request): Json<CompletionRequest>,
 ) -> Sse<impl Stream<Item = Result<Event>>> {
@@ -194,10 +194,12 @@ pub async fn completions_stream(
 pub async fn completions(
     state: State<ThreadState>,
     Json(request): Json<CompletionRequest>,
-) -> impl IntoResponse {
+) -> Response {
     if request.stream {
-        EitherResponse::Sse(completions_stream(state, Json(request)).await)
+        completions_stream(state, Json(request))
+            .await
+            .into_response()
     } else {
-        EitherResponse::Json(completions_one(state, Json(request)).await)
+        completions_one(state, Json(request)).await.into_response()
     }
 }
