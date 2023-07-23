@@ -1,4 +1,4 @@
-![image](https://github.com/cgisky1980/ai00_rwkv_server/assets/82481660/6a679dfd-9e1e-466a-bc27-11941b9743df)# 💯AI00 RWKV Server
+# 💯AI00 RWKV Server
 
 `AI00 RWKV Server`是一个基于[`RWKV`模型](https://github.com/BlinkDL/ChatRWKV)的推理API服务器。
 
