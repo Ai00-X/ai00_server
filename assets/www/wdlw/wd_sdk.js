@@ -212,7 +212,7 @@ send_raw = async (prompt, keyword, QA_history, onmessage = alert) => {
             stream: true,
             temperature: app.temperature,
             top_p: app.top_p,
-            max_length: app.max_length,
+            max_tokens: app.max_length,
         }),
         // signal: controller.signal
     });
