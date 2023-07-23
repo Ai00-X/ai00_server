@@ -123,11 +123,18 @@ API 服务开启于 3000 端口, 数据输入已经输出格式遵循Openai API 
 
 # Thanks
 
-- 感谢
-[![cryscan](https://avatars.githubusercontent.com/u/16053640?s=64&v=4)](https://github.com/cryscan) 的辛勤付出，为项目做出了杰出的贡献。
+## 感谢
+[![cryscan](https://avatars.githubusercontent.com/u/16053640?s=64&v=4)](https://github.com/cryscan) cryscan的辛勤付出，为项目做出了杰出的贡献。
 
-- 感谢下面人员在项目初期的支持和无私奉献
+## 感谢下面项目的编写者们做出的杰出工作
 
-[![顾真牛](https://avatars.githubusercontent.com/u/82481660?s=64&v=4)](https://github.com/cgisky1980) [![josStorer](https://avatars.githubusercontent.com/u/13366013?s=60&v=4)](https://github.com/josStorer) 
+<a href="https://github.com/cgisky1980/ai00_rwkv_server/graphs/contributors">
+  <img src="https://contrib.rocks/image?repo=cgisky1980/ai00_rwkv_server" />
+</a>
+
+## 感谢下面人员对项目的支持和无私奉献
+
+
+
 
 我们很感激您的帮助，我们很高兴能与您合作。
