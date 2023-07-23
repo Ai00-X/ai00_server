@@ -46,9 +46,9 @@
 
 3️. 在命令行运行
 
-    ```bash
+     
     $ ./ai00_rwkv_server --model /assets/models/RWKV-4-World-0.4B-v1-20230529-ctx4096.st
-    ```
+    
 
 ### 📜从源码编译
 
@@ -56,25 +56,25 @@
 
 2️. 克隆本仓库
 
-    ```bash
+     
     $ git clone https://github.com/cgisky1980/ai00_rwkv_serve.git
     $ cd ai00_rwkv_serve
-    ```
+    
 
 3️. [下载模型](https://huggingface.co/cgisky/RWKV-safetensors-fp16)后把模型放在
 `/assets/models/`路径下，例如`/assets/models/RWKV-4-World-0.4B-v1-20230529-ctx4096.st`
 
 4️. 编译
 
-    ```bash
+     
     $ cargo build --release
-    ```
+     
 
 5️. 编译完成后运行
 
-    ```bash
+     
     $ cargo run --release -- --model /assets/models/RWKV-4-World-0.4B-v1-20230529-ctx4096.st 
-    ```
+     
     
 ### 📝支持的参数
 - `--model`   模型路径
