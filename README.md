@@ -45,6 +45,7 @@
 2️. [下载模型](https://huggingface.co/cgisky/RWKV-safetensors-fp16)后把模型放在`/assets/models/`路径，例如`/assets/models/RWKV-4-World-0.4B-v1-20230529-ctx4096.st`
 
 3️. 在命令行运行
+
     ```bash
     $ ./ai00_rwkv_server --model /assets/models/RWKV-4-World-0.4B-v1-20230529-ctx4096.st
     ```
@@ -54,6 +55,7 @@
 1️. [安装Rust](https://www.rust-lang.org/)
 
 2️. 克隆本仓库
+
     ```bash
     $ git clone https://github.com/cgisky1980/ai00_rwkv_serve.git
     $ cd ai00_rwkv_serve
@@ -63,11 +65,13 @@
 `/assets/models/`路径下，例如`/assets/models/RWKV-4-World-0.4B-v1-20230529-ctx4096.st`
 
 4️. 编译
+
     ```bash
     $ cargo build --release
     ```
 
 5️. 编译完成后运行
+
     ```bash
     $ cargo run --release -- --model /assets/models/RWKV-4-World-0.4B-v1-20230529-ctx4096.st 
     ```
@@ -113,13 +117,11 @@ API 服务开启于 3000 端口, 数据输入已经输出格式遵循Openai API 
 
 无论你的技能水平如何，我们都欢迎你加入我们。你可以通过以下方式加入我们：
 
-加入我们的 Discord 频道
-加入我们的 QQ 群
-在 GitHub 上提交问题或拉取请求
-在我们的网站上留下反馈
-我们迫不及待地想与你合作，让这个项目变得更好！
-
-希望这对你有帮助！
+- 加入我们的 Discord 频道
+- 加入我们的 QQ 群
+- 在 GitHub 上提交问题或拉取请求
+- 在我们的网站上留下反馈
+我们迫不及待地想与你合作，让这个项目变得更好！希望项目对你有帮助！
 
 # Thanks
 
