@@ -77,8 +77,8 @@
      
     
 ### 📝支持的参数
-- `--model`   模型路径
-- `--port`    运行端口
+- `--model`: 模型路径
+- `--port`: 运行端口
 
 
 ## 📙目前可用的API
@@ -92,7 +92,7 @@ API 服务开启于 3000 端口, 数据输入已经输出格式遵循Openai API 
 - `/v1/embeddings`
 - `/embeddings`
 
-# 📝TODO List
+## 📝TODO List
 
 - [x] 支持text_completions和chat_completions
 - [x] 支持sse推送
@@ -104,7 +104,7 @@ API 服务开启于 3000 端口, 数据输入已经输出格式遵循Openai API 
 - [ ] LoRA模型支持
 - [ ] LoRA模型热加载、切换
 
-# 👥Join Us
+## 👥Join Us
 
 我们一直在寻找有兴趣帮助我们改进项目的人。如果你对以下任何一项感兴趣，请加入我们！
 
@@ -124,25 +124,27 @@ API 服务开启于 3000 端口, 数据输入已经输出格式遵循Openai API 
 - 在我们的网站上留下反馈
 我们迫不及待地想与你合作，让这个项目变得更好！希望项目对你有帮助！
 
-# Thanks
+## Thanks
 
-## 感谢
-[![cryscan](https://avatars.githubusercontent.com/u/16053640?s=64&v=4)](https://github.com/cryscan) cryscan的辛勤付出，为项目做出了杰出的贡献。
+感谢
+[![cryscan](https://avatars.githubusercontent.com/u/16053640?s=16&v=4)](https://github.com/cryscan)
+的辛勤付出，为项目做出了杰出的贡献。
 
-## 感谢下面项目的编写者们做出的杰出工作
+### 感谢下面项目的编写者们做出的杰出工作
 
 <a href="https://github.com/cgisky1980/ai00_rwkv_server/graphs/contributors">
   <img src="https://contrib.rocks/image?repo=cgisky1980/ai00_rwkv_server" />
 </a>
 
-## 感谢下面又好看又有眼光又优秀的杰出人士对项目的支持和无私奉献
-### QQ 群
+### 感谢下面又好看又有眼光又优秀的杰出人士对项目的支持和无私奉献
+
+#### QQ 群
+
 ![image](https://github.com/cgisky1980/ai00_rwkv_server/assets/82481660/6e324617-6d0c-49fd-ab1e-fd9cf02df51e)
 
+#### Github 
 
-### Github 
-
-### Discord
+#### Discord
 
 我们很感激您的帮助，我们很高兴能与您合作。
 
@@ -154,5 +156,5 @@ API 服务开启于 3000 端口, 数据输入已经输出格式遵循Openai API 
 
 ## BTW
 
-- [什么是 AI00](https://github.com/cgisky1980/ai00_rwkv_server/blob/main/ai00.md)
-- [为什么只支持RWKV](https://github.com/cgisky1980/ai00_rwkv_server/blob/main/rwkv.md)
+- [什么是 AI00](docs/ai00.md)
+- [为什么只支持RWKV](docs/rwkv.md)
