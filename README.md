@@ -132,9 +132,13 @@ API 服务开启于 3000 端口, 数据输入已经输出格式遵循Openai API 
   <img src="https://contrib.rocks/image?repo=cgisky1980/ai00_rwkv_server" />
 </a>
 
-## 感谢下面人员对项目的支持和无私奉献
+## 感谢下面又好看又有眼光又优秀的杰出人士对项目的支持和无私奉献
+### QQ 群
+![image](https://github.com/cgisky1980/ai00_rwkv_server/assets/82481660/6e324617-6d0c-49fd-ab1e-fd9cf02df51e)
 
 
+### Github 
 
+### Discord
 
 我们很感激您的帮助，我们很高兴能与您合作。
