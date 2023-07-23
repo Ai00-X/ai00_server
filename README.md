@@ -1,4 +1,4 @@
-# 💯AI00 RWKV Server
+![image](https://github.com/cgisky1980/ai00_rwkv_server/assets/82481660/6a679dfd-9e1e-466a-bc27-11941b9743df)# 💯AI00 RWKV Server
 
 `AI00 RWKV Server`是一个基于[`RWKV`模型](https://github.com/BlinkDL/ChatRWKV)的推理API服务器。
 
@@ -98,6 +98,7 @@ API 服务开启于 3000 端口, 数据输入已经输出格式遵循Openai API 
 - [x] 支持sse推送
 - [x] 添加embeddings
 - [ ] 集成基本的调用前端
+- [ ] batch serve 并行推理
 - [ ] int8量化支持
 - [ ] SpQR量化支持
 - [ ] LoRA模型支持
