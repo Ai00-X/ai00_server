@@ -42,42 +42,47 @@
 
 1. 直接从 [Release](https://github.com/cgisky1980/ai00_rwkv_server/releases) 下载最新版本
 
-2️. [下载模型](https://huggingface.co/cgisky/RWKV-safetensors-fp16)后把模型放在`/assets/models/`路径，例如`/assets/models/RWKV-4-World-0.4B-v1-20230529-ctx4096.st`
+2. [下载模型](https://huggingface.co/cgisky/RWKV-safetensors-fp16)后把模型放在`/assets/models/`路径，例如`/assets/models/RWKV-4-World-0.4B-v1-20230529-ctx4096.st`
 
-3️. 在命令行运行
+3. 在命令行运行
 
-     
+    ```bash     
     $ ./ai00_rwkv_server --model /assets/models/RWKV-4-World-0.4B-v1-20230529-ctx4096.st
-    
+    ```
+
 
 ### 📜从源码编译
 
-1️. [安装Rust](https://www.rust-lang.org/)
+1. [安装Rust](https://www.rust-lang.org/)
 
-2️. 克隆本仓库
+2. 克隆本仓库
 
-     
+    ```bash
     $ git clone https://github.com/cgisky1980/ai00_rwkv_serve.git
     $ cd ai00_rwkv_serve
+    ```
     
 
-3️. [下载模型](https://huggingface.co/cgisky/RWKV-safetensors-fp16)后把模型放在
+3. [下载模型](https://huggingface.co/cgisky/RWKV-safetensors-fp16)后把模型放在
 `/assets/models/`路径下，例如`/assets/models/RWKV-4-World-0.4B-v1-20230529-ctx4096.st`
 
-4️. 编译
+4. 编译
 
-     
+    ```bash
     $ cargo build --release
+    ```
      
 
-5️. 编译完成后运行
+5. 编译完成后运行
 
-     
+    ```bash     
     $ cargo run --release -- --model /assets/models/RWKV-4-World-0.4B-v1-20230529-ctx4096.st 
+    ```
      
     
-### 📝支持的参数
+## 📝支持的启动·参数
 - `--model`: 模型路径
+- `--tokenizer`: 词表路径
 - `--port`: 运行端口
 
 
@@ -126,9 +131,9 @@ API 服务开启于 3000 端口, 数据输入已经输出格式遵循Openai API 
 
 ## Thanks
 
-感谢
-[![cryscan](https://avatars.githubusercontent.com/u/16053640?s=16&v=4)](https://github.com/cryscan)
-的辛勤付出，为项目做出了杰出的贡献。
+
+[![cryscan](https://avatars.githubusercontent.com/u/16053640?s=32&v=4)](https://github.com/cryscan)
+感谢cryscan的辛勤付出，为项目做出了杰出的贡献。
 
 ### 感谢下面项目的编写者们做出的杰出工作
 
@@ -138,13 +143,13 @@ API 服务开启于 3000 端口, 数据输入已经输出格式遵循Openai API 
 
 ### 感谢下面又好看又有眼光又优秀的杰出人士对项目的支持和无私奉献
 
-#### QQ 群
+- QQ 群
 
-![image](https://github.com/cgisky1980/ai00_rwkv_server/assets/82481660/6e324617-6d0c-49fd-ab1e-fd9cf02df51e)
+    ![image](https://github.com/cgisky1980/ai00_rwkv_server/assets/82481660/6e324617-6d0c-49fd-ab1e-fd9cf02df51e)
 
-#### Github 
+- Github 
 
-#### Discord
+- Discord
 
 我们很感激您的帮助，我们很高兴能与您合作。
 
