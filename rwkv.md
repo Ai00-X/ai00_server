@@ -7,5 +7,8 @@
 
 ![G_$OGP}2PA0D %`YW@7K10I](https://github.com/cgisky1980/ai00_rwkv_server/assets/82481660/8fd84b13-0da2-4d47-b876-99d1e2226cb2)
 
+💎 当其他所谓开源模型，还腻腻歪歪模型的商用许可的时候，RWKV 从代码到模型都是 Apache License 2.0
 
 💎 现在还经常有人会问，xxx和RWKV比起来怎么样？
+
+## 我的回答就是： RWKV不是我权衡利弊后的选择,而是我愿意加入其中与其一起成长的的坚定。
