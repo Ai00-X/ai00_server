@@ -142,3 +142,8 @@ API 服务开启于 3000 端口, 数据输入已经输出格式遵循Openai API 
 ### Discord
 
 我们很感激您的帮助，我们很高兴能与您合作。
+
+
+## Stargazers over time
+
+[![Stargazers over time](https://starchart.cc/cgisky1980/ai00_rwkv_server.svg)](https://starchart.cc/cgisky1980/ai00_rwkv_server)
