@@ -64,7 +64,7 @@
     
 
 3. [下载模型](https://huggingface.co/cgisky/RWKV-safetensors-fp16)后把模型放在
-`/assets/models/`路径下，例如`/assets/models/RWKV-4-World-0.4B-v1-20230529-ctx4096.st`
+`assets/models/`路径下，例如`assets/models/RWKV-4-World-0.4B-v1-20230529-ctx4096.st`
 
 4. 编译
 
@@ -76,7 +76,7 @@
 5. 编译完成后运行
 
     ```bash     
-    $ cargo run --release -- --model /assets/models/RWKV-4-World-0.4B-v1-20230529-ctx4096.st 
+    $ cargo run --release -- --model assets/models/RWKV-4-World-0.4B-v1-20230529-ctx4096.st 
     ```
      
     
