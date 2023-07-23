@@ -153,5 +153,5 @@ API 服务开启于 3000 端口, 数据输入已经输出格式遵循Openai API 
 
 ## BTW
 
-[什么是 AI00](https://github.com/cgisky1980/ai00_rwkv_server/blob/main/ai00.md)
-[为什么只支持RWKv](https://github.com/cgisky1980/ai00_rwkv_server/blob/main/rwkv.md)
+- [什么是 AI00](https://github.com/cgisky1980/ai00_rwkv_server/blob/main/ai00.md)
+- [为什么只支持RWKv](https://github.com/cgisky1980/ai00_rwkv_server/blob/main/rwkv.md)
