@@ -49,7 +49,7 @@
     ```bash     
     $ ./ai00_rwkv_server --model assets/models/RWKV-4-World-0.4B-v1-20230529-ctx4096.st
     ```
-
+4. 打开浏览器，访问webUI   `http://127.0.0.1:3000`
 
 ### 📜从源码编译
 
@@ -74,11 +74,13 @@
      
 
 5. 编译完成后运行
-
+   
     ```bash     
     $ cargo run --release -- --model assets/models/RWKV-4-World-0.4B-v1-20230529-ctx4096.st 
     ```
-     
+   
+6. 打开浏览器，访问webUI   `http://127.0.0.1:3000`
+
     
 ## 📝支持的启动·参数
 - `--model`: 模型路径
@@ -102,7 +104,7 @@ API 服务开启于 3000 端口, 数据输入已经输出格式遵循Openai API 
 - [x] 支持text_completions和chat_completions
 - [x] 支持sse推送
 - [x] 添加embeddings
-- [ ] 集成基本的调用前端
+- [x] 集成基本的调用前端
 - [ ] batch serve 并行推理
 - [ ] int8量化支持
 - [ ] SpQR量化支持
@@ -127,6 +129,7 @@ API 服务开启于 3000 端口, 数据输入已经输出格式遵循Openai API 
 - 加入我们的 QQ 群
 - 在 GitHub 上提交问题或拉取请求
 - 在我们的网站上留下反馈
+  
 我们迫不及待地想与你合作，让这个项目变得更好！希望项目对你有帮助！
 
 ## Thanks
@@ -143,13 +146,13 @@ API 服务开启于 3000 端口, 数据输入已经输出格式遵循Openai API 
 
 ### 感谢下面又好看又有眼光又优秀的杰出人士对项目的支持和无私奉献
 
-- QQ 群
+- 来自 QQ 群
 
     ![image](https://github.com/cgisky1980/ai00_rwkv_server/assets/82481660/6e324617-6d0c-49fd-ab1e-fd9cf02df51e)
 
-- Github 
+- 来自 Github 
 
-- Discord
+- 来自 Discord
 
 我们很感激您的帮助，我们很高兴能与您合作。
 
