@@ -42,12 +42,12 @@
 
 1. 直接从 [Release](https://github.com/cgisky1980/ai00_rwkv_server/releases) 下载最新版本
 
-2. [下载模型](https://huggingface.co/cgisky/RWKV-safetensors-fp16)后把模型放在`/assets/models/`路径，例如`/assets/models/RWKV-4-World-0.4B-v1-20230529-ctx4096.st`
+2. [下载模型](https://huggingface.co/cgisky/RWKV-safetensors-fp16)后把模型放在`assets/models/`路径，例如`assets/models/RWKV-4-World-0.4B-v1-20230529-ctx4096.st`
 
 3. 在命令行运行
 
     ```bash     
-    $ ./ai00_rwkv_server --model /assets/models/RWKV-4-World-0.4B-v1-20230529-ctx4096.st
+    $ ./ai00_rwkv_server --model assets/models/RWKV-4-World-0.4B-v1-20230529-ctx4096.st
     ```
 
 
