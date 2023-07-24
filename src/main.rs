@@ -7,7 +7,7 @@ use memmap::Mmap;
 use qp_trie::Trie;
 use serde::{Deserialize, Serialize};
 use std::{
-    collections::HashMap,
+    collections::{HashMap, HashSet},
     ffi::OsStr,
     fs::File,
     io::{BufReader, Read, Write},
@@ -120,7 +120,7 @@ fn load_model(env: &Environment, path: PathBuf) -> Result<Model> {
     let file = File::open(path)?;
     let map = unsafe { Mmap::map(&file)? };
     let model = env.create_model_from_bytes(&map)?;
-    print!("{:#?}\n\n", model.info());
+    print!("{:#?}\n{:#?}\n\n", env.adapter.get_info(), model.info());
     Ok(model)
 }
 
@@ -132,6 +132,18 @@ fn model_task(
 ) -> Result<()> {
     let tokenizer = load_tokenizer(tokenizer)?;
     let model = load_model(&env, model)?;
+
+    let penalty_free_tokens = {
+        let mut set = HashSet::new();
+        for token in 0..u16::MAX {
+            let word = tokenizer.decode(&[token]).unwrap_or_default();
+            let word = String::from_utf8(word).unwrap_or_default();
+            if word.contains('\n') {
+                set.insert(token);
+            }
+        }
+        set
+    };
 
     let mut state_cache = Trie::<&[u8], BackedModelState>::new();
 
@@ -206,7 +218,10 @@ fn model_task(
                 }
 
                 let mut logits = model.run(&tokens, &state).unwrap_or_default();
-                for (&token, &count) in &occurrences {
+                for (&token, &count) in occurrences
+                    .iter()
+                    .filter(|(token, _)| !penalty_free_tokens.contains(token))
+                {
                     let penalty =
                         sampler.presence_penalty + sampler.frequency_penalty * count as f32;
                     logits[token as usize] -= penalty;
