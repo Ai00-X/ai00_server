@@ -1,4 +1,7 @@
 # 💯AI00 RWKV Server
+<!-- ALL-CONTRIBUTORS-BADGE:START - Do not remove or modify this section -->
+[![All Contributors](https://img.shields.io/badge/all_contributors-0-orange.svg?style=flat-square)](#contributors-)
+<!-- ALL-CONTRIBUTORS-BADGE:END -->
 
 `AI00 RWKV Server`是一个基于[`RWKV`模型](https://github.com/BlinkDL/ChatRWKV)的推理API服务器。
 
@@ -149,8 +152,14 @@ API 服务开启于 3000 端口, 数据输入已经输出格式遵循Openai API 
 
 ### 感谢下面项目的编写者们做出的杰出工作
 
-<!-- readme: collaborators,contributors -start -->
-<!-- readme: collaborators,contributors -end -->
+ ([emoji key](https://allcontributors.org/docs/en/emoji-key)):
+
+<!-- ALL-CONTRIBUTORS-LIST:START - Do not remove or modify this section -->
+<!-- prettier-ignore-start -->
+<!-- markdownlint-disable -->
+<!-- markdownlint-restore -->
+<!-- prettier-ignore-end -->
+<!-- ALL-CONTRIBUTORS-LIST:END -->
 
 ### 感谢下面又好看又有眼光又优秀的杰出人士对项目的支持和无私奉献
 
@@ -174,3 +183,6 @@ API 服务开启于 3000 端口, 数据输入已经输出格式遵循Openai API 
 
 - [什么是 AI00](docs/ai00.md)
 - [为什么只支持RWKV](docs/rwkv.md)
+
+
+

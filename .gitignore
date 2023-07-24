@@ -16,3 +16,4 @@ Cargo.lock
 *.st
 ai00_server.exe
 run.bat
+node_modules/
