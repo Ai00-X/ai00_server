@@ -29,6 +29,18 @@
         "review",
         "platform"
       ]
+    },
+    {
+      "login": "josStorer",
+      "name": "josc146",
+      "avatar_url": "https://avatars.githubusercontent.com/u/13366013?v=4",
+      "profile": "https://github.com/josStorer",
+      "contributions": [
+        "bug",
+        "code",
+        "ideas",
+        "tool"
+      ]
     }
   ],
   "contributorsPerLine": 7,
