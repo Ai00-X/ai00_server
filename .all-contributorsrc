@@ -15,6 +15,20 @@
       "contributions": [
         "doc"
       ]
+    },
+    {
+      "login": "cryscan",
+      "name": "研究社交",
+      "avatar_url": "https://avatars.githubusercontent.com/u/16053640?v=4",
+      "profile": "http://cryscan.github.io/profile",
+      "contributions": [
+        "code",
+        "example",
+        "ideas",
+        "maintenance",
+        "review",
+        "platform"
+      ]
     }
   ],
   "contributorsPerLine": 7,
