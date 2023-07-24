@@ -120,7 +120,6 @@ fn load_model(env: &Environment, path: PathBuf) -> Result<Model> {
     let file = File::open(path)?;
     let map = unsafe { Mmap::map(&file)? };
     let model = env.create_model_from_bytes(&map)?;
-    print!("{:#?}\n{:#?}\n\n", env.adapter.get_info(), model.info());
     Ok(model)
 }
 
@@ -130,8 +129,16 @@ fn model_task(
     tokenizer: PathBuf,
     receiver: Receiver<ThreadRequest>,
 ) -> Result<()> {
+    simple_logger::SimpleLogger::new()
+        .with_level(log::LevelFilter::Warn)
+        .with_module_level("ai00_server", log::LevelFilter::Trace)
+        .init()?;
+
     let tokenizer = load_tokenizer(tokenizer)?;
     let model = load_model(&env, model)?;
+
+    log::info!("{:#?}", env.adapter.get_info());
+    log::info!("{:#?}", model.info());
 
     let penalty_free_tokens = {
         let mut set = HashSet::new();
@@ -185,8 +192,7 @@ fn model_task(
             RequestKind::Embedding(request) => request.into(),
         };
 
-        println!("{:#?}", sampler);
-        std::io::stdout().flush()?;
+        log::info!("{:#?}", sampler);
 
         let state = model.create_state();
         let remain = {
@@ -197,8 +203,10 @@ fn model_task(
                 .and_then(|backed| state.load(backed).ok())
                 .is_some()
             {
+                log::info!("state cache hit");
                 remain.split_off(prefix.len())
             } else {
+                log::info!("state cache miss");
                 remain
             }
         };
@@ -234,7 +242,7 @@ fn model_task(
                     .and_then(|x| String::from_utf8(x).ok())
                     .unwrap_or_default();
 
-                print!("{}", word);
+                print!("{word}");
                 std::io::stdout().flush()?;
 
                 model_text += &word;
