@@ -15,10 +15,9 @@
       "contributions": [
         "doc",
         "code",
-        "content", 
+        "content",
         "design",
         "mentoring"
-        
       ]
     },
     {
@@ -45,6 +44,17 @@
         "code",
         "ideas",
         "tool"
+      ]
+    },
+    {
+      "login": "l15y",
+      "name": "l15y",
+      "avatar_url": "https://avatars.githubusercontent.com/u/11372524?v=4",
+      "profile": "https://github.com/l15y",
+      "contributions": [
+        "tool",
+        "plugin",
+        "code"
       ]
     }
   ],
