@@ -1,0 +1,26 @@
+{
+  "files": [
+    "README.md"
+  ],
+  "imageSize": 100,
+  "commit": false,
+  "commitType": "docs",
+  "commitConvention": "angular",
+  "contributors": [
+    {
+      "login": "cgisky1980",
+      "name": "顾真牛",
+      "avatar_url": "https://avatars.githubusercontent.com/u/82481660?v=4",
+      "profile": "https://github.com/cgisky1980",
+      "contributions": [
+        "doc"
+      ]
+    }
+  ],
+  "contributorsPerLine": 7,
+  "skipCi": true,
+  "repoType": "github",
+  "repoHost": "https://github.com",
+  "projectName": "ai00_rwkv_server",
+  "projectOwner": "cgisky1980"
+}
