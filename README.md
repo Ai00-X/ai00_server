@@ -59,8 +59,8 @@
 2. 克隆本仓库
 
     ```bash
-    $ git clone https://github.com/cgisky1980/ai00_rwkv_serve.git
-    $ cd ai00_rwkv_serve
+    $ git clone https://github.com/cgisky1980/ai00_rwkv_server.git
+    $ cd ai00_rwkv_server
     ```
     
 
