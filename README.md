@@ -101,6 +101,13 @@ API 服务开启于 3000 端口, 数据输入已经输出格式遵循Openai API 
 - `/v1/embeddings`
 - `/embeddings`
 
+## 📙WebUI 截图
+
+![image](https://github.com/cgisky1980/ai00_rwkv_server/assets/82481660/33e8da0b-5d3f-4dfc-bf35-4a8147d099bc)
+
+![image](https://github.com/cgisky1980/ai00_rwkv_server/assets/82481660/a24d6c72-31a0-4ff7-8a61-6eb98aae46e8)
+
+
 ## 📝TODO List
 
 - [x] 支持text_completions和chat_completions
@@ -142,9 +149,8 @@ API 服务开启于 3000 端口, 数据输入已经输出格式遵循Openai API 
 
 ### 感谢下面项目的编写者们做出的杰出工作
 
-<a href="https://github.com/cgisky1980/ai00_rwkv_server/graphs/contributors">
-  <img src="https://contrib.rocks/image?repo=cgisky1980/ai00_rwkv_server" />
-</a>
+<!-- readme: collaborators,contributors -start -->
+<!-- readme: collaborators,contributors -end -->
 
 ### 感谢下面又好看又有眼光又优秀的杰出人士对项目的支持和无私奉献
 
