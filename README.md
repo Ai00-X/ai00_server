@@ -3,6 +3,9 @@
 [![All Contributors](https://img.shields.io/badge/all_contributors-4-orange.svg?style=flat-square)](#contributors-)
 <!-- ALL-CONTRIBUTORS-BADGE:END -->
 
+中文 | [English](README_en.md) | [日本语](README_jp.md)
+
+---
 `AI00 RWKV Server`是一个基于[`RWKV`模型](https://github.com/BlinkDL/ChatRWKV)的推理API服务器。
 
 支持`VULKAN`推理加速，可以在所有支持`VULKAN`的GPU上运行。不用N卡！！！A卡甚至集成显卡都可加速！！！
@@ -18,6 +21,10 @@
 立即加入`AI00 RWKV Server`社区，体验AI的魅力！
 
 交流QQ群：30920262
+
+- [什么是 AI00](docs/ai00.md)
+- [为什么只支持RWKV](docs/rwkv.md)
+
 
 ### 💥特色
 
@@ -191,10 +198,5 @@ API 服务开启于 3000 端口, 数据输入已经输出格式遵循Openai API 
 
 [![Stargazers over time](https://starchart.cc/cgisky1980/ai00_rwkv_server.svg)](https://starchart.cc/cgisky1980/ai00_rwkv_server)
 
-
-## BTW
-
-- [什么是 AI00](docs/ai00.md)
-- [为什么只支持RWKV](docs/rwkv.md)
-
+ 
 
