@@ -113,15 +113,15 @@ API 服务开启于 3000 端口, 数据输入已经输出格式遵循Openai API 
 
 ## 📝TODO List
 
-- [x] 支持text_completions和chat_completions
-- [x] 支持sse推送
-- [x] 添加embeddings
+- [x] 支持`text_completions`和`chat_completions`
+- [x] 支持`sse`推送
+- [x] 添加`embeddings`
 - [x] 集成基本的调用前端
-- [ ] batch serve 并行推理
-- [ ] int8量化支持
-- [ ] SpQR量化支持
-- [ ] LoRA模型支持
-- [ ] LoRA模型热加载、切换
+- [ ] `Batch serve`并行推理
+- [ ] `int8`量化支持
+- [ ] `SpQR`量化支持
+- [ ] `LoRA`模型支持
+- [ ] `LoRA`模型热加载、切换
 
 ## 👥Join Us
 
