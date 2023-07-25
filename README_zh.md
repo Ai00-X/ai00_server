@@ -104,6 +104,8 @@
 
 API 服务开启于 3000 端口, 数据输入已经输出格式遵循Openai API 规范。
 
+- `/v1/models`
+- `/models`
 - `/v1/chat/completions`
 - `/chat/completions`
 - `/v1/completions`

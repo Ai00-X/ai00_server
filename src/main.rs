@@ -1,5 +1,8 @@
 use anyhow::Result;
-use axum::{routing::post, Router};
+use axum::{
+    routing::{get, post},
+    Router,
+};
 use clap::Parser;
 use flume::Receiver;
 use itertools::Itertools;
@@ -21,6 +24,7 @@ use web_rwkv::{BackedModelState, Environment, Model, Tokenizer};
 mod chat;
 mod completion;
 mod embedding;
+mod models;
 mod sampler;
 
 use crate::{
@@ -339,6 +343,8 @@ async fn main() -> Result<()> {
     std::thread::spawn(move || model_task(env, model_path, tokenizer_path, receiver));
 
     let app = Router::new()
+        .route("/models", get(models::models))
+        .route("/v1/models", get(models::models))
         .route("/completions", post(completion::completions))
         .route("/v1/completions", post(completion::completions))
         .route("/chat/completions", post(chat::chat_completions))

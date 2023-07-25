@@ -98,6 +98,8 @@ QQ Group for communication: 30920262
 
 The API service starts at port 3000, and the data input and output format follow the Openai API specification.
 
+*   `/v1/models`
+*   `/models`
 *   `/v1/chat/completions`
 *   `/chat/completions`
 *   `/v1/completions`

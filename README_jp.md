@@ -93,6 +93,8 @@ OpenAIのChatGPT APIインターフェースと互換性があります。
 
 APIサービスは3000ポートで開始され、データ入力と出力の形式はOpenai APIの規格に従います。
 
+*   `/v1/models`
+*   `/models`
 *   `/v1/chat/completions`
 *   `/chat/completions`
 *   `/v1/completions`
