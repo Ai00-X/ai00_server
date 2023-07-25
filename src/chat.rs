@@ -90,9 +90,16 @@ impl From<ChatRequest> for GenerateRequest {
             })
             .join("\n\n");
 
+            
+
+
         let assistant = Role::Assistant.to_string();
         let prompt = prompt + &format!("\n\n{assistant}:");
 
+
+        println!("\n\n\n\nthis is prompts \n");
+        println!("{}",prompt);
+        println!("\n\n========================================================================");
         let max_tokens = max_tokens.min(crate::MAX_TOKENS);
         let stop = stop.into();
 
