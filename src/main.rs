@@ -223,6 +223,8 @@ fn model_task(
             token_counter.prompt_tokens = tokens.len();
             token_counter.total_tokens = tokens.len();
 
+            log::trace!("{prompt}");
+
             for _ in 0..max_tokens {
                 if token_sender.is_disconnected() {
                     break 'run;
