@@ -33,7 +33,7 @@ QQ Group for communication: 30920262
 *   Text generation
 *   Translation
 *   Q&A
-*   Any other tasks you can think of that LLM can do
+*   Any other tasks that LLM can do
 
 ### 👻Other
 
@@ -112,7 +112,7 @@ The API service starts at port 3000, and the data input and output format follow
 *   [x] Support for `text_completions` and `chat_completions`
 *   [x] Support for sse push
 *   [x] Add `embeddings`
-*   [x] Integrate basic front-end for calling
+*   [x] Integrate basic front-end
 *   [ ] Parallel inference via `batch serve`
 *   [ ] Support for `int8` quantization
 *   [ ] Support for `SpQR` quantization
@@ -141,7 +141,7 @@ No matter your skill level, we welcome you to join us. You can join us in the fo
 We can't wait to work with you to make this project better! We hope the project is helpful to you!
 
 
-## Thank you to these outstanding individuals who are both beautiful, insightful, and outstanding for their support and selfless dedication to the project
+## Thank you to these awesome individuals who are insightful and outstanding for their support and selfless dedication to the project
 <!-- ALL-CONTRIBUTORS-LIST:START - Do not remove or modify this section -->
 <!-- prettier-ignore-start -->
 <!-- markdownlint-disable -->
