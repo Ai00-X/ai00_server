@@ -141,6 +141,7 @@ No matter your skill level, we welcome you to join us. You can join us in the fo
 We can't wait to work with you to make this project better! We hope the project is helpful to you!
 
 
+## Thank you to these outstanding individuals who are both beautiful, insightful, and outstanding for their support and selfless dedication to the project
 <!-- ALL-CONTRIBUTORS-LIST:START - Do not remove or modify this section -->
 <!-- prettier-ignore-start -->
 <!-- markdownlint-disable -->
