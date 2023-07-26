@@ -19,7 +19,7 @@ impl From<EmbeddingRequest> for GenerateRequest {
             max_tokens: 1,
             stop: Default::default(),
             sampler: Default::default(),
-            occurrences: Default::default(),
+            logit_bias: Default::default(),
             embedding: true,
         }
     }

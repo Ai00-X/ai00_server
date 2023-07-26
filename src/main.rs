@@ -96,7 +96,7 @@ pub struct GenerateRequest {
     pub max_tokens: usize,
     pub stop: Vec<String>,
     pub sampler: Sampler,
-    pub occurrences: HashMap<u16, usize>,
+    pub logit_bias: HashMap<u16, f32>,
     pub embedding: bool,
 }
 
@@ -163,15 +163,18 @@ fn model_task(
             Err(_) => continue,
         };
 
-        let GenerateRequest {
-            prompt,
-            max_tokens,
-            stop,
-            sampler,
+        let (
+            GenerateRequest {
+                prompt,
+                max_tokens,
+                stop,
+                sampler,
+                logit_bias,
+                embedding,
+            },
             mut occurrences,
-            embedding,
-        } = match request {
-            RequestKind::Completion(request) => request.into(),
+        ) = match request {
+            RequestKind::Completion(request) => (request.into(), HashMap::new()),
             RequestKind::Chat(request) => {
                 let model_text = Vec::from(request.messages.clone())
                     .into_iter()
@@ -185,11 +188,10 @@ fn model_task(
                     .take(MAX_PENALTY_COUNT)
                     .counts();
 
-                let mut request = GenerateRequest::from(request);
-                request.occurrences = occurances;
-                request
+                let request = GenerateRequest::from(request);
+                (request, occurances)
             }
-            RequestKind::Embedding(request) => request.into(),
+            RequestKind::Embedding(request) => (request.into(), HashMap::new()),
         };
 
         log::trace!("{:#?}", sampler);
@@ -237,6 +239,9 @@ fn model_task(
                     let penalty =
                         sampler.presence_penalty + sampler.frequency_penalty * count as f32;
                     logits[token as usize] -= penalty;
+                }
+                for (&token, &bias) in &logit_bias {
+                    logits[token as usize] += bias;
                 }
 
                 let token = sampler.sample(logits);

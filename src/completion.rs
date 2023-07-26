@@ -1,3 +1,5 @@
+use std::collections::HashMap;
+
 use anyhow::Result;
 use axum::{
     extract::State,
@@ -23,6 +25,7 @@ pub struct CompletionRequest {
     pub top_p: f32,
     pub presence_penalty: f32,
     pub frequency_penalty: f32,
+    pub logit_bias: HashMap<u16, f32>,
 }
 
 impl Default for CompletionRequest {
@@ -36,6 +39,7 @@ impl Default for CompletionRequest {
             top_p: 1.0,
             presence_penalty: 0.0,
             frequency_penalty: 0.0,
+            logit_bias: HashMap::new(),
         }
     }
 }
@@ -50,6 +54,7 @@ impl From<CompletionRequest> for GenerateRequest {
             top_p,
             presence_penalty,
             frequency_penalty,
+            logit_bias,
             ..
         } = value;
 
@@ -67,7 +72,7 @@ impl From<CompletionRequest> for GenerateRequest {
                 presence_penalty,
                 frequency_penalty,
             },
-            occurrences: Default::default(),
+            logit_bias,
             embedding: false,
         }
     }
