@@ -58,7 +58,7 @@ QQ Group for communication: 30920262
     $ ./ai00_rwkv_server --model assets/models/RWKV-4-World-0.4B-v1-20230529-ctx4096.st
     ```
     
-4.  Open the browser and visit the WebUI [`http://127.0.0.1:3000`](http://127.0.0.1:3000)
+4.  Open the browser and visit the WebUI [`http://127.0.0.1:65530`](http://127.0.0.1:65530)
     
 
 ### 📜Compile from Source Code
@@ -85,7 +85,7 @@ QQ Group for communication: 30920262
     $ cargo run --release -- --model assets/models/RWKV-4-World-0.4B-v1-20230529-ctx4096.st
     ```
     
-6.  Open the browser and visit the WebUI [`http://127.0.0.1:3000`](http://127.0.0.1:3000)
+6.  Open the browser and visit the WebUI [`http://127.0.0.1:65530`](http://127.0.0.1:65530)
     
 
 ## 📝Supported Arguments
@@ -96,7 +96,7 @@ QQ Group for communication: 30920262
 
 ## 📙Currently Available APIs
 
-The API service starts at port 3000, and the data input and output format follow the Openai API specification.
+The API service starts at port 65530, and the data input and output format follow the Openai API specification.
 
 *   `/v1/models`
 *   `/models`

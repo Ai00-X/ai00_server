@@ -314,7 +314,7 @@ struct Args {
     tokenizer: Option<String>,
     #[arg(long, short)]
     ip: Option<Ipv4Addr>,
-    #[arg(long, short, default_value_t = 3000)]
+    #[arg(long, short, default_value_t = 65530)]
     port: u16,
 }
 
