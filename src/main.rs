@@ -123,12 +123,10 @@ fn load_model(env: &Environment, path: &PathBuf) -> Result<Model> {
 
 fn model_task(
     env: Environment,
-    model: PathBuf,
+    model: Model,
     tokenizer: Tokenizer,
     receiver: Receiver<ThreadRequest>,
 ) -> Result<()> {
-    let model = load_model(&env, &model)?;
-
     log::info!("{:#?}", env.adapter.get_info());
     log::info!("{:#?}", model.info());
 
@@ -316,8 +314,9 @@ async fn main() -> Result<()> {
 
     let (sender, receiver) = flume::unbounded::<ThreadRequest>();
     let env = Environment::create().await?;
+    let model = load_model(&env, &model_path)?;
     let tokenizer = load_tokenizer(&tokenizer_path)?;
-    std::thread::spawn(move || model_task(env, model_path, tokenizer, receiver));
+    std::thread::spawn(move || model_task(env, model, tokenizer, receiver));
 
     let tokenizer = load_tokenizer(&tokenizer_path)?;
     let app = Router::new()
