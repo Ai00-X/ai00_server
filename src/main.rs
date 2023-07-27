@@ -5,7 +5,6 @@ use axum::{
 };
 use clap::Parser;
 use flume::Receiver;
-use itertools::Itertools;
 use memmap::Mmap;
 use qp_trie::Trie;
 use serde::{Deserialize, Serialize};
@@ -27,9 +26,7 @@ mod embedding;
 mod models;
 mod sampler;
 
-use crate::{
-    chat::ChatRequest, completion::CompletionRequest, embedding::EmbeddingRequest, sampler::Sampler,
-};
+use crate::sampler::Sampler;
 
 pub const MAX_TOKENS: usize = 4096;
 pub const MAX_PENALTY_COUNT: usize = 1024;
@@ -80,14 +77,9 @@ where
     }
 }
 
-pub enum RequestKind {
-    Completion(CompletionRequest),
-    Chat(ChatRequest),
-    Embedding(EmbeddingRequest),
-}
-
 pub struct ThreadRequest {
-    pub request: RequestKind,
+    pub request: GenerateRequest,
+    pub occurrences: HashMap<u16, usize>,
     pub token_sender: flume::Sender<Token>,
 }
 
@@ -107,13 +99,14 @@ pub struct TokenCounter {
     pub total_tokens: usize,
 }
 
-#[derive(Debug, Clone)]
+#[derive(Clone)]
 pub struct ThreadState {
     pub sender: flume::Sender<ThreadRequest>,
     pub model_name: String,
+    pub tokenizer: Tokenizer,
 }
 
-fn load_tokenizer(path: PathBuf) -> Result<Tokenizer> {
+fn load_tokenizer(path: &PathBuf) -> Result<Tokenizer> {
     let file = File::open(path)?;
     let mut reader = BufReader::new(file);
     let mut contents = String::new();
@@ -121,7 +114,7 @@ fn load_tokenizer(path: PathBuf) -> Result<Tokenizer> {
     Ok(Tokenizer::new(&contents)?)
 }
 
-fn load_model(env: &Environment, path: PathBuf) -> Result<Model> {
+fn load_model(env: &Environment, path: &PathBuf) -> Result<Model> {
     let file = File::open(path)?;
     let map = unsafe { Mmap::map(&file)? };
     let model = env.create_model_from_bytes(&map)?;
@@ -131,11 +124,10 @@ fn load_model(env: &Environment, path: PathBuf) -> Result<Model> {
 fn model_task(
     env: Environment,
     model: PathBuf,
-    tokenizer: PathBuf,
+    tokenizer: Tokenizer,
     receiver: Receiver<ThreadRequest>,
 ) -> Result<()> {
-    let tokenizer = load_tokenizer(tokenizer)?;
-    let model = load_model(&env, model)?;
+    let model = load_model(&env, &model)?;
 
     log::info!("{:#?}", env.adapter.get_info());
     log::info!("{:#?}", model.info());
@@ -157,42 +149,21 @@ fn model_task(
     loop {
         let ThreadRequest {
             request,
+            mut occurrences,
             token_sender,
         } = match receiver.recv() {
             Ok(request) => request,
             Err(_) => continue,
         };
 
-        let (
-            GenerateRequest {
-                prompt,
-                max_tokens,
-                stop,
-                sampler,
-                logit_bias,
-                embedding,
-            },
-            mut occurrences,
-        ) = match request {
-            RequestKind::Completion(request) => (request.into(), HashMap::new()),
-            RequestKind::Chat(request) => {
-                let model_text = Vec::from(request.messages.clone())
-                    .into_iter()
-                    .filter(|record| record.role == chat::Role::Assistant)
-                    .map(|record| record.content)
-                    .join(" ");
-                let model_tokens = tokenizer.encode(model_text.as_bytes()).unwrap_or_default();
-                let occurances = model_tokens
-                    .into_iter()
-                    .rev()
-                    .take(MAX_PENALTY_COUNT)
-                    .counts();
-
-                let request = GenerateRequest::from(request);
-                (request, occurances)
-            }
-            RequestKind::Embedding(request) => (request.into(), HashMap::new()),
-        };
+        let GenerateRequest {
+            prompt,
+            max_tokens,
+            stop,
+            sampler,
+            logit_bias,
+            embedding,
+        } = request;
 
         log::trace!("{:#?}", sampler);
 
@@ -345,8 +316,10 @@ async fn main() -> Result<()> {
 
     let (sender, receiver) = flume::unbounded::<ThreadRequest>();
     let env = Environment::create().await?;
-    std::thread::spawn(move || model_task(env, model_path, tokenizer_path, receiver));
+    let tokenizer = load_tokenizer(&tokenizer_path)?;
+    std::thread::spawn(move || model_task(env, model_path, tokenizer, receiver));
 
+    let tokenizer = load_tokenizer(&tokenizer_path)?;
     let app = Router::new()
         .route("/models", get(models::models))
         .route("/v1/models", get(models::models))
@@ -358,7 +331,11 @@ async fn main() -> Result<()> {
         .route("/v1/embeddings", post(embedding::embeddings))
         .fallback_service(ServeDir::new("assets/www"))
         .layer(CorsLayer::permissive())
-        .with_state(ThreadState { sender, model_name });
+        .with_state(ThreadState {
+            sender,
+            model_name,
+            tokenizer,
+        });
 
     let addr = SocketAddr::from((args.ip.unwrap_or(Ipv4Addr::new(0, 0, 0, 0)), args.port));
     log::info!("server started at http://{addr}");

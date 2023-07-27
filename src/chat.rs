@@ -11,8 +11,8 @@ use itertools::Itertools;
 use serde::{Deserialize, Serialize};
 
 use crate::{
-    sampler::Sampler, FinishReason, GenerateRequest, OptionArray, RequestKind, ThreadRequest,
-    ThreadState, Token, TokenCounter,
+    sampler::Sampler, FinishReason, GenerateRequest, OptionArray, ThreadRequest, ThreadState,
+    Token, TokenCounter, MAX_PENALTY_COUNT,
 };
 
 #[derive(Debug, Default, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
@@ -134,13 +134,31 @@ pub struct ChatResponse {
 }
 
 async fn chat_completions_one(
-    State(ThreadState { sender, model_name }): State<ThreadState>,
+    State(ThreadState {
+        sender,
+        model_name,
+        tokenizer,
+    }): State<ThreadState>,
     Json(request): Json<ChatRequest>,
 ) -> Json<ChatResponse> {
     let (token_sender, token_receiver) = flume::unbounded();
 
+    let model_text = Vec::from(request.messages.clone())
+        .into_iter()
+        .filter(|record| record.role == Role::Assistant)
+        .map(|record| record.content)
+        .join("\n\n");
+    let model_tokens = tokenizer.encode(model_text.as_bytes()).unwrap_or_default();
+    let occurrences = model_tokens
+        .into_iter()
+        .rev()
+        .take(MAX_PENALTY_COUNT)
+        .counts();
+    let request = request.into();
+
     let _ = sender.send(ThreadRequest {
-        request: RequestKind::Chat(request),
+        request,
+        occurrences,
         token_sender,
     });
 
@@ -204,13 +222,31 @@ pub struct PartialChatResponse {
 }
 
 async fn chat_completions_stream(
-    State(ThreadState { sender, model_name }): State<ThreadState>,
+    State(ThreadState {
+        sender,
+        model_name,
+        tokenizer,
+    }): State<ThreadState>,
     Json(request): Json<ChatRequest>,
 ) -> Sse<impl Stream<Item = Result<Event>>> {
     let (token_sender, token_receiver) = flume::unbounded();
 
+    let model_text = Vec::from(request.messages.clone())
+        .into_iter()
+        .filter(|record| record.role == Role::Assistant)
+        .map(|record| record.content)
+        .join("\n\n");
+    let model_tokens = tokenizer.encode(model_text.as_bytes()).unwrap_or_default();
+    let occurrences = model_tokens
+        .into_iter()
+        .rev()
+        .take(MAX_PENALTY_COUNT)
+        .counts();
+    let request = request.into();
+
     let _ = sender.send(ThreadRequest {
-        request: RequestKind::Chat(request),
+        request,
+        occurrences,
         token_sender,
     });
 

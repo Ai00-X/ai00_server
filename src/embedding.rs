@@ -2,9 +2,7 @@ use axum::{extract::State, Json};
 use futures_util::StreamExt;
 use serde::{Deserialize, Serialize};
 
-use crate::{
-    GenerateRequest, OptionArray, RequestKind, ThreadRequest, ThreadState, Token, TokenCounter,
-};
+use crate::{GenerateRequest, OptionArray, ThreadRequest, ThreadState, Token, TokenCounter};
 
 #[derive(Debug, Default, Clone, Deserialize)]
 #[serde(default)]
@@ -42,13 +40,16 @@ pub struct EmbeddingResponse {
 }
 
 pub async fn embeddings(
-    State(ThreadState { sender, model_name }): State<ThreadState>,
+    State(ThreadState {
+        sender, model_name, ..
+    }): State<ThreadState>,
     Json(request): Json<EmbeddingRequest>,
 ) -> Json<EmbeddingResponse> {
     let (token_sender, token_receiver) = flume::unbounded();
 
     let _ = sender.send(ThreadRequest {
-        request: RequestKind::Embedding(request),
+        request: request.into(),
+        occurrences: Default::default(),
         token_sender,
     });
 
