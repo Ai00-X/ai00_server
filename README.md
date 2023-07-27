@@ -1,13 +1,14 @@
 # 💯AI00 RWKV Server
-
-![image](doc/ai00.gif)
-
+<p align='center'>
+<image src="docs/ai00.gif" />
+</p>
+ 
 <!-- ALL-CONTRIBUTORS-BADGE:START - Do not remove or modify this section --> 
 [![All Contributors](https://img.shields.io/badge/all_contributors-4-orange.svg?style=flat-square)](#contributors-) 
 <!-- ALL-CONTRIBUTORS-BADGE:END -->
-
+ 
  [English](README.md) | [中文](README_zh.md)  | [日本語](README_jp.md)
-
+ 
 ---
 
 `AI00 RWKV Server` is an inference API server based on the [`RWKV` model](https://github.com/BlinkDL/ChatRWKV).
