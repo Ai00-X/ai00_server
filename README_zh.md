@@ -1,9 +1,14 @@
 # 💯AI00 RWKV Server
-<!-- ALL-CONTRIBUTORS-BADGE:START - Do not remove or modify this section -->
-[![All Contributors](https://img.shields.io/badge/all_contributors-4-orange.svg?style=flat-square)](#contributors-)
+<p align='center'>
+<image src="docs/ai00.gif" />
+</p>
+ 
+<!-- ALL-CONTRIBUTORS-BADGE:START - Do not remove or modify this section --> 
+[![All Contributors](https://img.shields.io/badge/all_contributors-4-orange.svg?style=flat-square)](#contributors-) 
 <!-- ALL-CONTRIBUTORS-BADGE:END -->
+ 
+ [English](README.md) | [中文](README_zh.md)  | [日本語](README_jp.md)
 
- [English](README.md) | [中文](README_cn.md)  | [日本語](README_jp.md)
 
 ---
 `AI00 RWKV Server`是一个基于[`RWKV`模型](https://github.com/BlinkDL/ChatRWKV)的推理API服务器。
