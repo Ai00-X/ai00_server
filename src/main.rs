@@ -18,7 +18,7 @@ use std::{
     str::FromStr,
 };
 use tower_http::{cors::CorsLayer, services::ServeDir};
-use web_rwkv::{BackedModelState, Environment, Model, Tokenizer};
+use web_rwkv::{BackedModelState, Environment, Model, Quantization, Tokenizer};
 
 mod chat;
 mod completion;
@@ -114,10 +114,10 @@ fn load_tokenizer(path: &PathBuf) -> Result<Tokenizer> {
     Ok(Tokenizer::new(&contents)?)
 }
 
-fn load_model(env: &Environment, path: &PathBuf) -> Result<Model> {
+fn load_model(env: &Environment, path: &PathBuf, quantization: &Quantization) -> Result<Model> {
     let file = File::open(path)?;
     let map = unsafe { Mmap::map(&file)? };
-    let model = env.create_model_from_bytes(&map)?;
+    let model = env.create_model_from_bytes(&map, quantization)?;
     Ok(model)
 }
 
@@ -281,6 +281,8 @@ struct Args {
     model: Option<String>,
     #[arg(long, short, value_name = "FILE")]
     tokenizer: Option<String>,
+    #[arg(long, short, value_name = "LAYERS")]
+    quant: Option<usize>,
     #[arg(long, short)]
     ip: Option<Ipv4Addr>,
     #[arg(long, short, default_value_t = 65530)]
@@ -314,8 +316,15 @@ async fn main() -> Result<()> {
 
     let (sender, receiver) = flume::unbounded::<ThreadRequest>();
     let env = Environment::create().await?;
-    let model = load_model(&env, &model_path)?;
+
+    let quantization = args
+        .quant
+        .map(|layer| Quantization::Int8((0..layer).collect()))
+        .unwrap_or_default();
+    let model = load_model(&env, &model_path, &quantization)?;
+
     let tokenizer = load_tokenizer(&tokenizer_path)?;
+
     std::thread::spawn(move || model_task(env, model, tokenizer, receiver));
 
     let tokenizer = load_tokenizer(&tokenizer_path)?;

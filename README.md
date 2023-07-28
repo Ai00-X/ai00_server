@@ -93,6 +93,7 @@ QQ Group for communication: 30920262
 *   `--model`: Model path
 *   `--tokenizer`: Tokenizer path
 *   `--port`: Running port
+*   `--quant`: Specify number of layers to quantize
 
 ## 📙Currently Available APIs
 
@@ -120,7 +121,7 @@ The API service starts at port 65530, and the data input and output format follo
 *   [x] Add `embeddings`
 *   [x] Integrate basic front-end
 *   [ ] Parallel inference via `batch serve`
-*   [ ] Support for `int8` quantization
+*   [x] Support for `int8` quantization
 *   [ ] Support for `SpQR` quantization
 *   [ ] Support for `LoRA` model
 *   [ ] Hot loading and switching of `LoRA` model
