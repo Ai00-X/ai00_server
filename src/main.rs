@@ -252,7 +252,10 @@ fn model_task(model: Model, tokenizer: Tokenizer, receiver: Receiver<ThreadReque
                     logits[token as usize] += bias;
                 }
 
-                let token = sampler.sample(logits);
+                let probs = model
+                    .softmax(&logits)
+                    .unwrap_or_else(|_| vec![0.0; model.info().num_vocab]);
+                let token = sampler.sample(probs);
                 let word = tokenizer
                     .decode(&[token])
                     .ok()

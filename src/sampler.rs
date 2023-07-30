@@ -20,14 +20,7 @@ impl Default for Sampler {
 }
 
 impl Sampler {
-    fn softmax(data: Vec<f32>) -> Vec<f32> {
-        let exp = data.into_iter().map(f32::exp).collect_vec();
-        let sum: f32 = exp.iter().sum();
-        exp.into_iter().map(|x| x / sum).collect()
-    }
-
-    pub fn sample(&self, logits: Vec<f32>) -> u16 {
-        let probs = Self::softmax(logits);
+    pub fn sample(&self, probs: Vec<f32>) -> u16 {
         let sorted = probs
             .into_iter()
             .enumerate()
