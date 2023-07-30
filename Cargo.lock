@@ -1909,12 +1909,13 @@ checksum = "ca6ad05a4870b2bf5fe995117d3728437bd27d7cd5f06f13c17443ef369775a1"
 
 [[package]]
 name = "web-rwkv"
-version = "0.1.14"
+version = "0.1.16"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "9d0f953ea61951933a52f358c913a891be8d776674f91cb102ee320fc410493c"
+checksum = "5e78c58d2a71eaa5f37264059731deacefad97d16cadcd4039138def6c4b9e1b"
 dependencies = [
  "ahash 0.8.3",
  "anyhow",
+ "bitflags 2.3.3",
  "bytemuck",
  "derive-getters",
  "flume",

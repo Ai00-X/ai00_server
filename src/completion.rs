@@ -111,7 +111,7 @@ async fn completions_one(
         .unwrap_or_default();
     let occurrences = tokens.into_iter().rev().take(MAX_PENALTY_COUNT).counts();
 
-    let _ = sender.send(ThreadRequest {
+    let _ = sender.send(ThreadRequest::Generate {
         request,
         occurrences,
         token_sender,
@@ -188,7 +188,7 @@ async fn completions_stream(
         .unwrap_or_default();
     let occurrences = tokens.into_iter().rev().take(MAX_PENALTY_COUNT).counts();
 
-    let _ = sender.send(ThreadRequest {
+    let _ = sender.send(ThreadRequest::Generate {
         request,
         occurrences,
         token_sender,

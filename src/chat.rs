@@ -156,7 +156,7 @@ async fn chat_completions_one(
         .counts();
     let request = request.into();
 
-    let _ = sender.send(ThreadRequest {
+    let _ = sender.send(ThreadRequest::Generate {
         request,
         occurrences,
         token_sender,
@@ -244,7 +244,7 @@ async fn chat_completions_stream(
         .counts();
     let request = request.into();
 
-    let _ = sender.send(ThreadRequest {
+    let _ = sender.send(ThreadRequest::Generate {
         request,
         occurrences,
         token_sender,

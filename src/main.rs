@@ -18,7 +18,9 @@ use std::{
     str::FromStr,
 };
 use tower_http::{cors::CorsLayer, services::ServeDir};
-use web_rwkv::{BackedModelState, Environment, Model, Quantization, Tokenizer};
+use web_rwkv::{
+    BackedModelState, Environment, LayerFlags, Model, ModelBuilder, Quantization, Tokenizer,
+};
 
 mod chat;
 mod completion;
@@ -77,10 +79,13 @@ where
     }
 }
 
-pub struct ThreadRequest {
-    pub request: GenerateRequest,
-    pub occurrences: HashMap<u16, usize>,
-    pub token_sender: flume::Sender<Token>,
+pub enum ThreadRequest {
+    Reload(ReloadRequest),
+    Generate {
+        request: GenerateRequest,
+        occurrences: HashMap<u16, usize>,
+        token_sender: flume::Sender<Token>,
+    },
 }
 
 pub struct GenerateRequest {
@@ -106,6 +111,12 @@ pub struct ThreadState {
     pub tokenizer: Tokenizer,
 }
 
+#[derive(Debug, Deserialize)]
+pub struct ReloadRequest {
+    pub model_path: PathBuf,
+    pub quantized_layers: Vec<usize>,
+}
+
 fn load_tokenizer(path: &PathBuf) -> Result<Tokenizer> {
     let file = File::open(path)?;
     let mut reader = BufReader::new(file);
@@ -114,20 +125,47 @@ fn load_tokenizer(path: &PathBuf) -> Result<Tokenizer> {
     Ok(Tokenizer::new(&contents)?)
 }
 
-fn load_model(env: &Environment, path: &PathBuf, quantization: &Quantization) -> Result<Model> {
+fn load_model(env: Environment, path: PathBuf, quantization: Quantization) -> Result<Model> {
     let file = File::open(path)?;
     let map = unsafe { Mmap::map(&file)? };
-    let model = env.create_model_from_bytes(&map, quantization)?;
+    let model = ModelBuilder::new(env, &map)
+        .with_quantization(quantization)
+        .build()?;
     Ok(model)
 }
 
-fn model_task(
-    env: Environment,
-    model: Model,
-    tokenizer: Tokenizer,
-    receiver: Receiver<ThreadRequest>,
-) -> Result<()> {
-    log::info!("{:#?}", env.adapter.get_info());
+fn monitor(env: Environment, tokenizer: Tokenizer, receiver: Receiver<ThreadRequest>) {
+    loop {
+        let request = match receiver.recv() {
+            Ok(ThreadRequest::Reload(request)) => request,
+            _ => continue,
+        };
+
+        let quantization = if request.quantized_layers.is_empty() {
+            Quantization::None
+        } else {
+            let mut layers = LayerFlags::empty();
+            request
+                .quantized_layers
+                .into_iter()
+                .for_each(|layer| layers |= LayerFlags::from_layer(layer as u64));
+            Quantization::Int8(layers)
+        };
+
+        let model = match load_model(env.clone(), request.model_path, quantization) {
+            Ok(model) => model,
+            Err(err) => {
+                log::error!("{}", err);
+                continue;
+            }
+        };
+        let tokenizer = tokenizer.clone();
+        let receiver = receiver.clone();
+        std::thread::spawn(move || model_task(model, tokenizer, receiver));
+    }
+}
+
+fn model_task(model: Model, tokenizer: Tokenizer, receiver: Receiver<ThreadRequest>) -> Result<()> {
     log::info!("{:#?}", model.info());
 
     let penalty_free_tokens = {
@@ -145,12 +183,13 @@ fn model_task(
     let mut state_cache = Trie::<&[u8], (BackedModelState, usize)>::new();
 
     loop {
-        let ThreadRequest {
-            request,
-            mut occurrences,
-            token_sender,
-        } = match receiver.recv() {
-            Ok(request) => request,
+        let (request, mut occurrences, token_sender) = match receiver.recv() {
+            Ok(ThreadRequest::Generate {
+                request,
+                occurrences,
+                token_sender,
+            }) => (request, occurrences, token_sender),
+            Ok(ThreadRequest::Reload(_)) => break,
             Err(_) => continue,
         };
 
@@ -272,6 +311,8 @@ fn model_task(
 
         let _ = token_sender.send(Token::Done);
     }
+
+    Ok(())
 }
 
 #[derive(Parser, Debug, Clone)]
@@ -316,18 +357,30 @@ async fn main() -> Result<()> {
 
     let (sender, receiver) = flume::unbounded::<ThreadRequest>();
     let env = Environment::create().await?;
-
-    let quantization = args
-        .quant
-        .map(|layer| Quantization::Int8((0..layer).collect()))
-        .unwrap_or_default();
-    let model = load_model(&env, &model_path, &quantization)?;
-
     let tokenizer = load_tokenizer(&tokenizer_path)?;
 
-    std::thread::spawn(move || model_task(env, model, tokenizer, receiver));
+    log::info!("{:#?}", env.adapter.get_info());
 
-    let tokenizer = load_tokenizer(&tokenizer_path)?;
+    {
+        let quantization = match args.quant {
+            None => Quantization::None,
+            Some(layer) => {
+                let mut layers = LayerFlags::empty();
+                (0..layer).for_each(|layer| layers |= LayerFlags::from_layer(layer as u64));
+                Quantization::Int8(layers)
+            }
+        };
+        let model = load_model(env.clone(), model_path, quantization)?;
+        let tokenizer = tokenizer.clone();
+        let receiver = receiver.clone();
+        std::thread::spawn(move || model_task(model, tokenizer, receiver));
+    }
+    {
+        let tokenizer = tokenizer.clone();
+        let receiver = receiver.clone();
+        std::thread::spawn(move || monitor(env, tokenizer, receiver));
+    }
+
     let app = Router::new()
         .route("/models", get(models::models))
         .route("/v1/models", get(models::models))

@@ -47,7 +47,7 @@ pub async fn embeddings(
 ) -> Json<EmbeddingResponse> {
     let (token_sender, token_receiver) = flume::unbounded();
 
-    let _ = sender.send(ThreadRequest {
+    let _ = sender.send(ThreadRequest::Generate {
         request: request.into(),
         occurrences: Default::default(),
         token_sender,
