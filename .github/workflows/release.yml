@@ -36,12 +36,16 @@ jobs:
 
     steps:
       - uses: actions/checkout@v2
+        with:
+          lfs: true
       - uses: actions-rs/toolchain@v1
         with:
           toolchain: ${{ matrix.rust }}
           override: true
           target: wasm32-unknown-unknown
 
+      - name: Checkout LFS objects
+        run: git lfs checkout
       - name: Query version number
         id: get_version
         shell: bash
