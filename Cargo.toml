@@ -1,8 +1,8 @@
 [package]
 name = "ai00_server"
-version = "0.1.8"
+version = "0.1.9"
 edition = "2021"
-authors = ["Gu ZhenNiu <448885@qq.com>"]
+authors = ["Gu ZhenNiu <448885@qq.com>", "Zhang Zhenyuan <cryscan@umich.edu>"]
 license = "MIT OR Apache-2.0"
 description = "An implementation of the RWKV language model in pure WebGPU."
 homepage = "https://github.com/cryscan/web-rwkv"
@@ -32,6 +32,8 @@ futures-util = "0.3"
 anyhow = "1"
 log = "0.4"
 simple_logger = { version = "4.2", features = ["stderr"] }
+zip-extract = "0.1"
+tempfile = "3.6"
 
 [profile.release]
 lto = true

@@ -12,9 +12,9 @@ use std::{
     collections::{HashMap, HashSet},
     ffi::OsStr,
     fs::File,
-    io::{BufReader, Read},
+    io::{BufReader, Cursor, Read},
     net::{Ipv4Addr, SocketAddr},
-    path::PathBuf,
+    path::{Path, PathBuf},
     str::FromStr,
 };
 use tower_http::{cors::CorsLayer, services::ServeDir};
@@ -125,7 +125,11 @@ fn load_tokenizer(path: &PathBuf) -> Result<Tokenizer> {
     Ok(Tokenizer::new(&contents)?)
 }
 
-fn load_model(env: Environment, path: PathBuf, quantization: Quantization) -> Result<Model> {
+fn load_model<P: AsRef<Path>>(
+    env: Environment,
+    path: P,
+    quantization: Quantization,
+) -> Result<Model> {
     let file = File::open(path)?;
     let map = unsafe { Mmap::map(&file)? };
     let model = ModelBuilder::new(env, &map)
@@ -134,7 +138,14 @@ fn load_model(env: Environment, path: PathBuf, quantization: Quantization) -> Re
     Ok(model)
 }
 
-fn monitor(env: Environment, tokenizer: Tokenizer, receiver: Receiver<ThreadRequest>) {
+fn load_web<P: AsRef<Path>>(path: P, target: &Path) -> Result<()> {
+    let file = File::open(path)?;
+    let map = unsafe { Mmap::map(&file)? };
+    zip_extract::extract(Cursor::new(&map), target, false)?;
+    Ok(())
+}
+
+fn _monitor(env: Environment, tokenizer: Tokenizer, receiver: Receiver<ThreadRequest>) {
     loop {
         let request = match receiver.recv() {
             Ok(ThreadRequest::Reload(request)) => request,
@@ -293,10 +304,8 @@ fn model_task(model: Model, tokenizer: Tokenizer, receiver: Receiver<ThreadReque
                 let _ = token_sender.send(Token::Embed(embedding));
             }
 
-            let mut prompt = prompt.as_bytes().to_vec();
-            let mut model_text = model_text.as_bytes().to_vec();
-            prompt.append(&mut model_text);
-            state_cache.insert(prompt.leak(), (back, 0));
+            let key = (prompt + &model_text).as_bytes().to_vec();
+            state_cache.insert(key.leak(), (back, 0));
 
             let mut keys_to_remove = vec![];
             for (&key, (_, count)) in state_cache.iter_mut() {
@@ -375,14 +384,12 @@ async fn main() -> Result<()> {
         };
         let model = load_model(env.clone(), model_path, quantization)?;
         let tokenizer = tokenizer.clone();
-        let receiver = receiver.clone();
         std::thread::spawn(move || model_task(model, tokenizer, receiver));
     }
-    {
-        let tokenizer = tokenizer.clone();
-        let receiver = receiver.clone();
-        std::thread::spawn(move || monitor(env, tokenizer, receiver));
-    }
+
+    let temp_dir = tempfile::tempdir()?;
+    let temp_path = temp_dir.into_path();
+    load_web("assets/www.zip", &temp_path)?;
 
     let app = Router::new()
         .route("/models", get(models::models))
@@ -393,7 +400,7 @@ async fn main() -> Result<()> {
         .route("/v1/chat/completions", post(chat::chat_completions))
         .route("/embeddings", post(embedding::embeddings))
         .route("/v1/embeddings", post(embedding::embeddings))
-        .fallback_service(ServeDir::new("assets/www"))
+        .fallback_service(ServeDir::new(temp_path.join("www")))
         .layer(CorsLayer::permissive())
         .with_state(ThreadState {
             sender,
