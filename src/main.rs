@@ -4,6 +4,7 @@ use axum::{
     Router,
 };
 use clap::Parser;
+use dialoguer::{theme::ColorfulTheme, Select};
 use flume::Receiver;
 use memmap::Mmap;
 use qp_trie::Trie;
@@ -19,7 +20,8 @@ use std::{
 };
 use tower_http::{cors::CorsLayer, services::ServeDir};
 use web_rwkv::{
-    BackedModelState, Environment, LayerFlags, Model, ModelBuilder, Quantization, Tokenizer,
+    BackedModelState, Environment, Instance, LayerFlags, Model, ModelBuilder, Quantization,
+    Tokenizer,
 };
 
 mod chat;
@@ -115,6 +117,21 @@ pub struct ThreadState {
 pub struct ReloadRequest {
     pub model_path: PathBuf,
     pub quantized_layers: Vec<usize>,
+}
+
+async fn create_environment() -> Result<Environment> {
+    let instance = Instance::new();
+    let adapters = instance.adapters();
+    let selection = Select::with_theme(&ColorfulTheme::default())
+        .with_prompt("Please select an adapter")
+        .default(0)
+        .items(&adapters)
+        .interact()?;
+
+    let adapter = instance.select_adapter(selection)?;
+    let env = Environment::new(adapter).await?;
+    println!("{:#?}", env.adapter.get_info());
+    Ok(env)
 }
 
 fn load_tokenizer(path: &PathBuf) -> Result<Tokenizer> {
@@ -368,7 +385,7 @@ async fn main() -> Result<()> {
     );
 
     let (sender, receiver) = flume::unbounded::<ThreadRequest>();
-    let env = Environment::create().await?;
+    let env = create_environment().await?;
     let tokenizer = load_tokenizer(&tokenizer_path)?;
 
     log::info!("{:#?}", env.adapter.get_info());
