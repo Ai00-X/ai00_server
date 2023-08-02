@@ -119,14 +119,17 @@ pub struct ReloadRequest {
     pub quantized_layers: Vec<usize>,
 }
 
-async fn create_environment() -> Result<Environment> {
+async fn create_environment(selection: Option<usize>) -> Result<Environment> {
     let instance = Instance::new();
     let adapters = instance.adapters();
-    let selection = Select::with_theme(&ColorfulTheme::default())
-        .with_prompt("Please select an adapter")
-        .default(0)
-        .items(&adapters)
-        .interact()?;
+    let selection = match selection {
+        Some(selection) => selection,
+        None => Select::with_theme(&ColorfulTheme::default())
+            .with_prompt("Please select an adapter")
+            .default(0)
+            .items(&adapters)
+            .interact()?,
+    };
 
     let adapter = instance.select_adapter(selection)?;
     let env = Environment::new(adapter).await?;
@@ -347,6 +350,8 @@ fn model_task(model: Model, tokenizer: Tokenizer, receiver: Receiver<ThreadReque
 #[derive(Parser, Debug, Clone)]
 #[command(author, version, about, long_about = None)]
 struct Args {
+    #[arg(long, short)]
+    adepter: Option<usize>,
     #[arg(long, short, value_name = "FILE")]
     model: Option<String>,
     #[arg(long, short, value_name = "FILE")]
@@ -385,7 +390,7 @@ async fn main() -> Result<()> {
     );
 
     let (sender, receiver) = flume::unbounded::<ThreadRequest>();
-    let env = create_environment().await?;
+    let env = create_environment(args.adepter).await?;
     let tokenizer = load_tokenizer(&tokenizer_path)?;
 
     log::info!("{:#?}", env.adapter.get_info());
