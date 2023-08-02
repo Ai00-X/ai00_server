@@ -97,14 +97,14 @@ QQ Group for communication: 30920262
 *   `--tokenizer`: Tokenizer path
 *   `--port`: Running port
 *   `--quant`: Specify the number of quantization layers
-*   `--adapter`: Adapter (GPU and backend) selection options
+*   `--adepter`: Adapter (GPU and backend) selection options
 
 ### Example
 
 The server listens on port 3000, loads the full-layer quantized (32 > 24) 0.4B model, and selects adapter 0 (to get the specific adapter number, you can first not add this parameter, and the program will enter the adapter selection page).
 
 ```bash
-$ cargo run --release -- --model assets/models/RWKV-4-World-0.4B-v1-20230529-ctx4096.st --port 3000 --quant 32 --adapter 0
+$ cargo run --release -- --model assets/models/RWKV-4-World-0.4B-v1-20230529-ctx4096.st --port 3000 --quant 32 --adepter 0
 ```
 
 ## 📙Currently Available APIs
