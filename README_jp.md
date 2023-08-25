@@ -95,14 +95,14 @@ OpenAIのChatGPT APIインターフェースと互換性があります。
 *   `--tokenizer`: トークナイザーのパス
 *   `--port`: 実行ポート
 *   `--quant`: 量子化レイヤーの数を指定
-*   `--adepter`: アダプター（GPUおよびバックエンド）の選択オプション
+*   `--adaptor`: アダプター（GPUおよびバックエンド）の選択オプション
 
 ### 例
 
 サーバーはポート3000でリッスンし、全レイヤー量子化（32 > 24）の0.4Bモデルをロードし、アダプター0を選択します（特定のアダプター番号を取得するには、最初にこのパラメーターを追加せず、プログラムがアダプター選択ページに入るまで待ちます）。
 
 ```bash
-$ cargo run --release -- --model assets/models/RWKV-4-World-0.4B-v1-20230529-ctx4096.st --port 3000 --quant 32 --adepter 0
+$ cargo run --release -- --model assets/models/RWKV-4-World-0.4B-v1-20230529-ctx4096.st --port 3000 --quant 32 --adaptor 0
 ```
 
 ## 📙現在利用可能なAPI

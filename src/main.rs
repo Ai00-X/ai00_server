@@ -351,7 +351,7 @@ fn model_task(model: Model, tokenizer: Tokenizer, receiver: Receiver<ThreadReque
 #[command(author, version, about, long_about = None)]
 struct Args {
     #[arg(long, short)]
-    adepter: Option<usize>,
+    adaptor: Option<usize>,
     #[arg(long, short, value_name = "FILE")]
     model: Option<String>,
     #[arg(long, short, value_name = "FILE")]
@@ -390,7 +390,7 @@ async fn main() -> Result<()> {
     );
 
     let (sender, receiver) = flume::unbounded::<ThreadRequest>();
-    let env = create_environment(args.adepter).await?;
+    let env = create_environment(args.adaptor).await?;
     let tokenizer = load_tokenizer(&tokenizer_path)?;
 
     log::info!("{:#?}", env.adapter.get_info());

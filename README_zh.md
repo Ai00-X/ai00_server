@@ -104,13 +104,13 @@
 - `--tokenizer`: 词表路径
 - `--port`: 运行端口
 - `--quant`: 指定量化层数
-- `--adepter`: 适配器（GPU和后端）选择项
+- `--adaptor`: 适配器（GPU和后端）选择项
 
 ### 示例
 
 服务器监听3000端口，加载全部层量化（32 > 24）的0.4B模型，选择0号适配器（要查看具体适配器编号可以先不加该参数，程序会先进入选择页面）。
 ```bash
-$ cargo run --release -- --model assets/models/RWKV-4-World-0.4B-v1-20230529-ctx4096.st --port 3000 --quant 32 --adepter 0
+$ cargo run --release -- --model assets/models/RWKV-4-World-0.4B-v1-20230529-ctx4096.st --port 3000 --quant 32 --adaptor 0
 ```
 
 
