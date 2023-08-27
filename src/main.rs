@@ -3,7 +3,7 @@ use axum::{
     routing::{get, post},
     Router,
 };
-use clap::Parser;
+use clap::{Parser, ValueEnum};
 use dialoguer::{theme::ColorfulTheme, Select};
 use flume::Receiver;
 use memmap::Mmap;
@@ -20,8 +20,11 @@ use std::{
 };
 use tower_http::{cors::CorsLayer, services::ServeDir};
 use web_rwkv::{
-    BackedModelState, Environment, Instance, LayerFlags, Model, ModelBuilder, Quantization,
-    Tokenizer,
+    context::{Context, ContextBuilder, Instance},
+    model::{BackedState, LayerFlags, Model, ModelBuilder, ModelState, Quantization},
+    tensor::{shape::Shape, TensorCpu, TensorExt},
+    tokenizer::Tokenizer,
+    wgpu::PowerPreference,
 };
 
 mod chat;
@@ -119,22 +122,27 @@ pub struct ReloadRequest {
     pub quantized_layers: Vec<usize>,
 }
 
-async fn create_environment(selection: Option<usize>) -> Result<Environment> {
+async fn create_context(selection: AdapterSelection) -> Result<Context> {
     let instance = Instance::new();
-    let adapters = instance.adapters();
-    let selection = match selection {
-        Some(selection) => selection,
-        None => Select::with_theme(&ColorfulTheme::default())
-            .with_prompt("Please select an adapter")
-            .default(0)
-            .items(&adapters)
-            .interact()?,
-    };
+    let adapter = match selection {
+        AdapterSelection::Auto => instance.adapter(PowerPreference::HighPerformance).await,
+        AdapterSelection::Manual => {
+            let adapters = instance.adapters();
+            let selection = Select::with_theme(&ColorfulTheme::default())
+                .with_prompt("Please select an adapter")
+                .default(0)
+                .items(&adapters)
+                .interact()?;
+            instance.select_adapter(selection)
+        }
+    }?;
 
-    let adapter = instance.select_adapter(selection)?;
-    let env = Environment::new(adapter).await?;
-    println!("{:#?}", env.adapter.get_info());
-    Ok(env)
+    let context = ContextBuilder::new(adapter)
+        .with_default_pipelines()
+        .with_quant_pipelines()
+        .build()
+        .await?;
+    Ok(context)
 }
 
 fn load_tokenizer(path: &PathBuf) -> Result<Tokenizer> {
@@ -145,16 +153,14 @@ fn load_tokenizer(path: &PathBuf) -> Result<Tokenizer> {
     Ok(Tokenizer::new(&contents)?)
 }
 
-fn load_model<P: AsRef<Path>>(
-    env: Environment,
-    path: P,
-    quantization: Quantization,
-) -> Result<Model> {
+fn load_model(
+    context: &Context,
+    path: impl AsRef<Path>,
+    quant: Quantization,
+) -> Result<Model<'_, '_>> {
     let file = File::open(path)?;
     let map = unsafe { Mmap::map(&file)? };
-    let model = ModelBuilder::new(env, &map)
-        .with_quantization(quantization)
-        .build()?;
+    let model = ModelBuilder::new(context, &map).with_quant(quant).build()?;
     Ok(model)
 }
 
@@ -165,38 +171,52 @@ fn load_web<P: AsRef<Path>>(path: P, target: &Path) -> Result<()> {
     Ok(())
 }
 
-fn _monitor(env: Environment, tokenizer: Tokenizer, receiver: Receiver<ThreadRequest>) {
-    loop {
-        let request = match receiver.recv() {
-            Ok(ThreadRequest::Reload(request)) => request,
-            _ => continue,
-        };
+// fn _monitor(context: &Context, tokenizer: Tokenizer, receiver: Receiver<ThreadRequest>) {
+//     loop {
+//         let request = match receiver.recv() {
+//             Ok(ThreadRequest::Reload(request)) => request,
+//             _ => continue,
+//         };
 
-        let quantization = if request.quantized_layers.is_empty() {
-            Quantization::None
-        } else {
-            let mut layers = LayerFlags::empty();
-            request
-                .quantized_layers
-                .into_iter()
-                .for_each(|layer| layers |= LayerFlags::from_layer(layer as u64));
-            Quantization::Int8(layers)
-        };
+//         let quantization = if request.quantized_layers.is_empty() {
+//             Quantization::None
+//         } else {
+//             let mut layers = LayerFlags::empty();
+//             request
+//                 .quantized_layers
+//                 .into_iter()
+//                 .for_each(|layer| layers |= LayerFlags::from_layer(layer as u64));
+//             Quantization::Int8(layers)
+//         };
 
-        let model = match load_model(env.clone(), request.model_path, quantization) {
-            Ok(model) => model,
-            Err(err) => {
-                log::error!("{}", err);
-                continue;
-            }
-        };
-        let tokenizer = tokenizer.clone();
-        let receiver = receiver.clone();
-        std::thread::spawn(move || model_task(model, tokenizer, receiver));
-    }
-}
+//         let model = match load_model(context.clone(), request.model_path, quantization) {
+//             Ok(model) => model,
+//             Err(err) => {
+//                 log::error!("{}", err);
+//                 continue;
+//             }
+//         }
+//         .into();
+//         let tokenizer = tokenizer.clone();
+//         let receiver = receiver.clone();
+//         std::thread::spawn(move || model_task(model, tokenizer, receiver));
+//     }
+// }
 
-fn model_task(model: Model, tokenizer: Tokenizer, receiver: Receiver<ThreadRequest>) -> Result<()> {
+fn model_task(
+    context: Context,
+    path: impl AsRef<Path>,
+    quant: Quantization,
+    tokenizer: Tokenizer,
+    receiver: Receiver<ThreadRequest>,
+) {
+    let model = match load_model(&context, path, quant) {
+        Ok(model) => model,
+        Err(err) => {
+            log::error!("{}", err);
+            return;
+        }
+    };
     log::info!("{:#?}", model.info());
 
     let penalty_free_tokens = {
@@ -211,17 +231,19 @@ fn model_task(model: Model, tokenizer: Tokenizer, receiver: Receiver<ThreadReque
         set
     };
 
-    let mut state_cache = Trie::<&[u8], (BackedModelState, usize)>::new();
+    let mut state_cache = Trie::<&[u8], (BackedState, usize)>::new();
+    let state = ModelState::new(&context, model.info(), 1);
+    let mask = TensorCpu::from_data(&context, Shape::new(1, 1, 1), vec![u32::MAX]).unwrap();
 
-    loop {
+    let mut respond = || -> Result<()> {
         let (request, mut occurrences, token_sender) = match receiver.recv() {
             Ok(ThreadRequest::Generate {
                 request,
                 occurrences,
                 token_sender,
             }) => (request, occurrences, token_sender),
-            Ok(ThreadRequest::Reload(_)) => break,
-            Err(_) => continue,
+            Ok(ThreadRequest::Reload(_)) => return Ok(()),
+            Err(_) => return Ok(()),
         };
 
         let GenerateRequest {
@@ -235,7 +257,6 @@ fn model_task(model: Model, tokenizer: Tokenizer, receiver: Receiver<ThreadReque
 
         log::trace!("{:#?}", sampler);
 
-        let state = model.create_state();
         let remain = {
             let prefix = state_cache
                 .longest_common_prefix(prompt.as_bytes())
@@ -270,7 +291,10 @@ fn model_task(model: Model, tokenizer: Tokenizer, receiver: Receiver<ThreadReque
                     break 'run;
                 }
 
-                let mut logits = model.run(&tokens, &state).unwrap_or_default();
+                let shape = Shape::new(1, tokens.len(), 1);
+                let mut logits = model
+                    .run(&context.tensor_from_data(shape, tokens)?, &mask, &state)?
+                    .to_vec();
                 for (&token, &count) in occurrences
                     .iter()
                     .filter(|(token, _)| !penalty_free_tokens.contains(token))
@@ -284,8 +308,8 @@ fn model_task(model: Model, tokenizer: Tokenizer, receiver: Receiver<ThreadReque
                 }
 
                 let probs = model
-                    .softmax(&logits)
-                    .unwrap_or_else(|_| vec![0.0; model.info().num_vocab]);
+                    .softmax(&context.tensor_from_data(model.head_shape(1), logits)?)?
+                    .to_vec();
                 let token = sampler.sample(probs);
                 let word = tokenizer
                     .decode(&[token])
@@ -316,42 +340,51 @@ fn model_task(model: Model, tokenizer: Tokenizer, receiver: Receiver<ThreadReque
 
         println!("[DONE]");
 
-        if let Ok(back) = state.back() {
-            if embedding {
-                let num_layer = model.info().num_layers;
-                let num_emb = model.info().num_emb;
-                let embedding = back.0[num_layer - 3][4 * num_emb..].to_vec();
-                let _ = token_sender.send(Token::Embed(embedding));
-            }
+        let back = BackedState::from(state.clone());
+        if embedding {
+            let num_layer = model.info().num_layers;
+            // let embedding = back.0[num_layer - 3][4 * num_emb..].to_vec();
+            let embedding = back
+                .state
+                .as_slice((.., 5 * (num_layer - 3) + 4, ..))?
+                .to_vec();
+            let _ = token_sender.send(Token::Embed(embedding));
+        }
 
-            let key = (prompt + &model_text).as_bytes().to_vec();
-            state_cache.insert(key.leak(), (back, 0));
+        let key = (prompt + &model_text).as_bytes().to_vec();
+        state_cache.insert(key.leak(), (back, 0));
 
-            let mut keys_to_remove = vec![];
-            for (&key, (_, count)) in state_cache.iter_mut() {
-                *count += 1;
-                if *count > STATE_CACHE_LRU {
-                    keys_to_remove.push(key);
-                }
-            }
-
-            log::trace!("state cache evicted: {}", keys_to_remove.len());
-            for key in keys_to_remove {
-                state_cache.remove(key);
+        let mut keys_to_remove = vec![];
+        for (&key, (_, count)) in state_cache.iter_mut() {
+            *count += 1;
+            if *count > STATE_CACHE_LRU {
+                keys_to_remove.push(key);
             }
         }
 
-        let _ = token_sender.send(Token::Done);
-    }
+        log::trace!("state cache evicted: {}", keys_to_remove.len());
+        for key in keys_to_remove {
+            state_cache.remove(key);
+        }
 
-    Ok(())
+        let _ = token_sender.send(Token::Done);
+        Ok(())
+    };
+
+    loop {
+        match respond() {
+            Ok(()) => {}
+            Err(err) => log::error!("{}", err),
+        }
+    }
 }
 
 #[derive(Parser, Debug, Clone)]
 #[command(author, version, about, long_about = None)]
 struct Args {
-    #[arg(long, short)]
-    adaptor: Option<usize>,
+    #[arg(long, short, default_value_t = AdapterSelection::Manual)]
+    #[clap(value_enum)]
+    adapter: AdapterSelection,
     #[arg(long, short, value_name = "FILE")]
     model: Option<String>,
     #[arg(long, short, value_name = "FILE")]
@@ -362,6 +395,13 @@ struct Args {
     ip: Option<Ipv4Addr>,
     #[arg(long, short, default_value_t = 65530)]
     port: u16,
+}
+
+#[derive(Debug, Default, Clone, Copy, ValueEnum)]
+enum AdapterSelection {
+    Auto,
+    #[default]
+    Manual,
 }
 
 #[tokio::main]
@@ -390,13 +430,13 @@ async fn main() -> Result<()> {
     );
 
     let (sender, receiver) = flume::unbounded::<ThreadRequest>();
-    let env = create_environment(args.adaptor).await?;
+    let context = create_context(args.adapter).await?;
     let tokenizer = load_tokenizer(&tokenizer_path)?;
 
-    log::info!("{:#?}", env.adapter.get_info());
+    log::info!("{:#?}", context.adapter.get_info());
 
     {
-        let quantization = match args.quant {
+        let quant = match args.quant {
             None => Quantization::None,
             Some(layer) => {
                 let mut layers = LayerFlags::empty();
@@ -404,9 +444,8 @@ async fn main() -> Result<()> {
                 Quantization::Int8(layers)
             }
         };
-        let model = load_model(env.clone(), model_path, quantization)?;
         let tokenizer = tokenizer.clone();
-        std::thread::spawn(move || model_task(model, tokenizer, receiver));
+        std::thread::spawn(move || model_task(context, model_path, quant, tokenizer, receiver));
     }
 
     let temp_dir = tempfile::tempdir()?;
