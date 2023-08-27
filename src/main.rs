@@ -405,11 +405,12 @@ enum AdapterSelection {
 }
 
 #[tokio::main]
-async fn main() -> Result<()> {
+async fn main() {
     simple_logger::SimpleLogger::new()
         .with_level(log::LevelFilter::Warn)
         .with_module_level("ai00_server", log::LevelFilter::Trace)
-        .init()?;
+        .init()
+        .unwrap();
 
     let args = Args::parse();
     let model_path = PathBuf::from(
@@ -430,8 +431,8 @@ async fn main() -> Result<()> {
     );
 
     let (sender, receiver) = flume::unbounded::<ThreadRequest>();
-    let context = create_context(args.adapter).await?;
-    let tokenizer = load_tokenizer(&tokenizer_path)?;
+    let context = create_context(args.adapter).await.unwrap();
+    let tokenizer = load_tokenizer(&tokenizer_path).unwrap();
 
     log::info!("{:#?}", context.adapter.get_info());
 
@@ -448,9 +449,9 @@ async fn main() -> Result<()> {
         std::thread::spawn(move || model_task(context, model_path, quant, tokenizer, receiver));
     }
 
-    let temp_dir = tempfile::tempdir()?;
+    let temp_dir = tempfile::tempdir().unwrap();
     let temp_path = temp_dir.into_path();
-    load_web("assets/www.zip", &temp_path)?;
+    load_web("assets/www.zip", &temp_path).unwrap();
 
     let app = Router::new()
         .route("/models", get(models::models))
@@ -472,8 +473,6 @@ async fn main() -> Result<()> {
     let addr = SocketAddr::from((args.ip.unwrap_or(Ipv4Addr::new(0, 0, 0, 0)), args.port));
     log::info!("server started at http://{addr}");
 
-    let listener = tokio::net::TcpListener::bind(addr).await?;
-    axum::serve(listener, app).await?;
-
-    Ok(())
+    let listener = tokio::net::TcpListener::bind(addr).await.unwrap();
+    axum::serve(listener, app).await.unwrap();
 }
