@@ -3,7 +3,7 @@ use axum::{
     routing::{get, post},
     Router,
 };
-use clap::Parser;
+use clap::{Parser, ValueEnum};
 use dialoguer::{theme::ColorfulTheme, Select};
 use flume::Receiver;
 use memmap::Mmap;
@@ -20,8 +20,11 @@ use std::{
 };
 use tower_http::{cors::CorsLayer, services::ServeDir};
 use web_rwkv::{
-    BackedModelState, Environment, Instance, LayerFlags, Model, ModelBuilder, Quantization,
-    Tokenizer,
+    context::{Context, ContextBuilder, Instance},
+    model::{BackedState, LayerFlags, Model, ModelBuilder, ModelState, Quantization},
+    tensor::{shape::Shape, TensorCpu, TensorExt},
+    tokenizer::Tokenizer,
+    wgpu::PowerPreference,
 };
 
 mod chat;
@@ -119,22 +122,27 @@ pub struct ReloadRequest {
     pub quantized_layers: Vec<usize>,
 }
 
-async fn create_environment(selection: Option<usize>) -> Result<Environment> {
+async fn create_context(selection: AdapterSelection) -> Result<Context> {
     let instance = Instance::new();
-    let adapters = instance.adapters();
-    let selection = match selection {
-        Some(selection) => selection,
-        None => Select::with_theme(&ColorfulTheme::default())
-            .with_prompt("Please select an adapter")
-            .default(0)
-            .items(&adapters)
-            .interact()?,
-    };
+    let adapter = match selection {
+        AdapterSelection::Auto => instance.adapter(PowerPreference::HighPerformance).await,
+        AdapterSelection::Manual => {
+            let adapters = instance.adapters();
+            let selection = Select::with_theme(&ColorfulTheme::default())
+                .with_prompt("Please select an adapter")
+                .default(0)
+                .items(&adapters)
+                .interact()?;
+            instance.select_adapter(selection)
+        }
+    }?;
 
-    let adapter = instance.select_adapter(selection)?;
-    let env = Environment::new(adapter).await?;
-    println!("{:#?}", env.adapter.get_info());
-    Ok(env)
+    let context = ContextBuilder::new(adapter)
+        .with_default_pipelines()
+        .with_quant_pipelines()
+        .build()
+        .await?;
+    Ok(context)
 }
 
 fn load_tokenizer(path: &PathBuf) -> Result<Tokenizer> {
@@ -145,17 +153,21 @@ fn load_tokenizer(path: &PathBuf) -> Result<Tokenizer> {
     Ok(Tokenizer::new(&contents)?)
 }
 
-fn load_model<P: AsRef<Path>>(
-    env: Environment,
-    path: P,
-    quantization: Quantization,
-) -> Result<Model> {
+fn load_model(
+    context: &Context,
+    path: impl AsRef<Path>,
+    quant: Quantization,
+    head_chunk: HeadChunkSelection,
+) -> Result<Model<'_, '_>> {
     let file = File::open(path)?;
     let map = unsafe { Mmap::map(&file)? };
-    let model = ModelBuilder::new(env, &map)
-        .with_quantization(quantization)
-        .build()?;
-    Ok(model)
+    let model = ModelBuilder::new(context, &map).with_quant(quant);
+    let model = match head_chunk {
+        HeadChunkSelection::Small => model.with_head_chunk_size(2048),
+        HeadChunkSelection::Median => model.with_head_chunk_size(4096),
+        HeadChunkSelection::Large => model.with_head_chunk_size(8192),
+    };
+    model.build()
 }
 
 fn load_web<P: AsRef<Path>>(path: P, target: &Path) -> Result<()> {
@@ -165,39 +177,65 @@ fn load_web<P: AsRef<Path>>(path: P, target: &Path) -> Result<()> {
     Ok(())
 }
 
-fn _monitor(env: Environment, tokenizer: Tokenizer, receiver: Receiver<ThreadRequest>) {
-    loop {
-        let request = match receiver.recv() {
-            Ok(ThreadRequest::Reload(request)) => request,
-            _ => continue,
-        };
+// fn _monitor(context: &Context, tokenizer: Tokenizer, receiver: Receiver<ThreadRequest>) {
+//     loop {
+//         let request = match receiver.recv() {
+//             Ok(ThreadRequest::Reload(request)) => request,
+//             _ => continue,
+//         };
 
-        let quantization = if request.quantized_layers.is_empty() {
-            Quantization::None
-        } else {
+//         let quantization = if request.quantized_layers.is_empty() {
+//             Quantization::None
+//         } else {
+//             let mut layers = LayerFlags::empty();
+//             request
+//                 .quantized_layers
+//                 .into_iter()
+//                 .for_each(|layer| layers |= LayerFlags::from_layer(layer as u64));
+//             Quantization::Int8(layers)
+//         };
+
+//         let model = match load_model(context.clone(), request.model_path, quantization) {
+//             Ok(model) => model,
+//             Err(err) => {
+//                 log::error!("{}", err);
+//                 continue;
+//             }
+//         }
+//         .into();
+//         let tokenizer = tokenizer.clone();
+//         let receiver = receiver.clone();
+//         std::thread::spawn(move || model_task(model, tokenizer, receiver));
+//     }
+// }
+
+fn model_task(
+    args: Args,
+    context: Context,
+    tokenizer: Tokenizer,
+    path: impl AsRef<Path>,
+    receiver: Receiver<ThreadRequest>,
+) {
+    let quant = match args.quant {
+        None => Quantization::None,
+        Some(layer) => {
             let mut layers = LayerFlags::empty();
-            request
-                .quantized_layers
-                .into_iter()
-                .for_each(|layer| layers |= LayerFlags::from_layer(layer as u64));
+            (0..layer).for_each(|layer| layers |= LayerFlags::from_layer(layer as u64));
             Quantization::Int8(layers)
-        };
+        }
+    };
 
-        let model = match load_model(env.clone(), request.model_path, quantization) {
-            Ok(model) => model,
-            Err(err) => {
-                log::error!("{}", err);
-                continue;
-            }
-        };
-        let tokenizer = tokenizer.clone();
-        let receiver = receiver.clone();
-        std::thread::spawn(move || model_task(model, tokenizer, receiver));
-    }
-}
+    let model = match load_model(&context, path, quant, args.head_chunk) {
+        Ok(model) => model,
+        Err(err) => {
+            log::error!("{}", err);
+            return;
+        }
+    };
 
-fn model_task(model: Model, tokenizer: Tokenizer, receiver: Receiver<ThreadRequest>) -> Result<()> {
+    log::info!("{:#?}", context.adapter.get_info());
     log::info!("{:#?}", model.info());
+    log::info!("chosen head chunk size: {}", args.head_chunk);
 
     let penalty_free_tokens = {
         let mut set = HashSet::new();
@@ -211,17 +249,19 @@ fn model_task(model: Model, tokenizer: Tokenizer, receiver: Receiver<ThreadReque
         set
     };
 
-    let mut state_cache = Trie::<&[u8], (BackedModelState, usize)>::new();
+    let mut state_cache = Trie::<&[u8], (BackedState, usize)>::new();
+    let state = ModelState::new(&context, model.info(), 1);
+    let mask = TensorCpu::from_data(&context, Shape::new(1, 1, 1), vec![u32::MAX]).unwrap();
 
-    loop {
+    let mut respond = || -> Result<()> {
         let (request, mut occurrences, token_sender) = match receiver.recv() {
             Ok(ThreadRequest::Generate {
                 request,
                 occurrences,
                 token_sender,
             }) => (request, occurrences, token_sender),
-            Ok(ThreadRequest::Reload(_)) => break,
-            Err(_) => continue,
+            Ok(ThreadRequest::Reload(_)) => return Ok(()),
+            Err(_) => return Ok(()),
         };
 
         let GenerateRequest {
@@ -235,7 +275,6 @@ fn model_task(model: Model, tokenizer: Tokenizer, receiver: Receiver<ThreadReque
 
         log::trace!("{:#?}", sampler);
 
-        let state = model.create_state();
         let remain = {
             let prefix = state_cache
                 .longest_common_prefix(prompt.as_bytes())
@@ -270,7 +309,10 @@ fn model_task(model: Model, tokenizer: Tokenizer, receiver: Receiver<ThreadReque
                     break 'run;
                 }
 
-                let mut logits = model.run(&tokens, &state).unwrap_or_default();
+                let shape = Shape::new(1, tokens.len(), 1);
+                let mut logits = model
+                    .run(&context.tensor_from_data(shape, tokens)?, &mask, &state)?
+                    .to_vec();
                 for (&token, &count) in occurrences
                     .iter()
                     .filter(|(token, _)| !penalty_free_tokens.contains(token))
@@ -284,8 +326,8 @@ fn model_task(model: Model, tokenizer: Tokenizer, receiver: Receiver<ThreadReque
                 }
 
                 let probs = model
-                    .softmax(&logits)
-                    .unwrap_or_else(|_| vec![0.0; model.info().num_vocab]);
+                    .softmax(&context.tensor_from_data(model.head_shape(1), logits)?)?
+                    .to_vec();
                 let token = sampler.sample(probs);
                 let word = tokenizer
                     .decode(&[token])
@@ -316,44 +358,56 @@ fn model_task(model: Model, tokenizer: Tokenizer, receiver: Receiver<ThreadReque
 
         println!("[DONE]");
 
-        if let Ok(back) = state.back() {
-            if embedding {
-                let num_layer = model.info().num_layers;
-                let num_emb = model.info().num_emb;
-                let embedding = back.0[num_layer - 3][4 * num_emb..].to_vec();
-                let _ = token_sender.send(Token::Embed(embedding));
-            }
+        let back = BackedState::from(state.clone());
+        if embedding {
+            let num_layer = model.info().num_layers;
+            // let embedding = back.0[num_layer - 3][4 * num_emb..].to_vec();
+            let embedding = back
+                .state
+                .as_slice((.., 5 * (num_layer - 3) + 4, ..))?
+                .to_vec();
+            let _ = token_sender.send(Token::Embed(embedding));
+        }
 
-            let key = (prompt + &model_text).as_bytes().to_vec();
-            state_cache.insert(key.leak(), (back, 0));
+        let key = (prompt + &model_text).as_bytes().to_vec();
+        state_cache.insert(key.leak(), (back, 0));
 
-            let mut keys_to_remove = vec![];
-            for (&key, (_, count)) in state_cache.iter_mut() {
-                *count += 1;
-                if *count > STATE_CACHE_LRU {
-                    keys_to_remove.push(key);
-                }
-            }
-
-            log::trace!("state cache evicted: {}", keys_to_remove.len());
-            for key in keys_to_remove {
-                state_cache.remove(key);
+        let mut keys_to_remove = vec![];
+        for (&key, (_, count)) in state_cache.iter_mut() {
+            *count += 1;
+            if *count > STATE_CACHE_LRU {
+                keys_to_remove.push(key);
             }
         }
 
-        let _ = token_sender.send(Token::Done);
-    }
+        log::trace!("state cache evicted: {}", keys_to_remove.len());
+        for key in keys_to_remove {
+            state_cache.remove(key);
+        }
 
-    Ok(())
+        let _ = token_sender.send(Token::Done);
+        Ok(())
+    };
+
+    loop {
+        match respond() {
+            Ok(()) => {}
+            Err(err) => log::error!("{}", err),
+        }
+    }
 }
 
 #[derive(Parser, Debug, Clone)]
 #[command(author, version, about, long_about = None)]
 struct Args {
-    #[arg(long, short)]
-    adaptor: Option<usize>,
+    #[arg(long, short, default_value_t = AdapterSelection::Manual)]
+    #[clap(value_enum)]
+    adapter: AdapterSelection,
     #[arg(long, short, value_name = "FILE")]
     model: Option<String>,
+    #[arg(long, short, default_value_t = HeadChunkSelection::Large)]
+    #[clap(value_enum)]
+    head_chunk: HeadChunkSelection,
     #[arg(long, short, value_name = "FILE")]
     tokenizer: Option<String>,
     #[arg(long, short, value_name = "LAYERS")]
@@ -364,16 +418,43 @@ struct Args {
     port: u16,
 }
 
+#[derive(Debug, Default, Clone, Copy, ValueEnum)]
+enum AdapterSelection {
+    Auto,
+    #[default]
+    Manual,
+}
+
+#[derive(Debug, Default, Clone, Copy, ValueEnum)]
+enum HeadChunkSelection {
+    Small,
+    Median,
+    #[default]
+    Large,
+}
+
+impl std::fmt::Display for HeadChunkSelection {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            HeadChunkSelection::Small => write!(f, "small (2048)"),
+            HeadChunkSelection::Median => write!(f, "median (4096)"),
+            HeadChunkSelection::Large => write!(f, "large (8192)"),
+        }
+    }
+}
+
 #[tokio::main]
-async fn main() -> Result<()> {
+async fn main() {
     simple_logger::SimpleLogger::new()
         .with_level(log::LevelFilter::Warn)
         .with_module_level("ai00_server", log::LevelFilter::Trace)
-        .init()?;
+        .init()
+        .unwrap();
 
     let args = Args::parse();
     let model_path = PathBuf::from(
         args.model
+            .clone()
             .unwrap_or("assets/models/RWKV-4-World-0.4B-v1-20230529-ctx4096.st".into()),
     );
     let model_name = model_path
@@ -386,32 +467,23 @@ async fn main() -> Result<()> {
 
     let tokenizer_path = PathBuf::from(
         args.tokenizer
+            .clone()
             .unwrap_or("assets/rwkv_vocab_v20230424.json".into()),
     );
 
+    let context = create_context(args.adapter).await.unwrap();
+    let tokenizer = load_tokenizer(&tokenizer_path).unwrap();
+
     let (sender, receiver) = flume::unbounded::<ThreadRequest>();
-    let env = create_environment(args.adaptor).await?;
-    let tokenizer = load_tokenizer(&tokenizer_path)?;
-
-    log::info!("{:#?}", env.adapter.get_info());
-
     {
-        let quantization = match args.quant {
-            None => Quantization::None,
-            Some(layer) => {
-                let mut layers = LayerFlags::empty();
-                (0..layer).for_each(|layer| layers |= LayerFlags::from_layer(layer as u64));
-                Quantization::Int8(layers)
-            }
-        };
-        let model = load_model(env.clone(), model_path, quantization)?;
+        let args = args.clone();
         let tokenizer = tokenizer.clone();
-        std::thread::spawn(move || model_task(model, tokenizer, receiver));
+        std::thread::spawn(move || model_task(args, context, tokenizer, model_path, receiver));
     }
 
-    let temp_dir = tempfile::tempdir()?;
+    let temp_dir = tempfile::tempdir().unwrap();
     let temp_path = temp_dir.into_path();
-    load_web("assets/www.zip", &temp_path)?;
+    load_web("assets/www.zip", &temp_path).unwrap();
 
     let app = Router::new()
         .route("/models", get(models::models))
@@ -433,8 +505,6 @@ async fn main() -> Result<()> {
     let addr = SocketAddr::from((args.ip.unwrap_or(Ipv4Addr::new(0, 0, 0, 0)), args.port));
     log::info!("server started at http://{addr}");
 
-    let listener = tokio::net::TcpListener::bind(addr).await?;
-    axum::serve(listener, app).await?;
-
-    Ok(())
+    let listener = tokio::net::TcpListener::bind(addr).await.unwrap();
+    axum::serve(listener, app).await.unwrap();
 }
