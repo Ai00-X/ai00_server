@@ -157,11 +157,17 @@ fn load_model(
     context: &Context,
     path: impl AsRef<Path>,
     quant: Quantization,
+    head_chunk: HeadChunkSelection,
 ) -> Result<Model<'_, '_>> {
     let file = File::open(path)?;
     let map = unsafe { Mmap::map(&file)? };
-    let model = ModelBuilder::new(context, &map).with_quant(quant).build()?;
-    Ok(model)
+    let model = ModelBuilder::new(context, &map).with_quant(quant);
+    let model = match head_chunk {
+        HeadChunkSelection::Small => model.with_head_chunk_size(2048),
+        HeadChunkSelection::Median => model.with_head_chunk_size(4096),
+        HeadChunkSelection::Large => model.with_head_chunk_size(8192),
+    };
+    model.build()
 }
 
 fn load_web<P: AsRef<Path>>(path: P, target: &Path) -> Result<()> {
@@ -204,20 +210,32 @@ fn load_web<P: AsRef<Path>>(path: P, target: &Path) -> Result<()> {
 // }
 
 fn model_task(
+    args: Args,
     context: Context,
-    path: impl AsRef<Path>,
-    quant: Quantization,
     tokenizer: Tokenizer,
+    path: impl AsRef<Path>,
     receiver: Receiver<ThreadRequest>,
 ) {
-    let model = match load_model(&context, path, quant) {
+    let quant = match args.quant {
+        None => Quantization::None,
+        Some(layer) => {
+            let mut layers = LayerFlags::empty();
+            (0..layer).for_each(|layer| layers |= LayerFlags::from_layer(layer as u64));
+            Quantization::Int8(layers)
+        }
+    };
+
+    let model = match load_model(&context, path, quant, args.head_chunk) {
         Ok(model) => model,
         Err(err) => {
             log::error!("{}", err);
             return;
         }
     };
+
+    log::info!("{:#?}", context.adapter.get_info());
     log::info!("{:#?}", model.info());
+    log::info!("chosen head chunk size: {}", args.head_chunk);
 
     let penalty_free_tokens = {
         let mut set = HashSet::new();
@@ -387,6 +405,9 @@ struct Args {
     adapter: AdapterSelection,
     #[arg(long, short, value_name = "FILE")]
     model: Option<String>,
+    #[arg(long, short, default_value_t = HeadChunkSelection::Large)]
+    #[clap(value_enum)]
+    head_chunk: HeadChunkSelection,
     #[arg(long, short, value_name = "FILE")]
     tokenizer: Option<String>,
     #[arg(long, short, value_name = "LAYERS")]
@@ -404,6 +425,24 @@ enum AdapterSelection {
     Manual,
 }
 
+#[derive(Debug, Default, Clone, Copy, ValueEnum)]
+enum HeadChunkSelection {
+    Small,
+    Median,
+    #[default]
+    Large,
+}
+
+impl std::fmt::Display for HeadChunkSelection {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            HeadChunkSelection::Small => write!(f, "small (2048)"),
+            HeadChunkSelection::Median => write!(f, "median (4096)"),
+            HeadChunkSelection::Large => write!(f, "large (8192)"),
+        }
+    }
+}
+
 #[tokio::main]
 async fn main() {
     simple_logger::SimpleLogger::new()
@@ -415,6 +454,7 @@ async fn main() {
     let args = Args::parse();
     let model_path = PathBuf::from(
         args.model
+            .clone()
             .unwrap_or("assets/models/RWKV-4-World-0.4B-v1-20230529-ctx4096.st".into()),
     );
     let model_name = model_path
@@ -427,26 +467,18 @@ async fn main() {
 
     let tokenizer_path = PathBuf::from(
         args.tokenizer
+            .clone()
             .unwrap_or("assets/rwkv_vocab_v20230424.json".into()),
     );
 
-    let (sender, receiver) = flume::unbounded::<ThreadRequest>();
     let context = create_context(args.adapter).await.unwrap();
     let tokenizer = load_tokenizer(&tokenizer_path).unwrap();
 
-    log::info!("{:#?}", context.adapter.get_info());
-
+    let (sender, receiver) = flume::unbounded::<ThreadRequest>();
     {
-        let quant = match args.quant {
-            None => Quantization::None,
-            Some(layer) => {
-                let mut layers = LayerFlags::empty();
-                (0..layer).for_each(|layer| layers |= LayerFlags::from_layer(layer as u64));
-                Quantization::Int8(layers)
-            }
-        };
+        let args = args.clone();
         let tokenizer = tokenizer.clone();
-        std::thread::spawn(move || model_task(context, model_path, quant, tokenizer, receiver));
+        std::thread::spawn(move || model_task(args, context, tokenizer, model_path, receiver));
     }
 
     let temp_dir = tempfile::tempdir().unwrap();
