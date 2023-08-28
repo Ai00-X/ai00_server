@@ -362,10 +362,7 @@ fn model_task(
         if embedding {
             let num_layer = model.info().num_layers;
             // let embedding = back.0[num_layer - 3][4 * num_emb..].to_vec();
-            let embedding = back
-                .state
-                .as_slice((.., 5 * (num_layer - 3) + 4, ..))?
-                .to_vec();
+            let embedding = back.as_slice((.., 5 * (num_layer - 3) + 4, ..))?.to_vec();
             let _ = token_sender.send(Token::Embed(embedding));
         }
 
