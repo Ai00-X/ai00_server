@@ -19,6 +19,8 @@
 
 ---
 
+<div align="left">
+    
 `AI00 RWKV Server` is an inference API server based on the [`RWKV` model](https://github.com/BlinkDL/ChatRWKV).
 
 It supports `VULKAN` inference acceleration and can run on all GPUs that support `VULKAN`. No need for Nvidia cards!!! AMD cards and even integrated graphics can be accelerated!!!
