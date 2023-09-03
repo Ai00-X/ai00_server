@@ -3,7 +3,9 @@
 <image src="docs/ai00.gif" />
     
 </p>
+
 <div align="center"> 
+    
 ![license](https://shields.io/badge/license-MIT%2FApache--2.0-blue)
 [![Rust Version](https://img.shields.io/badge/Rust-1.65.0+-blue)](https://releases.rs/docs/1.65.0)
 ![PRs welcome](https://img.shields.io/badge/PRs-Welcome-brightgreen)     
