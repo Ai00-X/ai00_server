@@ -1,18 +1,20 @@
 # 💯AI00 RWKV Server
 <p align='center'>
 <image src="docs/ai00.gif" />
+    
 </p>
 <div align="center"> 
+![license](https://shields.io/badge/license-MIT%2FApache--2.0-blue)
+[![Rust Version](https://img.shields.io/badge/Rust-1.65.0+-blue)](https://releases.rs/docs/1.65.0)
+![PRs welcome](https://img.shields.io/badge/PRs-Welcome-brightgreen)     
 <!-- ALL-CONTRIBUTORS-BADGE:START - Do not remove or modify this section --> 
 [![All Contributors](https://img.shields.io/badge/all_contributors-4-orange.svg?style=flat-square)](#contributors-) 
 <!-- ALL-CONTRIBUTORS-BADGE:END -->
 
-![license](https://shields.io/badge/license-MIT%2FApache--2.0-blue)
-[![Rust Version](https://img.shields.io/badge/Rust-1.65.0+-blue)](https://releases.rs/docs/1.65.0)
-![PRs welcome](https://img.shields.io/badge/PRs-Welcome-brightgreen) 
+
 
 [English](README.md) | [中文](README_zh.md)  | [日本語](README_jp.md)
-</div> 
+
 ---
 
 `AI00 RWKV Server` is an inference API server based on the [`RWKV` model](https://github.com/BlinkDL/ChatRWKV).
