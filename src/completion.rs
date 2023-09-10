@@ -7,12 +7,11 @@ use axum::{
     Json,
 };
 use futures_util::{Stream, StreamExt};
-use itertools::Itertools;
 use serde::{Deserialize, Serialize};
 
 use crate::{
     sampler::Sampler, FinishReason, GenerateRequest, OptionArray, ThreadRequest, ThreadState,
-    Token, TokenCounter, MAX_PENALTY_COUNT,
+    Token, TokenCounter, MAX_PENALTY_COUNT, ALPHA_DECAY
 };
 
 #[derive(Debug, Deserialize)]
@@ -109,8 +108,18 @@ async fn completions_one(
     let tokens = tokenizer
         .encode(request.prompt.as_bytes())
         .unwrap_or_default();
-    let occurrences = tokens.into_iter().rev().take(MAX_PENALTY_COUNT).counts();
-
+    let mut occurrences:HashMap<u16, f32> = HashMap::new();
+    for key in tokens.iter().take(MAX_PENALTY_COUNT) {
+        if occurrences.contains_key(key) {
+            occurrences.insert(*key, occurrences[key] + 1.0);
+        }
+        else {
+            occurrences.insert(*key, 1.0);
+        }
+        for (_, count) in occurrences.iter_mut() {
+            *count = *count * ALPHA_DECAY;
+        }
+    }
     let _ = sender.send(ThreadRequest::Generate {
         request,
         occurrences,
@@ -186,8 +195,18 @@ async fn completions_stream(
     let tokens = tokenizer
         .encode(request.prompt.as_bytes())
         .unwrap_or_default();
-    let occurrences = tokens.into_iter().rev().take(MAX_PENALTY_COUNT).counts();
-
+    let mut occurrences:HashMap<u16, f32> = HashMap::new();
+    for key in tokens.iter().take(MAX_PENALTY_COUNT) {
+        if occurrences.contains_key(key) {
+            occurrences.insert(*key, occurrences[key] + 1.0);
+        }
+        else {
+            occurrences.insert(*key, 1.0);
+        }
+        for (_, count) in occurrences.iter_mut() {
+            *count = *count * ALPHA_DECAY;
+        }
+    }
     let _ = sender.send(ThreadRequest::Generate {
         request,
         occurrences,

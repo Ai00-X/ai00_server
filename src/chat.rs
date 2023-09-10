@@ -12,7 +12,7 @@ use serde::{Deserialize, Serialize};
 
 use crate::{
     sampler::Sampler, FinishReason, GenerateRequest, OptionArray, ThreadRequest, ThreadState,
-    Token, TokenCounter, MAX_PENALTY_COUNT,
+    Token, TokenCounter, MAX_PENALTY_COUNT, ALPHA_DECAY
 };
 
 #[derive(Debug, Default, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
@@ -149,11 +149,18 @@ async fn chat_completions_one(
         .map(|record| record.content)
         .join("\n\n");
     let model_tokens = tokenizer.encode(model_text.as_bytes()).unwrap_or_default();
-    let occurrences = model_tokens
-        .into_iter()
-        .rev()
-        .take(MAX_PENALTY_COUNT)
-        .counts();
+    let mut occurrences:HashMap<u16, f32> = HashMap::new();
+    for key in model_tokens.iter().take(MAX_PENALTY_COUNT) {
+        if occurrences.contains_key(key) {
+            occurrences.insert(*key, occurrences[key] + 1.0);
+        }
+        else {
+            occurrences.insert(*key, 1.0);
+        }
+        for (_, count) in occurrences.iter_mut() {
+            *count = *count * ALPHA_DECAY;
+        }
+    }
     let request = request.into();
 
     let _ = sender.send(ThreadRequest::Generate {
@@ -237,11 +244,18 @@ async fn chat_completions_stream(
         .map(|record| record.content)
         .join("\n\n");
     let model_tokens = tokenizer.encode(model_text.as_bytes()).unwrap_or_default();
-    let occurrences = model_tokens
-        .into_iter()
-        .rev()
-        .take(MAX_PENALTY_COUNT)
-        .counts();
+    let mut occurrences:HashMap<u16, f32> = HashMap::new();
+    for key in model_tokens.iter().take(MAX_PENALTY_COUNT) {
+        if occurrences.contains_key(key) {
+            occurrences.insert(*key, occurrences[key] + 1.0);
+        }
+        else {
+            occurrences.insert(*key, 1.0);
+        }
+        for (_, count) in occurrences.iter_mut() {
+            *count = *count * ALPHA_DECAY;
+        }
+    }
     let request = request.into();
 
     let _ = sender.send(ThreadRequest::Generate {

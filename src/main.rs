@@ -38,6 +38,7 @@ use crate::sampler::Sampler;
 pub const MAX_TOKENS: usize = 4096;
 pub const MAX_PENALTY_COUNT: usize = 1024;
 pub const STATE_CACHE_LRU: usize = 16;
+pub const ALPHA_DECAY: f32 = 0.995;
 
 #[derive(Debug)]
 pub enum Token {
@@ -88,7 +89,7 @@ pub enum ThreadRequest {
     Reload(ReloadRequest),
     Generate {
         request: GenerateRequest,
-        occurrences: HashMap<u16, usize>,
+        occurrences: HashMap<u16, f32>,
         token_sender: flume::Sender<Token>,
     },
 }
@@ -313,13 +314,14 @@ fn model_task(
                 let mut logits = model
                     .run(&context.tensor_from_data(shape, tokens)?, &mask, &state)?
                     .to_vec();
-                for (&token, &count) in occurrences
-                    .iter()
+                for (&token, count) in occurrences
+                    .iter_mut()
                     .filter(|(token, _)| !penalty_free_tokens.contains(token))
                 {
                     let penalty =
-                        sampler.presence_penalty + sampler.frequency_penalty * count as f32;
+                        sampler.presence_penalty + sampler.frequency_penalty * *count;
                     logits[token as usize] -= penalty;
+                    *count = *count * ALPHA_DECAY;
                 }
                 for (&token, &bias) in &logit_bias {
                     logits[token as usize] += bias;
@@ -342,7 +344,7 @@ fn model_task(
                 token_counter.total_tokens += 1;
 
                 let count = occurrences.get(&token).copied().unwrap_or_default();
-                occurrences.insert(token, count + 1);
+                occurrences.insert(token, count + 1.0);
 
                 let _ = token_sender.send(Token::Token(word));
                 tokens = vec![token];
