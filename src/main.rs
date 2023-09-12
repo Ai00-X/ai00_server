@@ -318,8 +318,7 @@ fn model_task(
                     .iter_mut()
                     .filter(|(token, _)| !penalty_free_tokens.contains(token))
                 {
-                    let penalty =
-                        sampler.presence_penalty + sampler.frequency_penalty * *count;
+                    let penalty = sampler.presence_penalty + sampler.frequency_penalty * *count;
                     logits[token as usize] -= penalty;
                     *count = *count * ALPHA_DECAY;
                 }
