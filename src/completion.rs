@@ -7,12 +7,11 @@ use axum::{
     Json,
 };
 use futures_util::{Stream, StreamExt};
-use itertools::Itertools;
 use serde::{Deserialize, Serialize};
 
 use crate::{
     sampler::Sampler, FinishReason, GenerateRequest, OptionArray, ThreadRequest, ThreadState,
-    Token, TokenCounter, MAX_PENALTY_COUNT,
+    Token, TokenCounter,
 };
 
 #[derive(Debug, Deserialize)]
@@ -74,7 +73,7 @@ impl From<CompletionRequest> for GenerateRequest {
                 frequency_penalty,
             },
             logit_bias,
-            embedding: false,
+            ..Default::default()
         }
     }
 }
@@ -96,24 +95,15 @@ pub struct CompletionResponse {
 }
 
 async fn completions_one(
-    State(ThreadState {
-        sender,
-        model_name,
-        tokenizer,
-    }): State<ThreadState>,
+    State(ThreadState { sender, model_name }): State<ThreadState>,
     Json(request): Json<CompletionRequest>,
 ) -> Json<CompletionResponse> {
     let (token_sender, token_receiver) = flume::unbounded();
+    let model_name = model_name.read().unwrap().clone();
 
     let request = GenerateRequest::from(request);
-    let tokens = tokenizer
-        .encode(request.prompt.as_bytes())
-        .unwrap_or_default();
-    let occurrences = tokens.into_iter().rev().take(MAX_PENALTY_COUNT).counts();
-
     let _ = sender.send(ThreadRequest::Generate {
         request,
-        occurrences,
         token_sender,
     });
 
@@ -173,24 +163,15 @@ pub struct PartialCompletionResponse {
 }
 
 async fn completions_stream(
-    State(ThreadState {
-        sender,
-        model_name,
-        tokenizer,
-    }): State<ThreadState>,
+    State(ThreadState { sender, model_name }): State<ThreadState>,
     Json(request): Json<CompletionRequest>,
 ) -> Sse<impl Stream<Item = Result<Event>>> {
     let (token_sender, token_receiver) = flume::unbounded();
+    let model_name = model_name.read().unwrap().clone();
 
     let request = GenerateRequest::from(request);
-    let tokens = tokenizer
-        .encode(request.prompt.as_bytes())
-        .unwrap_or_default();
-    let occurrences = tokens.into_iter().rev().take(MAX_PENALTY_COUNT).counts();
-
     let _ = sender.send(ThreadRequest::Generate {
         request,
-        occurrences,
         token_sender,
     });
 
