@@ -1,13 +1,11 @@
 use std::{
-    borrow::Borrow,
-    collections::{HashMap, HashSet},
-    ffi::OsStr,
+    collections::HashMap,
     fs::File,
     io::{BufReader, Cursor, Read},
     net::{Ipv4Addr, SocketAddr},
     path::{Path, PathBuf},
-    str::FromStr,
     sync::{Arc, Mutex, RwLock},
+    time::Duration,
 };
 
 use anyhow::Result;
@@ -19,15 +17,19 @@ use clap::{Parser, ValueEnum};
 use dialoguer::{theme::ColorfulTheme, Select};
 use flume::Receiver;
 use memmap::Mmap;
-use qp_trie::Trie;
+use run::GenerateTask;
 use serde::{Deserialize, Serialize};
 use tower_http::{cors::CorsLayer, services::ServeDir};
 use web_rwkv::{
     context::{Context, ContextBuilder, Instance},
-    model::{BackedState, LayerFlags, Model, ModelBuilder, ModelInfo, ModelState, Quantization},
-    tensor::{shape::Shape, TensorCpu, TensorExt},
+    model::{LayerFlags, Model, ModelBuilder, ModelState, Quantization},
     tokenizer::Tokenizer,
     wgpu::PowerPreference,
+};
+
+use crate::{
+    run::{Runtime, Tokens},
+    sampler::Sampler,
 };
 
 mod chat;
@@ -36,8 +38,6 @@ mod embedding;
 mod models;
 mod run;
 mod sampler;
-
-use crate::{run::Runtime, sampler::Sampler};
 
 pub const MAX_TOKENS: usize = 4096;
 pub const MAX_PENALTY_COUNT: usize = 1024;
@@ -118,9 +118,9 @@ pub struct ReloadRequest {
     /// The chunk size for each split of the head matrix.
     pub head_chunk_size: usize,
     /// Maximum number of batches that are active at once.
-    pub max_batch: usize,
+    pub max_runtime_batch: usize,
     /// Number of states that are cached on GPU.
-    pub pool_size: usize,
+    pub max_batch: usize,
 }
 
 impl Default for ReloadRequest {
@@ -130,8 +130,8 @@ impl Default for ReloadRequest {
             quant: vec![],
             token_chunk_size: 32,
             head_chunk_size: 8192,
-            max_batch: 8,
-            pool_size: 32,
+            max_runtime_batch: 8,
+            max_batch: 32,
         }
     }
 }
@@ -183,7 +183,7 @@ fn load_tokenizer(path: &PathBuf) -> Result<Tokenizer> {
     Ok(Tokenizer::new(&contents)?)
 }
 
-fn load_model<'a>(context: &Context, request: &ReloadRequest) -> Result<Model<'a>> {
+fn load_model<'a>(context: &Context, request: ReloadRequest) -> Result<Model<'a>> {
     let ReloadRequest {
         path,
         quant,
@@ -196,8 +196,8 @@ fn load_model<'a>(context: &Context, request: &ReloadRequest) -> Result<Model<'a
     } else {
         let mut layers = LayerFlags::empty();
         quant
-            .iter()
-            .for_each(|x| layers.insert(LayerFlags::from_layer(*x as u64)));
+            .into_iter()
+            .for_each(|x| layers.insert(LayerFlags::from_layer(x as u64)));
         Quantization::Int8(layers)
     };
 
@@ -206,8 +206,8 @@ fn load_model<'a>(context: &Context, request: &ReloadRequest) -> Result<Model<'a
 
     ModelBuilder::new(context, &map)
         .with_quant(quant)
-        .with_token_chunk_size(*token_chunk_size)
-        .with_head_chunk_size(*head_chunk_size)
+        .with_token_chunk_size(token_chunk_size)
+        .with_head_chunk_size(head_chunk_size)
         .build()
 }
 
@@ -435,34 +435,90 @@ fn load_web<P: AsRef<Path>>(path: P, target: &Path) -> Result<()> {
 // }
 
 fn model_route(
-    args: Args,
     context: Context,
     tokenizer: Tokenizer,
     receiver: Receiver<ThreadRequest>,
 ) -> Result<()> {
     let runtime: Arc<Mutex<Option<Runtime>>> = Default::default();
+    let mut pending = Vec::new();
 
     {
         let runtime = runtime.clone();
+        let tokenizer = tokenizer.clone();
         std::thread::spawn(move || run::run(runtime, tokenizer));
     }
 
-    loop {
-        match receiver.recv().unwrap() {
-            ThreadRequest::Reload(request) => match load_model(&context, &request) {
-                Ok(model) => {
-                    let info = model.info();
-                    let state = ModelState::new(&context, info, request.pool_size);
-                    let mut runtime = runtime.lock().unwrap();
-                    let _ = runtime.replace(Runtime::new(model, state));
-                }
-                Err(err) => log::error!("{err}"),
+    let queue = |task| -> Vec<GenerateTask> {
+        let mut pending = Vec::new();
+        let mut runtime = runtime.lock().unwrap();
+        match &mut *runtime {
+            Some(runtime) => match runtime.queue(task) {
+                run::SlotResult::Success(batch) => log::info!("queued task at {batch}"),
+                run::SlotResult::Fault(batch) => log::info!("swapped task at {batch}"),
+                run::SlotResult::Failure(task) => pending.push(*task),
             },
-            ThreadRequest::Generate {
+            None => pending.push(task),
+        }
+        pending
+    };
+
+    let listen = |pending: &mut Vec<GenerateTask>| -> Result<()> {
+        match receiver.try_recv() {
+            Ok(ThreadRequest::Reload(request)) => {
+                let max_runtime_batch = request.max_runtime_batch;
+                let max_batch = request.max_batch;
+
+                let model = Arc::new(load_model(&context, request)?);
+                let info = model.info();
+                let state = ModelState::new(&context, info, max_batch);
+                let mut runtime = runtime.lock().unwrap();
+                let _ = runtime.replace(Runtime::new(model, state, max_runtime_batch));
+            }
+            Ok(ThreadRequest::Generate {
                 request,
                 token_sender,
-            } => todo!(),
+            }) => {
+                let GenerateRequest {
+                    prompt,
+                    model_text,
+                    max_tokens,
+                    stop,
+                    sampler,
+                    logit_bias,
+                    embed,
+                } = request;
+                let tokens = Tokens(tokenizer.encode(prompt.as_bytes())?);
+                let model_tokens = Tokens(tokenizer.encode(model_text.as_bytes())?);
+                let task = GenerateTask {
+                    prefix: Default::default(),
+                    suffix: tokens,
+                    model_tokens,
+                    max_tokens,
+                    stop,
+                    sampler,
+                    logit_bias,
+                    embed,
+                    sender: token_sender,
+                };
+                pending.append(&mut queue(task));
+            }
+            Err(_) => {}
         };
+        Ok(())
+    };
+
+    loop {
+        if let Err(err) = listen(&mut pending) {
+            log::error!("{err}");
+        }
+
+        let mut temp = Vec::new();
+        for task in pending.drain(..) {
+            temp.append(&mut queue(task));
+        }
+        std::mem::swap(&mut pending, &mut temp);
+
+        std::thread::sleep(Duration::from_micros(100))
     }
 }
 
@@ -543,6 +599,6 @@ async fn main() {
     let listener = tokio::net::TcpListener::bind(addr).await.unwrap();
     log::info!("server started at http://{addr}");
 
-    std::thread::spawn(move || model_route(args, context, tokenizer, receiver));
+    std::thread::spawn(move || model_route(context, tokenizer, receiver));
     axum::serve(listener, app).await.unwrap();
 }

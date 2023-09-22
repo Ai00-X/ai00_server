@@ -25,6 +25,7 @@ pub struct CompletionRequest {
     pub top_p: f32,
     pub presence_penalty: f32,
     pub frequency_penalty: f32,
+    pub penalty_decay: f32,
     pub logit_bias: HashMap<u16, f32>,
 }
 
@@ -39,6 +40,7 @@ impl Default for CompletionRequest {
             top_p: 1.0,
             presence_penalty: 0.0,
             frequency_penalty: 0.0,
+            penalty_decay: 1.0,
             logit_bias: HashMap::new(),
         }
     }
@@ -54,6 +56,7 @@ impl From<CompletionRequest> for GenerateRequest {
             top_p,
             presence_penalty,
             frequency_penalty,
+            penalty_decay,
             logit_bias,
             ..
         } = value;
@@ -71,6 +74,7 @@ impl From<CompletionRequest> for GenerateRequest {
                 top_p,
                 presence_penalty,
                 frequency_penalty,
+                penalty_decay,
             },
             logit_bias,
             ..Default::default()

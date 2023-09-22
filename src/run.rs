@@ -4,14 +4,19 @@ use std::{
     sync::{Arc, Mutex},
 };
 
-use flume::{Receiver, Sender};
+use anyhow::Result;
+use flume::Sender;
+use itertools::Itertools;
 use qp_trie::Trie;
+use rayon::prelude::{
+    IndexedParallelIterator, IntoParallelIterator, IntoParallelRefIterator, ParallelIterator,
+};
 use web_rwkv::{
     model::{BackedState, Model, ModelState},
     tokenizer::Tokenizer,
 };
 
-use crate::{sampler::Sampler, GenerateRequest, Token};
+use crate::{sampler::Sampler, Token};
 
 #[derive(Debug)]
 pub enum SlotResult {
@@ -20,30 +25,46 @@ pub enum SlotResult {
     /// An idle slot is swapped.
     Fault(usize),
     /// There is no idle slot left.
-    Failure(GenerateTask),
+    Failure(Box<GenerateTask>),
 }
 
 #[derive(Debug)]
 enum SlotState {
     /// The slot might be either picked up or swapped.
-    Idle(Vec<u16>),
+    Idle(Tokens),
     /// The slot is locked and is waiting for processing.
-    Wait(GenerateTask),
+    Wait(Box<GenerateTask>),
     /// The slot is currently under processing.
     Busy,
 }
 
 impl Default for SlotState {
     fn default() -> Self {
-        Self::Idle(Vec::default())
+        Self::Idle(Default::default())
     }
 }
 
-struct Tokens(Vec<u16>);
+#[repr(transparent)]
+#[derive(Debug, Default, Clone)]
+pub struct Tokens(pub Vec<u16>);
+
+impl std::ops::Deref for Tokens {
+    type Target = TokenSlice;
+
+    fn deref(&self) -> &Self::Target {
+        self.0.as_token_slice()
+    }
+}
 
 impl Borrow<[u8]> for Tokens {
     fn borrow(&self) -> &[u8] {
         bytemuck::cast_slice(&self.0)
+    }
+}
+
+impl Borrow<[u16]> for Tokens {
+    fn borrow(&self) -> &[u16] {
+        &self.0
     }
 }
 
@@ -66,7 +87,7 @@ impl qp_trie::Break for Tokens {
 }
 
 #[repr(transparent)]
-struct TokenSlice([u16]);
+pub struct TokenSlice([u16]);
 
 impl std::ops::Deref for TokenSlice {
     type Target = [u16];
@@ -88,7 +109,7 @@ impl Default for &TokenSlice {
     }
 }
 
-trait AsTokenSlice {
+pub trait AsTokenSlice {
     fn as_token_slice(&self) -> &TokenSlice;
 }
 
@@ -99,38 +120,45 @@ impl AsTokenSlice for [u16] {
     }
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct GenerateTask {
-    pub tokens: Vec<u16>,
+    /// Tokens that have been computed and cached.
+    pub prefix: Tokens,
+    /// Tokens to be computed.
+    pub suffix: Tokens,
+    /// Tokens that are output by the model, for calculating penalties.
+    pub model_tokens: Tokens,
+
     pub max_tokens: usize,
     pub stop: Vec<String>,
     pub sampler: Sampler,
-    pub occurrence: HashMap<u16, usize>,
     pub logit_bias: HashMap<u16, f32>,
     pub embed: bool,
     pub sender: Sender<Token>,
 }
 
 pub struct Runtime<'a> {
-    model: Model<'a>,
+    model: Arc<Model<'a>>,
     slots: Vec<SlotState>,
     state: ModelState,
     backed: Trie<Tokens, BackedState>,
+    max_runtime_batch: usize,
 }
 
 impl<'a> Runtime<'a> {
-    pub fn new(model: Model<'a>, state: ModelState) -> Self {
+    pub fn new(model: Arc<Model<'a>>, state: ModelState, max_runtime_batch: usize) -> Self {
         Self {
             model,
             slots: Default::default(),
             state,
             backed: Default::default(),
+            max_runtime_batch,
         }
     }
 
     /// Queue a generation task.
     pub fn queue(&mut self, task: GenerateTask) -> SlotResult {
-        let tokens = task.tokens;
+        let tokens = Tokens([task.prefix, task.suffix].concat());
         let choice = self
             .slots
             .iter()
@@ -147,17 +175,28 @@ impl<'a> Runtime<'a> {
             })
             .max_by(|(_, _, lhs), (_, _, rhs)| lhs.cmp(rhs));
         match choice {
-            None => SlotResult::Failure(GenerateTask { tokens, ..task }),
+            None => SlotResult::Failure(
+                GenerateTask {
+                    prefix: Default::default(),
+                    suffix: tokens,
+                    ..task
+                }
+                .into(),
+            ),
             Some((batch, false, _)) => {
-                let prefix = self.backed.longest_common_prefix(tokens.as_token_slice());
+                let prefix = self.backed.longest_common_prefix(&tokens);
                 let len = match self.backed.contains_key(prefix) {
                     true => prefix.len(),
                     false => 0,
                 };
-                let mut state = SlotState::Wait(GenerateTask {
-                    tokens: tokens[len..].to_vec(),
-                    ..task
-                });
+                let mut state = SlotState::Wait(
+                    GenerateTask {
+                        prefix: Tokens(tokens[..len].to_vec()),
+                        suffix: Tokens(tokens[len..].to_vec()),
+                        ..task
+                    }
+                    .into(),
+                );
 
                 let prefix = prefix.to_vec();
                 let reload = self
@@ -168,19 +207,23 @@ impl<'a> Runtime<'a> {
                 std::mem::swap(&mut state, &mut self.slots[batch]);
                 match state {
                     SlotState::Idle(content) => {
-                        let backed = self.state.back_batch(batch).unwrap();
-                        self.backed.insert(Tokens(content), backed);
-                        self.state.load_batch(&reload, batch).unwrap();
+                        let backed = self.state.back_batch(batch).expect("back state");
+                        self.backed.insert(content, backed);
+                        self.state.load_batch(&reload, batch).expect("load state");
                         SlotResult::Fault(batch)
                     }
                     _ => unreachable!(),
                 }
             }
             Some((id, true, len)) => {
-                let state = SlotState::Wait(GenerateTask {
-                    tokens: tokens[len..].to_vec(),
-                    ..task
-                });
+                let state = SlotState::Wait(
+                    GenerateTask {
+                        prefix: Tokens(tokens[..len].to_vec()),
+                        suffix: Tokens(tokens[len..].to_vec()),
+                        ..task
+                    }
+                    .into(),
+                );
                 let _ = std::mem::replace(&mut self.slots[id], state);
                 SlotResult::Success(id)
             }
@@ -197,4 +240,110 @@ pub fn run(runtime: Arc<Mutex<Option<Runtime>>>, tokenizer: Tokenizer) {
             word.contains('\n')
         })
         .collect::<HashSet<_>>();
+
+    let mut payload: Vec<Option<GenerateTask>> = Default::default();
+    let mut model: Option<Arc<Model>> = Default::default();
+    let mut state: Option<ModelState> = Default::default();
+
+    let mut process = || -> Result<()> {
+        // take data from some waiting slots
+        if let Some(runtime) = &mut *runtime.lock().unwrap() {
+            payload.resize(runtime.slots.len(), None);
+            model.replace(runtime.model.clone());
+            state.replace(runtime.state.clone());
+
+            let occupied = payload.iter().filter(|x| x.is_some()).count();
+            let remain = runtime.max_runtime_batch - runtime.max_runtime_batch.min(occupied);
+            let batches = runtime
+                .slots
+                .iter()
+                .enumerate()
+                .filter(|(_, slot)| matches!(slot, SlotState::Wait(_)))
+                .take(remain)
+                .map(|(batch, _)| batch)
+                .collect_vec();
+            for batch in batches {
+                let mut slot = SlotState::Busy;
+                std::mem::swap(&mut runtime.slots[batch], &mut slot);
+                match slot {
+                    SlotState::Wait(task) => payload[batch].replace(*task),
+                    _ => unreachable!(),
+                };
+            }
+        }
+
+        if let (Some(model), Some(state)) = (&model, &state) {
+            let mut tokens = payload
+                .iter()
+                .map(|task| match task {
+                    Some(task) => task.suffix.0.clone(),
+                    None => vec![],
+                })
+                .collect_vec();
+
+            let eliminate = |(task, x): (_, Vec<_>)| match x.len() {
+                0 => (task, None),
+                _ => (task, Some(x)),
+            };
+
+            let logits = model.run(&mut tokens, state)?;
+            let logits =
+                payload
+                    .par_iter()
+                    .zip_eq(logits.into_par_iter())
+                    .map(|(task, x)| (task.as_ref(), x))
+                    .map(eliminate)
+                    .map(|(task, logits)| {
+                        task.zip(logits).map(|(task, mut logits)| {
+                            let mut occurrence: HashMap<u16, f32> = HashMap::new();
+                            task.model_tokens.iter().rev().enumerate().for_each(
+                                |(index, token)| {
+                                    let ap = task.sampler.presence_penalty;
+                                    let af = task.sampler.frequency_penalty;
+                                    let ad = task.sampler.penalty_decay;
+                                    let mut penalty = occurrence.remove(token).unwrap_or(ap);
+                                    penalty += af * ad.powf(index as f32);
+                                    occurrence.insert(*token, penalty);
+                                },
+                            );
+                            occurrence
+                                .into_iter()
+                                .filter(|(token, _)| !penalty_free_tokens.contains(token))
+                                .for_each(|(token, penalty)| logits[token as usize] -= penalty);
+                            task.logit_bias
+                                .iter()
+                                .for_each(|(token, bias)| logits[*token as usize] += *bias);
+                            logits
+                        })
+                    })
+                    .map(|x| x.unwrap_or(vec![]))
+                    .collect::<Vec<_>>();
+
+            let probs = model.softmax(logits)?;
+            let output_tokens = payload
+                .par_iter()
+                .zip_eq(probs.into_par_iter())
+                .map(|(task, x)| (task.as_ref(), x))
+                .map(eliminate)
+                .map(|(task, probs)| {
+                    task.zip(probs)
+                        .map(|(task, probs)| task.sampler.sample(probs))
+                })
+                .collect::<Vec<_>>();
+            for (batch, token) in output_tokens.into_iter().enumerate() {
+                if let Some(token) = token {
+                    tokens[batch].push(token);
+                    todo!();
+                }
+            }
+        }
+
+        Ok(())
+    };
+
+    loop {
+        if let Err(err) = process() {
+            log::error!("{err}");
+        }
+    }
 }

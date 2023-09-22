@@ -31,6 +31,7 @@ fastrand = "2"
 itertools = "0.11"
 flume = "0.10"
 futures-util = "0.3"
+rayon = "1.8"
 anyhow = "1"
 log = "0.4"
 simple_logger = { version = "4.2", features = ["stderr"] }
