@@ -16,7 +16,7 @@ use web_rwkv::{
     tokenizer::Tokenizer,
 };
 
-use crate::{sampler::Sampler, Token, TokenCounter};
+use crate::{sampler::Sampler, FinishReason, Token, TokenCounter};
 
 #[derive(Debug)]
 pub enum SlotResult {
@@ -386,36 +386,26 @@ pub fn run(runtime: Arc<Mutex<Option<Runtime>>>, tokenizer: Tokenizer) {
                         }
 
                         let model_text = String::from_utf8_lossy(&context.model_text);
+                        let count_tokens = || {
+                            let prompt_tokens = context.prompt_tokens.len();
+                            let completion_tokens = context.model_tokens.len();
+                            let total_tokens = prompt_tokens + completion_tokens;
+                            TokenCounter {
+                                prompt_tokens,
+                                completion_tokens,
+                                total_tokens,
+                            }
+                        };
+                        let mut finish = |reason| {
+                            let _ = context.sender.send(Token::Stop(reason, count_tokens()));
+                            let _ = context.sender.send(Token::Done);
+                            finished = true;
+                        };
+
                         if context.stop.iter().any(|stop| model_text.contains(stop)) {
-                            let prompt_tokens = context.prompt_tokens.len();
-                            let completion_tokens = context.model_tokens.len();
-                            let total_tokens = prompt_tokens + completion_tokens;
-
-                            let _ = context.sender.send(Token::Stop(
-                                crate::FinishReason::Stop,
-                                TokenCounter {
-                                    prompt_tokens,
-                                    completion_tokens,
-                                    total_tokens,
-                                },
-                            ));
-                            let _ = context.sender.send(Token::Done);
-                            finished = true;
-                        } else if model_tokens.len() > context.max_tokens {
-                            let prompt_tokens = context.prompt_tokens.len();
-                            let completion_tokens = context.model_tokens.len();
-                            let total_tokens = prompt_tokens + completion_tokens;
-
-                            let _ = context.sender.send(Token::Stop(
-                                crate::FinishReason::Length,
-                                TokenCounter {
-                                    prompt_tokens,
-                                    completion_tokens,
-                                    total_tokens,
-                                },
-                            ));
-                            let _ = context.sender.send(Token::Done);
-                            finished = true;
+                            finish(FinishReason::Stop);
+                        } else if context.model_tokens.len() >= context.max_tokens {
+                            finish(FinishReason::Length);
                         }
                     }
                 }
