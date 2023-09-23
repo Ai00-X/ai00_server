@@ -37,6 +37,7 @@ log = "0.4"
 simple_logger = { version = "4.2", features = ["stderr"] }
 zip-extract = "0.1"
 tempfile = "3.6"
+toml = "0.7"
 
 [profile.release]
 lto = true

@@ -175,7 +175,7 @@ async fn create_context(args: &Args) -> Result<Context> {
     Ok(context)
 }
 
-fn load_tokenizer(path: &PathBuf) -> Result<Tokenizer> {
+fn load_tokenizer(path: impl AsRef<Path>) -> Result<Tokenizer> {
     let file = File::open(path)?;
     let mut reader = BufReader::new(file);
     let mut contents = String::new();
@@ -211,11 +211,19 @@ fn load_model<'a>(context: &Context, request: ReloadRequest) -> Result<Model<'a>
         .build()
 }
 
-fn load_web<P: AsRef<Path>>(path: P, target: &Path) -> Result<()> {
+fn load_web(path: impl AsRef<Path>, target: &Path) -> Result<()> {
     let file = File::open(path)?;
     let map = unsafe { Mmap::map(&file)? };
     zip_extract::extract(Cursor::new(&map), target, false)?;
     Ok(())
+}
+
+fn reload_request_from_config(path: impl AsRef<Path>) -> Result<ReloadRequest> {
+    let file = File::open(path)?;
+    let mut reader = BufReader::new(file);
+    let mut contents = String::new();
+    reader.read_to_string(&mut contents)?;
+    Ok(toml::from_str(&contents)?)
 }
 
 // fn _monitor(context: &Context, tokenizer: Tokenizer, receiver: Receiver<ThreadRequest>) {
@@ -546,7 +554,9 @@ struct Args {
     #[arg(long, short)]
     adapter_id: Option<usize>,
     #[arg(long, short, value_name = "FILE")]
-    tokenizer: Option<String>,
+    tokenizer: Option<PathBuf>,
+    #[arg(long, short, value_name = "FILE")]
+    model: Option<PathBuf>,
     #[arg(long, short)]
     ip: Option<Ipv4Addr>,
     #[arg(long, short, default_value_t = 65530)]
@@ -577,17 +587,22 @@ async fn main() {
     //     .map(|name| name.replace(".st", ""))
     //     .unwrap();
 
-    let tokenizer_path = PathBuf::from(
-        args.tokenizer
-            .clone()
-            .unwrap_or("assets/rwkv_vocab_v20230424.json".into()),
-    );
+    let tokenizer_path = args
+        .tokenizer
+        .clone()
+        .unwrap_or("assets/rwkv_vocab_v20230424.json".into());
 
     let context = create_context(&args).await.unwrap();
     let tokenizer = load_tokenizer(&tokenizer_path).unwrap();
     log::info!("{:#?}", context.adapter.get_info());
 
     let (sender, receiver) = flume::unbounded::<ThreadRequest>();
+
+    if let Some(path) = &args.model {
+        let request = reload_request_from_config(path).expect("load model config failed");
+        let _ = sender.send(ThreadRequest::Reload(request));
+        log::info!("loaded model config {}", path.to_string_lossy());
+    }
 
     let temp_dir = tempfile::tempdir().unwrap();
     let temp_path = temp_dir.into_path();
