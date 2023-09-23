@@ -16,7 +16,7 @@ use web_rwkv::{
     tokenizer::Tokenizer,
 };
 
-use crate::{sampler::Sampler, Token};
+use crate::{sampler::Sampler, Token, TokenCounter};
 
 #[derive(Debug)]
 pub enum SlotResult {
@@ -25,7 +25,7 @@ pub enum SlotResult {
     /// An idle slot is swapped.
     Fault(usize),
     /// There is no idle slot left.
-    Failure(Box<GenerateTask>),
+    Failure(Box<GenerateContext>),
 }
 
 #[derive(Debug)]
@@ -33,7 +33,7 @@ enum SlotState {
     /// The slot might be either picked up or swapped.
     Idle(Tokens),
     /// The slot is locked and is waiting for processing.
-    Wait(Box<GenerateTask>),
+    Wait(Box<GenerateContext>),
     /// The slot is currently under processing.
     Busy,
 }
@@ -68,7 +68,7 @@ impl Borrow<[u16]> for Tokens {
     }
 }
 
-impl<'a> Borrow<TokenSlice> for Tokens {
+impl Borrow<TokenSlice> for Tokens {
     fn borrow(&self) -> &TokenSlice {
         self.0[..].as_token_slice()
     }
@@ -121,13 +121,21 @@ impl AsTokenSlice for [u16] {
 }
 
 #[derive(Debug, Clone)]
-pub struct GenerateTask {
+pub struct GenerateContext {
+    /// Tokens that are provided at first.
+    pub prompt_tokens: Vec<u16>,
     /// Tokens that have been computed and cached.
     pub prefix: Tokens,
     /// Tokens to be computed.
     pub suffix: Tokens,
-    /// Tokens that are output by the model, for calculating penalties.
-    pub model_tokens: Tokens,
+    /// The accumulated penalties for model-output tokens.
+    pub penalties: HashMap<u16, f32>,
+    /// Texts that are output by the model.
+    pub model_text: Vec<u8>,
+    /// Model may output partial utf-8. This makes sure the output is always valid.
+    pub output_buffer: Vec<u8>,
+    /// Tokens that are output by the model.
+    pub model_tokens: Vec<u16>,
 
     pub max_tokens: usize,
     pub stop: Vec<String>,
@@ -157,15 +165,15 @@ impl<'a> Runtime<'a> {
     }
 
     /// Queue a generation task.
-    pub fn queue(&mut self, task: GenerateTask) -> SlotResult {
-        let tokens = Tokens([task.prefix, task.suffix].concat());
+    pub fn queue(&mut self, context: GenerateContext) -> SlotResult {
+        let tokens = Tokens([context.prefix, context.suffix].concat());
         let choice = self
             .slots
             .iter()
             .enumerate()
             .filter_map(|(index, slot)| match slot {
                 SlotState::Idle(content) => {
-                    if tokens.starts_with(&content) {
+                    if tokens.starts_with(content) {
                         Some((index, true, content.len()))
                     } else {
                         Some((index, false, 0))
@@ -176,10 +184,10 @@ impl<'a> Runtime<'a> {
             .max_by(|(_, _, lhs), (_, _, rhs)| lhs.cmp(rhs));
         match choice {
             None => SlotResult::Failure(
-                GenerateTask {
+                GenerateContext {
                     prefix: Default::default(),
                     suffix: tokens,
-                    ..task
+                    ..context
                 }
                 .into(),
             ),
@@ -190,10 +198,10 @@ impl<'a> Runtime<'a> {
                     false => 0,
                 };
                 let mut state = SlotState::Wait(
-                    GenerateTask {
+                    GenerateContext {
                         prefix: Tokens(tokens[..len].to_vec()),
                         suffix: Tokens(tokens[len..].to_vec()),
-                        ..task
+                        ..context
                     }
                     .into(),
                 );
@@ -217,10 +225,10 @@ impl<'a> Runtime<'a> {
             }
             Some((id, true, len)) => {
                 let state = SlotState::Wait(
-                    GenerateTask {
+                    GenerateContext {
                         prefix: Tokens(tokens[..len].to_vec()),
                         suffix: Tokens(tokens[len..].to_vec()),
-                        ..task
+                        ..context
                     }
                     .into(),
                 );
@@ -233,7 +241,6 @@ impl<'a> Runtime<'a> {
 
 pub fn run(runtime: Arc<Mutex<Option<Runtime>>>, tokenizer: Tokenizer) {
     let penalty_free_tokens = (0..u16::MAX)
-        .into_iter()
         .filter(|token| {
             let word = tokenizer.decode(&[*token]).unwrap_or_default();
             let word = String::from_utf8(word).unwrap_or_default();
@@ -241,17 +248,20 @@ pub fn run(runtime: Arc<Mutex<Option<Runtime>>>, tokenizer: Tokenizer) {
         })
         .collect::<HashSet<_>>();
 
-    let mut payload: Vec<Option<GenerateTask>> = Default::default();
+    let mut payload: Vec<Option<Box<GenerateContext>>> = Default::default();
+    let mut done: Vec<Option<Box<GenerateContext>>> = Default::default();
+
     let mut model: Option<Arc<Model>> = Default::default();
     let mut state: Option<ModelState> = Default::default();
 
     let mut process = || -> Result<()> {
-        // take data from some waiting slots
         if let Some(runtime) = &mut *runtime.lock().unwrap() {
             payload.resize(runtime.slots.len(), None);
+            done.resize(runtime.slots.len(), None);
             model.replace(runtime.model.clone());
             state.replace(runtime.state.clone());
 
+            // take data from some waiting slots
             let occupied = payload.iter().filter(|x| x.is_some()).count();
             let remain = runtime.max_runtime_batch - runtime.max_runtime_batch.min(occupied);
             let batches = runtime
@@ -266,74 +276,152 @@ pub fn run(runtime: Arc<Mutex<Option<Runtime>>>, tokenizer: Tokenizer) {
                 let mut slot = SlotState::Busy;
                 std::mem::swap(&mut runtime.slots[batch], &mut slot);
                 match slot {
-                    SlotState::Wait(task) => payload[batch].replace(*task),
+                    SlotState::Wait(context) => {
+                        let _ = context.sender.send(Token::Start);
+                        payload[batch].replace(context)
+                    }
                     _ => unreachable!(),
                 };
+            }
+
+            // reset all finished slots to idle
+            for (done, slot) in done.iter_mut().zip_eq(runtime.slots.iter_mut()) {
+                if let Some(done) = done.take() {
+                    assert!(matches!(slot, SlotState::Busy));
+                    *slot = SlotState::Idle(done.prefix);
+                }
             }
         }
 
         if let (Some(model), Some(state)) = (&model, &state) {
             let mut tokens = payload
                 .iter()
-                .map(|task| match task {
-                    Some(task) => task.suffix.0.clone(),
+                .map(|context| match context {
+                    Some(context) => context.suffix.0.clone(),
                     None => vec![],
                 })
                 .collect_vec();
 
-            let eliminate = |(task, x): (_, Vec<_>)| match x.len() {
-                0 => (task, None),
-                _ => (task, Some(x)),
+            // run the model until there is at least one slot finished
+            let logits = loop {
+                let logits = model.run(&mut tokens, state)?;
+                if logits.iter().any(Option::is_some) {
+                    break logits;
+                }
             };
-
-            let logits = model.run(&mut tokens, state)?;
-            let logits =
-                payload
-                    .par_iter()
-                    .zip_eq(logits.into_par_iter())
-                    .map(|(task, x)| (task.as_ref(), x))
-                    .map(eliminate)
-                    .map(|(task, logits)| {
-                        task.zip(logits).map(|(task, mut logits)| {
-                            let mut occurrence: HashMap<u16, f32> = HashMap::new();
-                            task.model_tokens.iter().rev().enumerate().for_each(
-                                |(index, token)| {
-                                    let ap = task.sampler.presence_penalty;
-                                    let af = task.sampler.frequency_penalty;
-                                    let ad = task.sampler.penalty_decay;
-                                    let mut penalty = occurrence.remove(token).unwrap_or(ap);
-                                    penalty += af * ad.powf(index as f32);
-                                    occurrence.insert(*token, penalty);
-                                },
-                            );
-                            occurrence
-                                .into_iter()
-                                .filter(|(token, _)| !penalty_free_tokens.contains(token))
-                                .for_each(|(token, penalty)| logits[token as usize] -= penalty);
-                            task.logit_bias
-                                .iter()
-                                .for_each(|(token, bias)| logits[*token as usize] += *bias);
-                            logits
-                        })
+            // post-process logits
+            let logits = payload
+                .par_iter()
+                .zip_eq(logits.into_par_iter())
+                .map(|(context, x)| (context.as_ref(), x))
+                .map(|(context, logits)| {
+                    context.zip(logits).map(|(context, mut logits)| {
+                        context
+                            .penalties
+                            .iter()
+                            .filter(|(token, _)| !penalty_free_tokens.contains(token))
+                            .for_each(|(token, penalty)| logits[*token as usize] -= penalty);
+                        context
+                            .logit_bias
+                            .iter()
+                            .for_each(|(token, bias)| logits[*token as usize] += *bias);
+                        logits
                     })
-                    .map(|x| x.unwrap_or(vec![]))
-                    .collect::<Vec<_>>();
+                })
+                .collect::<Vec<_>>();
 
             let probs = model.softmax(logits)?;
             let output_tokens = payload
                 .par_iter()
                 .zip_eq(probs.into_par_iter())
-                .map(|(task, x)| (task.as_ref(), x))
-                .map(eliminate)
-                .map(|(task, probs)| {
-                    task.zip(probs)
-                        .map(|(task, probs)| task.sampler.sample(probs))
+                .map(|(context, x)| (context.as_ref(), x))
+                .map(|(context, probs)| {
+                    context
+                        .zip(probs)
+                        .map(|(context, probs)| context.sampler.sample(probs))
                 })
                 .collect::<Vec<_>>();
-            for (batch, token) in output_tokens.into_iter().enumerate() {
-                if let Some(token) = token {
-                    tokens[batch].push(token);
-                    todo!();
+
+            for (context, done, token, tokens) in itertools::multizip((
+                payload.iter_mut(),
+                done.iter_mut(),
+                output_tokens.into_iter(),
+                tokens.into_iter(),
+            )) {
+                let mut finished = false;
+
+                if let Some(context) = context {
+                    let prefix = std::mem::take(&mut context.prefix);
+                    let suffix = std::mem::take(&mut context.suffix);
+                    let model_tokens = [prefix.0, suffix.0].concat();
+
+                    // compute new prefix and suffix using the current remaining tokens
+                    assert!(model_tokens.len() >= tokens.len());
+                    let len = model_tokens.len() - tokens.len();
+                    context.prefix = Tokens(model_tokens[..len].to_vec());
+                    context.suffix = Tokens(model_tokens[len..].to_vec());
+                    context
+                        .penalties
+                        .iter_mut()
+                        .for_each(|(_, penalty)| *penalty *= context.sampler.penalty_decay);
+
+                    if let Some(token) = token {
+                        assert_eq!(context.suffix.len(), 0);
+                        context.suffix.0.push(token);
+
+                        let penalty = match context.penalties.get(&token) {
+                            Some(penalty) => penalty + context.sampler.frequency_penalty,
+                            None => context.sampler.presence_penalty,
+                        };
+                        context.penalties.insert(token, penalty);
+
+                        let mut word = tokenizer.decode(&[token])?;
+                        context.model_text.append(&mut word.clone());
+                        context.output_buffer.append(&mut word);
+                        context.model_tokens.push(token);
+
+                        if let Ok(word) = String::from_utf8(context.output_buffer.clone()) {
+                            let _ = context.sender.send(Token::Token(word));
+                            context.output_buffer.clear();
+                        }
+
+                        let model_text = String::from_utf8_lossy(&context.model_text);
+                        if context.stop.iter().any(|stop| model_text.contains(stop)) {
+                            let prompt_tokens = context.prompt_tokens.len();
+                            let completion_tokens = context.model_tokens.len();
+                            let total_tokens = prompt_tokens + completion_tokens;
+
+                            let _ = context.sender.send(Token::Stop(
+                                crate::FinishReason::Stop,
+                                TokenCounter {
+                                    prompt_tokens,
+                                    completion_tokens,
+                                    total_tokens,
+                                },
+                            ));
+                            let _ = context.sender.send(Token::Done);
+                            finished = true;
+                        } else if model_tokens.len() > context.max_tokens {
+                            let prompt_tokens = context.prompt_tokens.len();
+                            let completion_tokens = context.model_tokens.len();
+                            let total_tokens = prompt_tokens + completion_tokens;
+
+                            let _ = context.sender.send(Token::Stop(
+                                crate::FinishReason::Length,
+                                TokenCounter {
+                                    prompt_tokens,
+                                    completion_tokens,
+                                    total_tokens,
+                                },
+                            ));
+                            let _ = context.sender.send(Token::Done);
+                            finished = true;
+                        }
+                    }
+                }
+
+                if finished {
+                    std::mem::swap(context, done);
                 }
             }
         }

@@ -17,7 +17,7 @@ use clap::{Parser, ValueEnum};
 use dialoguer::{theme::ColorfulTheme, Select};
 use flume::Receiver;
 use memmap::Mmap;
-use run::GenerateTask;
+use run::GenerateContext;
 use serde::{Deserialize, Serialize};
 use tower_http::{cors::CorsLayer, services::ServeDir};
 use web_rwkv::{
@@ -448,21 +448,21 @@ fn model_route(
         std::thread::spawn(move || run::run(runtime, tokenizer));
     }
 
-    let queue = |task| -> Vec<GenerateTask> {
+    let queue = |context| -> Vec<GenerateContext> {
         let mut pending = Vec::new();
         let mut runtime = runtime.lock().unwrap();
         match &mut *runtime {
-            Some(runtime) => match runtime.queue(task) {
+            Some(runtime) => match runtime.queue(context) {
                 run::SlotResult::Success(batch) => log::info!("queued task at {batch}"),
                 run::SlotResult::Fault(batch) => log::info!("swapped task at {batch}"),
-                run::SlotResult::Failure(task) => pending.push(*task),
+                run::SlotResult::Failure(context) => pending.push(*context),
             },
-            None => pending.push(task),
+            None => pending.push(context),
         }
         pending
     };
 
-    let listen = |pending: &mut Vec<GenerateTask>| -> Result<()> {
+    let listen = |pending: &mut Vec<GenerateContext>| -> Result<()> {
         match receiver.try_recv() {
             Ok(ThreadRequest::Reload(request)) => {
                 let max_runtime_batch = request.max_runtime_batch;
@@ -487,12 +487,27 @@ fn model_route(
                     logit_bias,
                     embed,
                 } = request;
+
                 let tokens = Tokens(tokenizer.encode(prompt.as_bytes())?);
                 let model_tokens = Tokens(tokenizer.encode(model_text.as_bytes())?);
-                let task = GenerateTask {
+                let mut penalties = HashMap::new();
+                for (index, token) in model_tokens.iter().rev().enumerate() {
+                    let ap = sampler.presence_penalty;
+                    let af = sampler.frequency_penalty;
+                    let ad = sampler.penalty_decay;
+                    let mut penalty = penalties.remove(token).unwrap_or(ap);
+                    penalty += af * ad.powf(index as f32);
+                    penalties.insert(*token, penalty);
+                }
+
+                let context = GenerateContext {
+                    prompt_tokens: tokens.to_vec(),
                     prefix: Default::default(),
                     suffix: tokens,
-                    model_tokens,
+                    penalties,
+                    model_text: Default::default(),
+                    output_buffer: Default::default(),
+                    model_tokens: Default::default(),
                     max_tokens,
                     stop,
                     sampler,
@@ -500,7 +515,7 @@ fn model_route(
                     embed,
                     sender: token_sender,
                 };
-                pending.append(&mut queue(task));
+                pending.append(&mut queue(context));
             }
             Err(_) => {}
         };
@@ -513,8 +528,8 @@ fn model_route(
         }
 
         let mut temp = Vec::new();
-        for task in pending.drain(..) {
-            temp.append(&mut queue(task));
+        for context in pending.drain(..) {
+            temp.append(&mut queue(context));
         }
         std::mem::swap(&mut pending, &mut temp);
 
