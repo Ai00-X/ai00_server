@@ -2,6 +2,7 @@ use std::{
     borrow::Borrow,
     collections::{HashMap, HashSet},
     sync::{Arc, Mutex},
+    time::Instant,
 };
 
 use anyhow::Result;
@@ -31,7 +32,7 @@ pub enum SlotResult {
 #[derive(Debug)]
 enum SlotState {
     /// The slot might be either picked up or swapped.
-    Idle(Tokens),
+    Idle(Tokens, Instant),
     /// The slot is locked and is waiting for processing.
     Wait(Box<GenerateContext>),
     /// The slot is currently under processing.
@@ -40,7 +41,7 @@ enum SlotState {
 
 impl Default for SlotState {
     fn default() -> Self {
-        Self::Idle(Default::default())
+        Self::Idle(Default::default(), Instant::now())
     }
 }
 
@@ -118,7 +119,7 @@ impl qp_trie::Break for Tokens {
     }
 
     fn find_break(&self, loc: usize) -> &Self::Split {
-        self.0[..loc].as_token_slice()
+        self.0[..loc >> 1].as_token_slice()
     }
 }
 
@@ -212,16 +213,13 @@ impl<'a> Runtime<'a> {
             .iter()
             .enumerate()
             .filter_map(|(index, slot)| match slot {
-                SlotState::Idle(content) => {
-                    if tokens.starts_with(content) {
-                        Some((index, true, content.len()))
-                    } else {
-                        Some((index, false, 0))
-                    }
-                }
+                SlotState::Idle(content, time) => match tokens.starts_with(content) {
+                    true => Some((index, true, content.len(), time.elapsed().as_micros())),
+                    false => Some((index, false, 0, time.elapsed().as_micros())),
+                },
                 _ => None,
             })
-            .max_by(|(_, _, lhs), (_, _, rhs)| lhs.cmp(rhs));
+            .max_by(|&lhs, &rhs| lhs.2.cmp(&rhs.2).then(lhs.3.cmp(&rhs.3)));
         match choice {
             None => SlotResult::Failure(
                 GenerateContext {
@@ -231,7 +229,7 @@ impl<'a> Runtime<'a> {
                 }
                 .into(),
             ),
-            Some((batch, false, _)) => {
+            Some((batch, false, _, _)) => {
                 let prefix = self.backed.longest_common_prefix(&tokens);
                 let len = match self.backed.contains_key(prefix) {
                     true => prefix.len(),
@@ -254,7 +252,7 @@ impl<'a> Runtime<'a> {
 
                 std::mem::swap(&mut state, &mut self.slots[batch]);
                 match state {
-                    SlotState::Idle(content) => {
+                    SlotState::Idle(content, _) => {
                         let backed = self.state.back_batch(batch).expect("back state");
                         self.backed.insert(content, backed);
                         self.state.load_batch(&reload, batch).expect("load state");
@@ -263,7 +261,7 @@ impl<'a> Runtime<'a> {
                     _ => unreachable!(),
                 }
             }
-            Some((id, true, len)) => {
+            Some((id, true, len, _)) => {
                 let state = SlotState::Wait(
                     GenerateContext {
                         prefix: Tokens(tokens[..len].to_vec()),
@@ -313,7 +311,7 @@ pub fn run(runtime: Arc<Mutex<Option<Runtime>>>, tokenizer: Tokenizer) {
             for (payload, slot) in payloads.iter_mut().zip_eq(runtime.slots.iter_mut()) {
                 if let Some(context) = payload.take() {
                     assert!(matches!(slot, SlotState::Busy));
-                    *slot = SlotState::Idle(context.prefix);
+                    *slot = SlotState::Idle(context.prefix, Instant::now());
                 }
             }
 
