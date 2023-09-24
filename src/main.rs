@@ -17,7 +17,6 @@ use clap::{Parser, ValueEnum};
 use dialoguer::{theme::ColorfulTheme, Select};
 use flume::Receiver;
 use memmap::Mmap;
-use run::GenerateContext;
 use serde::{Deserialize, Serialize};
 use tower_http::{cors::CorsLayer, services::ServeDir};
 use web_rwkv::{
@@ -28,7 +27,7 @@ use web_rwkv::{
 };
 
 use crate::{
-    run::{Runtime, Tokens},
+    run::{GenerateContext, Runtime, SlotResult, Tokens},
     sampler::Sampler,
 };
 
@@ -461,9 +460,9 @@ fn model_route(
         let mut runtime = runtime.lock().unwrap();
         match &mut *runtime {
             Some(runtime) => match runtime.queue(context) {
-                run::SlotResult::Success(batch) => log::info!("queued task at {batch}"),
-                run::SlotResult::Fault(batch) => log::info!("swapped task at {batch}"),
-                run::SlotResult::Failure(context) => pending.push(*context),
+                SlotResult::Success(batch) => log::info!("queued task at {batch}"),
+                SlotResult::Fault(batch) => log::info!("swapped task at {batch}"),
+                SlotResult::Failure(context) => pending.push(*context),
             },
             None => pending.push(context),
         }
@@ -551,7 +550,7 @@ struct Args {
     #[arg(long, short, default_value_t = AdapterOption::Manual)]
     #[clap(value_enum)]
     adapter: AdapterOption,
-    #[arg(long, short)]
+    #[arg(long)]
     adapter_id: Option<usize>,
     #[arg(long, short, value_name = "FILE")]
     tokenizer: Option<PathBuf>,

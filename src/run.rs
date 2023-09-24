@@ -44,6 +44,42 @@ impl Default for SlotState {
     }
 }
 
+#[derive(Debug, Default)]
+enum Payload {
+    #[default]
+    Empty,
+    Busy(Box<GenerateContext>),
+    Done(Box<GenerateContext>),
+}
+
+impl Payload {
+    /// Takes out the value is `self` is [`Payload::Done`], and reset `self` to [`Payload::Empty`].
+    fn take(&mut self) -> Option<Box<GenerateContext>> {
+        if matches!(self, Payload::Done(_)) {
+            let mut temp = Payload::Empty;
+            std::mem::swap(&mut temp, self);
+            match temp {
+                Payload::Done(context) => Some(context),
+                _ => unreachable!(),
+            }
+        } else {
+            None
+        }
+    }
+
+    /// Set `self` to [`Payload::Done`] if `self` is [`Payload::Busy`].
+    fn finalize(&mut self) {
+        if matches!(self, Payload::Busy(_)) {
+            let mut temp = Payload::Empty;
+            std::mem::swap(&mut temp, self);
+            match temp {
+                Payload::Busy(context) => *self = Payload::Done(context),
+                _ => unreachable!(),
+            }
+        }
+    }
+}
+
 #[repr(transparent)]
 #[derive(Debug, Default, Clone)]
 pub struct Tokens(pub Vec<u16>);
@@ -155,11 +191,15 @@ pub struct Runtime<'a> {
 
 impl<'a> Runtime<'a> {
     pub fn new(model: Arc<Model<'a>>, state: ModelState, max_runtime_batch: usize) -> Self {
+        let slots = (0..state.max_batch())
+            .map(|_| SlotState::default())
+            .collect();
+
         Self {
             model,
-            slots: Default::default(),
+            slots,
             state,
-            backed: Default::default(),
+            backed: Trie::new(),
             max_runtime_batch,
         }
     }
@@ -248,22 +288,38 @@ pub fn run(runtime: Arc<Mutex<Option<Runtime>>>, tokenizer: Tokenizer) {
         })
         .collect::<HashSet<_>>();
 
-    let mut payload: Vec<Option<Box<GenerateContext>>> = Default::default();
-    let mut done: Vec<Option<Box<GenerateContext>>> = Default::default();
-
+    let mut payloads: Vec<Payload> = Default::default();
     let mut model: Option<Arc<Model>> = Default::default();
     let mut state: Option<ModelState> = Default::default();
 
+    let payloads_occupancy = |payloads: &[Payload]| {
+        payloads
+            .iter()
+            .filter(|x| matches!(x, Payload::Busy(_)))
+            .count()
+    };
+
     let mut process = || -> Result<()> {
         if let Some(runtime) = &mut *runtime.lock().unwrap() {
-            payload.resize(runtime.slots.len(), None);
-            done.resize(runtime.slots.len(), None);
+            if payloads.len() != runtime.slots.len() {
+                payloads = (0..runtime.slots.len())
+                    .map(|_| Payload::default())
+                    .collect();
+            }
             model.replace(runtime.model.clone());
             state.replace(runtime.state.clone());
 
+            // reset all finished slots to idle
+            for (payload, slot) in payloads.iter_mut().zip_eq(runtime.slots.iter_mut()) {
+                if let Some(context) = payload.take() {
+                    assert!(matches!(slot, SlotState::Busy));
+                    *slot = SlotState::Idle(context.prefix);
+                }
+            }
+
             // take data from some waiting slots
-            let occupied = payload.iter().filter(|x| x.is_some()).count();
-            let remain = runtime.max_runtime_batch - runtime.max_runtime_batch.min(occupied);
+            let occupancy = payloads_occupancy(&payloads);
+            let remain = runtime.max_runtime_batch - runtime.max_runtime_batch.min(occupancy);
             let batches = runtime
                 .slots
                 .iter()
@@ -278,44 +334,44 @@ pub fn run(runtime: Arc<Mutex<Option<Runtime>>>, tokenizer: Tokenizer) {
                 match slot {
                     SlotState::Wait(context) => {
                         let _ = context.sender.send(Token::Start);
-                        payload[batch].replace(context)
+                        assert!(matches!(payloads[batch], Payload::Empty));
+                        payloads[batch] = Payload::Busy(context);
                     }
                     _ => unreachable!(),
                 };
             }
-
-            // reset all finished slots to idle
-            for (done, slot) in done.iter_mut().zip_eq(runtime.slots.iter_mut()) {
-                if let Some(done) = done.take() {
-                    assert!(matches!(slot, SlotState::Busy));
-                    *slot = SlotState::Idle(done.prefix);
-                }
-            }
+        } else {
+            payloads.clear();
+            model = None;
+            state = None;
         }
 
         if let (Some(model), Some(state)) = (&model, &state) {
-            let mut tokens = payload
+            let mut input_tokens = payloads
                 .iter()
-                .map(|context| match context {
-                    Some(context) => context.suffix.0.clone(),
-                    None => vec![],
+                .map(|payload| match payload {
+                    Payload::Busy(context) => context.suffix.0.clone(),
+                    _ => vec![],
                 })
                 .collect_vec();
 
             // run the model until there is at least one slot finished
-            let logits = loop {
-                let logits = model.run(&mut tokens, state)?;
-                if logits.iter().any(Option::is_some) {
-                    break logits;
-                }
+            let occupancy = payloads_occupancy(&payloads);
+            let logits = match occupancy {
+                0 => vec![None; payloads.len()],
+                _ => loop {
+                    let logits = model.run(&mut input_tokens, state)?;
+                    if logits.iter().any(Option::is_some) {
+                        break logits;
+                    }
+                },
             };
             // post-process logits
-            let logits = payload
+            let logits = payloads
                 .par_iter()
                 .zip_eq(logits.into_par_iter())
-                .map(|(context, x)| (context.as_ref(), x))
-                .map(|(context, logits)| {
-                    context.zip(logits).map(|(context, mut logits)| {
+                .map(|(payload, logits)| match payload {
+                    Payload::Busy(context) => logits.map(|mut logits| {
                         context
                             .penalties
                             .iter()
@@ -326,31 +382,32 @@ pub fn run(runtime: Arc<Mutex<Option<Runtime>>>, tokenizer: Tokenizer) {
                             .iter()
                             .for_each(|(token, bias)| logits[*token as usize] += *bias);
                         logits
-                    })
+                    }),
+                    _ => None,
                 })
                 .collect::<Vec<_>>();
 
-            let probs = model.softmax(logits)?;
-            let output_tokens = payload
+            let probs = match occupancy {
+                0 => vec![None; payloads.len()],
+                _ => model.softmax(logits)?,
+            };
+            let output_tokens = payloads
                 .par_iter()
                 .zip_eq(probs.into_par_iter())
-                .map(|(context, x)| (context.as_ref(), x))
-                .map(|(context, probs)| {
-                    context
-                        .zip(probs)
-                        .map(|(context, probs)| context.sampler.sample(probs))
+                .map(|(payload, probs)| match payload {
+                    Payload::Busy(context) => probs.map(|probs| context.sampler.sample(probs)),
+                    _ => None,
                 })
                 .collect::<Vec<_>>();
 
-            for (context, done, token, tokens) in itertools::multizip((
-                payload.iter_mut(),
-                done.iter_mut(),
+            for (payload, token, tokens) in itertools::multizip((
+                payloads.iter_mut(),
                 output_tokens.into_iter(),
-                tokens.into_iter(),
+                input_tokens.into_iter(),
             )) {
-                let mut finished = false;
+                let mut fin = false;
 
-                if let Some(context) = context {
+                if let Payload::Busy(context) = payload {
                     let prefix = std::mem::take(&mut context.prefix);
                     let suffix = std::mem::take(&mut context.suffix);
                     let model_tokens = [prefix.0, suffix.0].concat();
@@ -399,7 +456,7 @@ pub fn run(runtime: Arc<Mutex<Option<Runtime>>>, tokenizer: Tokenizer) {
                         let mut finish = |reason| {
                             let _ = context.sender.send(Token::Stop(reason, count_tokens()));
                             let _ = context.sender.send(Token::Done);
-                            finished = true;
+                            fin = true;
                         };
 
                         if context.stop.iter().any(|stop| model_text.contains(stop)) {
@@ -410,8 +467,8 @@ pub fn run(runtime: Arc<Mutex<Option<Runtime>>>, tokenizer: Tokenizer) {
                     }
                 }
 
-                if finished {
-                    std::mem::swap(context, done);
+                if fin {
+                    payload.finalize();
                 }
             }
         }

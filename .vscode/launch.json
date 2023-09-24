@@ -21,7 +21,9 @@
             },
             "args": [
                 "--model",
-                "./Config.toml"
+                "./Config.toml",
+                "--adapter",
+                "auto"
             ],
             "cwd": "${workspaceFolder}"
         },
