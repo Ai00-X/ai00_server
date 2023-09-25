@@ -601,10 +601,12 @@ async fn main() {
 
     let (sender, receiver) = flume::unbounded::<ThreadRequest>();
 
-    if let Some(path) = &args.model {
+    {
+        let path = args.model.clone().unwrap_or("Config.toml".into());
+        log::info!("loading model config {}...", path.to_string_lossy());
+
         let request = reload_request_from_config(path).expect("load model config failed");
         let _ = sender.send(ThreadRequest::Reload(request));
-        log::info!("loaded model config {}", path.to_string_lossy());
     }
 
     let temp_dir = tempfile::tempdir().unwrap();
