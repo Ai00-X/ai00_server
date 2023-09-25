@@ -52,14 +52,16 @@ OpenAIのChatGPT APIインターフェースと互換性があります。
 1.  [Release](https://github.com/cgisky1980/ai00_rwkv_server/releases)から最新バージョンをダウンロードします
     
 2.  [モデルをダウンロード](https://huggingface.co/cgisky/RWKV-safetensors-fp16)し、`assets/models/`パスに配置します。例：`assets/models/RWKV-4-World-0.4B-v1-20230529-ctx4096.st`
+
+3.  必要に応じて、モデルのパスや量子化レイヤーなどのモデル設定のために Config.toml を修正します。
     
-3.  コマンドラインで実行します
+4.  コマンドラインで実行します
     
     ```bash
-    $ ./ai00_rwkv_server --model assets/models/RWKV-4-World-0.4B-v1-20230529-ctx4096.st
+    $ ./ai00_rwkv_server
     ```
     
-4.  ブラウザを開き、WebUIにアクセスします [`http://127.0.0.1:65530`](http://127.0.0.1:65530)
+5.  ブラウザを開き、WebUIにアクセスします [`http://127.0.0.1:65530`](http://127.0.0.1:65530)
     
 
 ### 📜ソースコードからコンパイル
@@ -69,7 +71,8 @@ OpenAIのChatGPT APIインターフェースと互換性があります。
 2.  このリポジトリをクローンします
     
     ```bash
-    $ git clone https://github.com/cgisky1980/ai00_rwkv_server.git $ cd ai00_rwkv_server
+    $ git clone https://github.com/cgisky1980/ai00_rwkv_server.git
+    $ cd ai00_rwkv_server
     ```
     
 3.  [モデルをダウンロード](https://huggingface.co/cgisky/RWKV-safetensors-fp16)し、`assets/models/`パスに配置します。例：`assets/models/RWKV-4-World-0.4B-v1-20230529-ctx4096.st`
@@ -83,7 +86,7 @@ OpenAIのChatGPT APIインターフェースと互換性があります。
 5.  コンパイルが完了したら実行します
     
     ```bash
-    $ cargo run --release -- --model assets/models/RWKV-4-World-0.4B-v1-20230529-ctx4096.st
+    $ cargo run --release
     ```
     
 6.  ブラウザを開き、WebUIにアクセスします [`http://127.0.0.1:65530`](http://127.0.0.1:65530)
@@ -91,18 +94,19 @@ OpenAIのChatGPT APIインターフェースと互換性があります。
 
 ## 📝サポートされている起動パラメーター
 
-*   `--model`: モデルのパス
+*   `--model`: モデル設定ファイルのパス（既定：`Config.toml`）
 *   `--tokenizer`: トークナイザーのパス
 *   `--port`: 実行ポート
 *   `--quant`: 量子化レイヤーの数を指定
-*   `--adapter`: アダプター（GPUおよびバックエンド）の選択オプション
+*   `--adapter`: アダプター（GPUおよびバックエンド）の選択オプション：`Auto` と `Manual`
+*   `--adapter_id`: CLIでアダプターを指定します（--adapterを上書きします）
 
 ### 例
 
 サーバーはポート3000でリッスンし、全レイヤー量子化（32 > 24）の0.4Bモデルをロードし、高性能アダプターの自動選択。
 
 ```bash
-$ cargo run --release -- --model assets/models/RWKV-4-World-0.4B-v1-20230529-ctx4096.st --port 3000 --quant 32 --adapter 0
+$ cargo run --release -- --model Config.toml --port 3000 --adapter auto
 ```
 
 ## 📙現在利用可能なAPI
@@ -130,9 +134,9 @@ APIサービスは65530ポートで開始され、データ入力と出力の形
 *   [x] `sse`プッシュのサポート
 *   [x] `embeddings`の追加
 *   [x] 基本的なフロントエンドの統合
-*   [ ] `batch serve`並行推論
+*   [x] `batch serve`並行推論
 *   [x] `int8`量子化のサポート
-*   [ ] `SpQR`量子化のサポート
+*   [ ] `int4`量子化のサポート
 *   [ ] `LoRA`モデルのサポート
 *   [ ] `LoRA`モデルのホットロード、切り替え
 

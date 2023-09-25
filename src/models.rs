@@ -1,7 +1,7 @@
 use axum::{extract::State, Json};
 use serde::Serialize;
 
-use crate::ThreadState;
+use crate::{ReloadRequest, ThreadRequest, ThreadState};
 
 #[derive(Debug, Serialize)]
 pub struct ModelChoice {
@@ -20,7 +20,14 @@ pub async fn models(
     Json(ModelResponse {
         data: vec![ModelChoice {
             object: "models".into(),
-            id: model_name,
+            id: model_name.read().unwrap().clone(),
         }],
     })
+}
+
+pub async fn load(
+    State(ThreadState { sender, .. }): State<ThreadState>,
+    Json(request): Json<ReloadRequest>,
+) {
+    let _ = sender.send(ThreadRequest::Reload(request));
 }

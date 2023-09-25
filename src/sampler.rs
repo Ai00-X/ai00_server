@@ -6,6 +6,7 @@ pub struct Sampler {
     pub temperature: f32,
     pub presence_penalty: f32,
     pub frequency_penalty: f32,
+    pub penalty_decay: f32,
 }
 
 impl Default for Sampler {
@@ -15,6 +16,7 @@ impl Default for Sampler {
             temperature: 1.0,
             presence_penalty: 0.0,
             frequency_penalty: 0.0,
+            penalty_decay: 1.0,
         }
     }
 }

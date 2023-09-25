@@ -15,10 +15,8 @@ impl From<EmbeddingRequest> for GenerateRequest {
         Self {
             prompt: Vec::from(value.input).join(""),
             max_tokens: 1,
-            stop: Default::default(),
-            sampler: Default::default(),
-            logit_bias: Default::default(),
-            embedding: true,
+            embed: true,
+            ..Default::default()
         }
     }
 }
@@ -46,10 +44,10 @@ pub async fn embeddings(
     Json(request): Json<EmbeddingRequest>,
 ) -> Json<EmbeddingResponse> {
     let (token_sender, token_receiver) = flume::unbounded();
+    let model_name = model_name.read().unwrap().clone();
 
     let _ = sender.send(ThreadRequest::Generate {
         request: request.into(),
-        occurrences: Default::default(),
         token_sender,
     });
 
@@ -60,8 +58,10 @@ pub async fn embeddings(
     while let Some(token) = stream.next().await {
         match token {
             Token::Stop(_, counter) => token_counter = counter,
-            Token::Embed(emb) => embedding = emb,
-            Token::Done => break,
+            Token::Embed(emb) => {
+                embedding = emb;
+                break;
+            }
             _ => {}
         }
     }

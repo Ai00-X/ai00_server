@@ -1,6 +1,6 @@
 [package]
 name = "ai00_server"
-version = "0.2.0"
+version = "0.2.1"
 edition = "2021"
 authors = ["Gu ZhenNiu <448885@qq.com>", "Zhang Zhenyuan <cryscan@umich.edu>"]
 license = "MIT OR Apache-2.0"
@@ -20,6 +20,7 @@ tower-http = { version = "0.4", features = ["full"] }
 tokio = { version = "1", features = ["full"] }
 web-rwkv = "0.2.0"
 memmap = "0.7"
+bytemuck = "1"
 regex = "1.8"
 dialoguer = "0.10"
 clap = { version = "4.3", features = ["derive"] }
@@ -30,11 +31,13 @@ fastrand = "2"
 itertools = "0.11"
 flume = "0.10"
 futures-util = "0.3"
+rayon = "1.8"
 anyhow = "1"
 log = "0.4"
 simple_logger = { version = "4.2", features = ["stderr"] }
 zip-extract = "0.1"
 tempfile = "3.6"
+toml = "0.7"
 
 [profile.release]
 lto = true

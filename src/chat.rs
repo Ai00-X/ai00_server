@@ -12,10 +12,10 @@ use serde::{Deserialize, Serialize};
 
 use crate::{
     sampler::Sampler, FinishReason, GenerateRequest, OptionArray, ThreadRequest, ThreadState,
-    Token, TokenCounter, MAX_PENALTY_COUNT,
+    Token, TokenCounter,
 };
 
-#[derive(Debug, Default, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Default, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub enum Role {
     #[serde(alias = "system")]
     System,
@@ -24,6 +24,8 @@ pub enum Role {
     User,
     #[serde(alias = "assistant")]
     Assistant,
+    #[serde(rename = "")]
+    Custom(String),
 }
 
 impl std::fmt::Display for Role {
@@ -32,6 +34,7 @@ impl std::fmt::Display for Role {
             Role::System => write!(f, "System"),
             Role::User => write!(f, "User"),
             Role::Assistant => write!(f, "Assistant"),
+            Role::Custom(name) => write!(f, "{}", name),
         }
     }
 }
@@ -53,6 +56,7 @@ pub struct ChatRequest {
     pub top_p: f32,
     pub presence_penalty: f32,
     pub frequency_penalty: f32,
+    pub penalty_decay: f32,
     pub logit_bias: HashMap<u16, f32>,
 }
 
@@ -67,6 +71,7 @@ impl Default for ChatRequest {
             top_p: 1.0,
             presence_penalty: 0.0,
             frequency_penalty: 0.0,
+            penalty_decay: 1.0,
             logit_bias: HashMap::new(),
         }
     }
@@ -82,17 +87,23 @@ impl From<ChatRequest> for GenerateRequest {
             top_p,
             presence_penalty,
             frequency_penalty,
+            penalty_decay,
             logit_bias,
             ..
         } = value;
 
-        let prompt = Vec::from(messages)
+        let prompt = Vec::from(messages.clone())
             .into_iter()
             .map(|ChatRecord { role, content }| {
                 let role = role.to_string();
                 let content = content.trim();
                 format!("{role}: {content}")
             })
+            .join("\n\n");
+        let model_text = Vec::from(messages)
+            .into_iter()
+            .filter(|record| record.role == Role::Assistant)
+            .map(|record| record.content)
             .join("\n\n");
 
         let assistant = Role::Assistant.to_string();
@@ -103,6 +114,7 @@ impl From<ChatRequest> for GenerateRequest {
 
         Self {
             prompt,
+            model_text,
             max_tokens,
             stop,
             sampler: Sampler {
@@ -110,9 +122,10 @@ impl From<ChatRequest> for GenerateRequest {
                 temperature,
                 presence_penalty,
                 frequency_penalty,
+                penalty_decay,
             },
             logit_bias,
-            embedding: false,
+            ..Default::default()
         }
     }
 }
@@ -134,31 +147,15 @@ pub struct ChatResponse {
 }
 
 async fn chat_completions_one(
-    State(ThreadState {
-        sender,
-        model_name,
-        tokenizer,
-    }): State<ThreadState>,
+    State(ThreadState { sender, model_name }): State<ThreadState>,
     Json(request): Json<ChatRequest>,
 ) -> Json<ChatResponse> {
     let (token_sender, token_receiver) = flume::unbounded();
+    let model_name = model_name.read().unwrap().clone();
 
-    let model_text = Vec::from(request.messages.clone())
-        .into_iter()
-        .filter(|record| record.role == Role::Assistant)
-        .map(|record| record.content)
-        .join("\n\n");
-    let model_tokens = tokenizer.encode(model_text.as_bytes()).unwrap_or_default();
-    let occurrences = model_tokens
-        .into_iter()
-        .rev()
-        .take(MAX_PENALTY_COUNT)
-        .counts();
     let request = request.into();
-
     let _ = sender.send(ThreadRequest::Generate {
         request,
-        occurrences,
         token_sender,
     });
 
@@ -222,31 +219,15 @@ pub struct PartialChatResponse {
 }
 
 async fn chat_completions_stream(
-    State(ThreadState {
-        sender,
-        model_name,
-        tokenizer,
-    }): State<ThreadState>,
+    State(ThreadState { sender, model_name }): State<ThreadState>,
     Json(request): Json<ChatRequest>,
 ) -> Sse<impl Stream<Item = Result<Event>>> {
     let (token_sender, token_receiver) = flume::unbounded();
+    let model_name = model_name.read().unwrap().clone();
 
-    let model_text = Vec::from(request.messages.clone())
-        .into_iter()
-        .filter(|record| record.role == Role::Assistant)
-        .map(|record| record.content)
-        .join("\n\n");
-    let model_tokens = tokenizer.encode(model_text.as_bytes()).unwrap_or_default();
-    let occurrences = model_tokens
-        .into_iter()
-        .rev()
-        .take(MAX_PENALTY_COUNT)
-        .counts();
     let request = request.into();
-
     let _ = sender.send(ThreadRequest::Generate {
         request,
-        occurrences,
         token_sender,
     });
 

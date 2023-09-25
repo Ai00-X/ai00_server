@@ -23,7 +23,7 @@
     
 `AI00 RWKV Server` is an inference API server based on the [`RWKV` model](https://github.com/BlinkDL/ChatRWKV).
 
-It supports `VULKAN` inference acceleration and can run on all GPUs that support `VULKAN`. No need for Nvidia cards!!! AMD cards and even integrated graphics can be accelerated!!!
+It supports `VULKAN` parallel and concurrent batched inference and can run on all GPUs that support `VULKAN`. No need for Nvidia cards!!! AMD cards and even integrated graphics can be accelerated!!!
 
 No need for bulky `pytorch`, `CUDA` and other runtime environments, it's compact and ready to use out of the box!
 
@@ -64,14 +64,16 @@ QQ Group for communication: 30920262
 1.  Directly download the latest version from [Release](https://github.com/cgisky1980/ai00_rwkv_server/releases)
     
 2.  After [downloading the model](https://huggingface.co/cgisky/RWKV-safetensors-fp16), place the model in the `assets/models/` path, for example, `assets/models/RWKV-4-World-0.4B-v1-20230529-ctx4096.st`
+
+3.  Optionally modify `Config.toml` for model configurations like model path, quantization layers, etc.
     
-3.  Run in the command line
+4.  Run in the command line
     
     ```bash
-    $ ./ai00_rwkv_server --model assets/models/RWKV-4-World-0.4B-v1-20230529-ctx4096.st
+    $ ./ai00_rwkv_server
     ```
     
-4.  Open the browser and visit the WebUI [`http://127.0.0.1:65530`](http://127.0.0.1:65530)
+5.  Open the browser and visit the WebUI [`http://127.0.0.1:65530`](http://127.0.0.1:65530)
     
 
 ### 📜Compile from Source Code
@@ -81,7 +83,8 @@ QQ Group for communication: 30920262
 2.  Clone this repository
     
     ```bash
-    $ git clone https://github.com/cgisky1980/ai00_rwkv_server.git $ cd ai00_rwkv_server
+    $ git clone https://github.com/cgisky1980/ai00_rwkv_server.git
+    $ cd ai00_rwkv_server
     ```
     
 3.  After [downloading the model](https://huggingface.co/cgisky/RWKV-safetensors-fp16), place the model in the `assets/models/` path, for example, `assets/models/RWKV-4-World-0.4B-v1-20230529-ctx4096.st`
@@ -95,7 +98,7 @@ QQ Group for communication: 30920262
 5.  After compilation, run
     
     ```bash
-    $ cargo run --release -- --model assets/models/RWKV-4-World-0.4B-v1-20230529-ctx4096.st
+    $ cargo run --release
     ```
     
 6.  Open the browser and visit the WebUI [`http://127.0.0.1:65530`](http://127.0.0.1:65530)
@@ -103,18 +106,18 @@ QQ Group for communication: 30920262
 
 ## 📝Supported Arguments
 
-*   `--model`: Model path
+*   `--model`: Model configure file path (default: `Config.toml`)
 *   `--tokenizer`: Tokenizer path
 *   `--port`: Running port
-*   `--quant`: Specify the number of quantization layers
-*   `--adapter`: Adapter (GPU and backend) selection options
+*   `--adapter`: Adapter (GPU and backend) selection options: `Auto` and `Manual`
+*   `--adapter_id`: Specify the adapter in CLI (overrides `--adapter`)
 
 ### Example
 
 The server listens on port 3000, loads the full-layer quantized (32 > 24) 0.4B model, and selects the high-performance adapter.
 
 ```bash
-$ cargo run --release -- --model assets/models/RWKV-4-World-0.4B-v1-20230529-ctx4096.st --port 3000 --quant 32 --adapter auto
+$ cargo run --release -- --model Config.toml --port 3000 --adapter auto
 ```
 
 ## 📙Currently Available APIs
@@ -142,9 +145,9 @@ The API service starts at port 65530, and the data input and output format follo
 *   [x] Support for sse push
 *   [x] Add `embeddings`
 *   [x] Integrate basic front-end
-*   [ ] Parallel inference via `batch serve`
+*   [x] Parallel inference via `batch serve`
 *   [x] Support for `int8` quantization
-*   [ ] Support for `SpQR` quantization
+*   [ ] Support for `int4` quantization
 *   [ ] Support for `LoRA` model
 *   [ ] Hot loading and switching of `LoRA` model
 
