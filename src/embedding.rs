@@ -58,8 +58,10 @@ pub async fn embeddings(
     while let Some(token) = stream.next().await {
         match token {
             Token::Stop(_, counter) => token_counter = counter,
-            Token::Embed(emb) => embedding = emb,
-            Token::Done => break,
+            Token::Embed(emb) => {
+                embedding = emb;
+                break;
+            }
             _ => {}
         }
     }

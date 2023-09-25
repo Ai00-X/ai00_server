@@ -120,6 +120,8 @@ pub struct ReloadRequest {
     pub max_runtime_batch: usize,
     /// Number of states that are cached on GPU.
     pub max_batch: usize,
+    /// the (reversed) number of layer at which the output is as embedding.
+    pub embed_layer: usize,
 }
 
 impl Default for ReloadRequest {
@@ -131,6 +133,7 @@ impl Default for ReloadRequest {
             head_chunk_size: 8192,
             max_runtime_batch: 8,
             max_batch: 32,
+            embed_layer: 2,
         }
     }
 }
@@ -474,12 +477,13 @@ fn model_route(
             Ok(ThreadRequest::Reload(request)) => {
                 let max_runtime_batch = request.max_runtime_batch;
                 let max_batch = request.max_batch;
+                let embed_layer = request.embed_layer;
 
                 let model = Arc::new(load_model(&context, request)?);
                 let info = model.info();
                 let state = ModelState::new(&context, info, max_batch);
                 let mut runtime = runtime.lock().unwrap();
-                let _ = runtime.replace(Runtime::new(model, state, max_runtime_batch));
+                let _ = runtime.replace(Runtime::new(model, state, max_runtime_batch, embed_layer));
             }
             Ok(ThreadRequest::Generate {
                 request,

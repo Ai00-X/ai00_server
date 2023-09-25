@@ -188,10 +188,16 @@ pub struct Runtime<'a> {
     state: ModelState,
     backed: Trie<Tokens, BackedState>,
     max_runtime_batch: usize,
+    embed_layer: usize,
 }
 
 impl<'a> Runtime<'a> {
-    pub fn new(model: Arc<Model<'a>>, state: ModelState, max_runtime_batch: usize) -> Self {
+    pub fn new(
+        model: Arc<Model<'a>>,
+        state: ModelState,
+        max_runtime_batch: usize,
+        embed_layer: usize,
+    ) -> Self {
         let slots = (0..state.max_batch())
             .map(|_| SlotState::default())
             .collect();
@@ -202,6 +208,7 @@ impl<'a> Runtime<'a> {
             state,
             backed: Trie::new(),
             max_runtime_batch,
+            embed_layer,
         }
     }
 
@@ -275,6 +282,18 @@ impl<'a> Runtime<'a> {
             }
         }
     }
+
+    /// Manually back an idle slot.
+    pub fn back(&mut self, batch: usize) -> Option<BackedState> {
+        match &self.slots[batch] {
+            SlotState::Idle(content, _) => {
+                let backed = self.state.back_batch(batch).expect("back state");
+                self.backed.insert(content.clone(), backed.clone());
+                Some(backed)
+            }
+            _ => None,
+        }
+    }
 }
 
 pub fn run(runtime: Arc<Mutex<Option<Runtime>>>, tokenizer: Tokenizer) {
@@ -308,12 +327,30 @@ pub fn run(runtime: Arc<Mutex<Option<Runtime>>>, tokenizer: Tokenizer) {
             state.replace(runtime.state.clone());
 
             // reset all finished slots to idle
-            for (payload, slot) in payloads.iter_mut().zip_eq(runtime.slots.iter_mut()) {
-                if let Some(context) = payload.take() {
-                    assert!(matches!(slot, SlotState::Busy));
-                    *slot = SlotState::Idle(context.prefix, Instant::now());
-                }
-            }
+            payloads
+                .iter_mut()
+                .enumerate()
+                .for_each(|(batch, payload)| {
+                    if let Some(context) = payload.take() {
+                        assert!(matches!(runtime.slots[batch], SlotState::Busy));
+                        runtime.slots[batch] = SlotState::Idle(context.prefix, Instant::now());
+
+                        if let Some(backed) = runtime.back(batch) {
+                            log::info!("manually backed slot {}", batch);
+                            if context.embed {
+                                let num_emb = backed.shape[0];
+                                let num_layer = backed.shape[1] / 5;
+                                let embed_layer = runtime.embed_layer;
+
+                                let start = ((num_layer - embed_layer) * 5 + 4) * num_emb;
+                                let end = start + num_emb;
+                                let _ = context
+                                    .sender
+                                    .send(Token::Embed(backed.data[start..end].to_vec()));
+                            }
+                        }
+                    }
+                });
 
             // take data from some waiting slots
             let occupancy = payloads_occupancy(&payloads);
