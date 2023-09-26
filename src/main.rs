@@ -452,11 +452,13 @@ fn model_route(
     let runtime: Arc<Mutex<Option<Runtime>>> = Default::default();
     let mut pending = Vec::new();
 
-    {
+    let sender = {
+        let (sender, receiver) = flume::unbounded();
         let runtime = runtime.clone();
         let tokenizer = tokenizer.clone();
-        std::thread::spawn(move || run::run(runtime, tokenizer));
-    }
+        std::thread::spawn(move || run::run(runtime, tokenizer, receiver));
+        sender
+    };
 
     let queue = |context| -> Vec<GenerateContext> {
         let mut pending = Vec::new();
@@ -469,12 +471,13 @@ fn model_route(
             },
             None => pending.push(context),
         }
+        let _ = sender.send(());
         pending
     };
 
     let listen = |pending: &mut Vec<GenerateContext>| -> Result<()> {
-        match receiver.try_recv() {
-            Ok(ThreadRequest::Reload(request)) => {
+        match receiver.recv()? {
+            ThreadRequest::Reload(request) => {
                 let max_runtime_batch = request.max_runtime_batch;
                 let max_batch = request.max_batch;
                 let embed_layer = request.embed_layer;
@@ -485,10 +488,10 @@ fn model_route(
                 let mut runtime = runtime.lock().unwrap();
                 let _ = runtime.replace(Runtime::new(model, state, max_runtime_batch, embed_layer));
             }
-            Ok(ThreadRequest::Generate {
+            ThreadRequest::Generate {
                 request,
                 token_sender,
-            }) => {
+            } => {
                 let GenerateRequest {
                     prompt,
                     model_text,
@@ -528,7 +531,6 @@ fn model_route(
                 };
                 pending.append(&mut queue(context));
             }
-            Err(_) => {}
         };
         Ok(())
     };
@@ -538,13 +540,14 @@ fn model_route(
             log::error!("{err}");
         }
 
-        let mut temp = Vec::new();
-        for context in pending.drain(..) {
-            temp.append(&mut queue(context));
+        while !pending.is_empty() {
+            let mut temp = Vec::new();
+            for context in pending.drain(..) {
+                temp.append(&mut queue(context));
+            }
+            std::mem::swap(&mut pending, &mut temp);
+            std::thread::sleep(Duration::from_secs(1));
         }
-        std::mem::swap(&mut pending, &mut temp);
-
-        std::thread::sleep(Duration::from_micros(100))
     }
 }
 

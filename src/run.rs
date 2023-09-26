@@ -6,7 +6,7 @@ use std::{
 };
 
 use anyhow::Result;
-use flume::Sender;
+use flume::{Receiver, Sender};
 use itertools::Itertools;
 use qp_trie::Trie;
 use rayon::prelude::{
@@ -54,30 +54,27 @@ enum Payload {
 }
 
 impl Payload {
-    /// Takes out the value is `self` is [`Payload::Done`], and reset `self` to [`Payload::Empty`].
+    /// Takes out the value if `self` is [`Payload::Done`], and reset `self` to [`Payload::Empty`].
     fn take(&mut self) -> Option<Box<GenerateContext>> {
-        if matches!(self, Payload::Done(_)) {
-            let mut temp = Payload::Empty;
-            std::mem::swap(&mut temp, self);
-            match temp {
-                Payload::Done(context) => Some(context),
-                _ => unreachable!(),
+        match std::mem::take(self) {
+            Payload::Done(context) => Some(context),
+            payload => {
+                *self = payload;
+                None
             }
-        } else {
-            None
         }
     }
 
     /// Set `self` to [`Payload::Done`] if `self` is [`Payload::Busy`].
     fn finalize(&mut self) {
-        if matches!(self, Payload::Busy(_)) {
-            let mut temp = Payload::Empty;
-            std::mem::swap(&mut temp, self);
-            match temp {
-                Payload::Busy(context) => *self = Payload::Done(context),
-                _ => unreachable!(),
-            }
+        *self = match std::mem::take(self) {
+            Payload::Busy(context) => Payload::Done(context),
+            payload => payload,
         }
+    }
+
+    fn is_empty(&self) -> bool {
+        matches!(self, Self::Empty)
     }
 }
 
@@ -296,7 +293,7 @@ impl<'a> Runtime<'a> {
     }
 }
 
-pub fn run(runtime: Arc<Mutex<Option<Runtime>>>, tokenizer: Tokenizer) {
+pub fn run(runtime: Arc<Mutex<Option<Runtime>>>, tokenizer: Tokenizer, receiver: Receiver<()>) {
     let penalty_free_tokens = (0..u16::MAX)
         .filter(|token| {
             let word = tokenizer.decode(&[*token]).unwrap_or_default();
@@ -316,13 +313,9 @@ pub fn run(runtime: Arc<Mutex<Option<Runtime>>>, tokenizer: Tokenizer) {
             .count()
     };
 
-    let mut process = || -> Result<()> {
+    let mut process = |payloads: &mut Vec<Payload>| -> Result<()> {
         if let Some(runtime) = &mut *runtime.lock().unwrap() {
-            if payloads.len() != runtime.slots.len() {
-                payloads = (0..runtime.slots.len())
-                    .map(|_| Payload::default())
-                    .collect();
-            }
+            payloads.resize_with(runtime.slots.len(), Default::default);
             model.replace(runtime.model.clone());
             state.replace(runtime.state.clone());
 
@@ -353,7 +346,7 @@ pub fn run(runtime: Arc<Mutex<Option<Runtime>>>, tokenizer: Tokenizer) {
                 });
 
             // take data from some waiting slots
-            let occupancy = payloads_occupancy(&payloads);
+            let occupancy = payloads_occupancy(payloads);
             let remain = runtime.max_runtime_batch - runtime.max_runtime_batch.min(occupancy);
             let batches = runtime
                 .slots
@@ -391,7 +384,7 @@ pub fn run(runtime: Arc<Mutex<Option<Runtime>>>, tokenizer: Tokenizer) {
                 .collect_vec();
 
             // run the model until there is at least one slot finished
-            let occupancy = payloads_occupancy(&payloads);
+            let occupancy = payloads_occupancy(payloads);
             let logits = match occupancy {
                 0 => vec![None; payloads.len()],
                 _ => loop {
@@ -512,8 +505,15 @@ pub fn run(runtime: Arc<Mutex<Option<Runtime>>>, tokenizer: Tokenizer) {
     };
 
     loop {
-        if let Err(err) = process() {
-            log::error!("{err}");
+        let _ = receiver.recv();
+
+        'run: loop {
+            if let Err(err) = process(&mut payloads) {
+                log::error!("{err}");
+            }
+            if payloads.iter().all(Payload::is_empty) {
+                break 'run;
+            }
         }
     }
 }
