@@ -433,7 +433,7 @@ pub fn run(runtime: Arc<Mutex<Option<Runtime>>>, tokenizer: Tokenizer, receiver:
                 output_tokens.into_iter(),
                 input_tokens.into_iter(),
             )) {
-                let mut fin = false;
+                let mut done = false;
 
                 if let Payload::Busy(context) = payload {
                     let prefix = std::mem::take(&mut context.prefix);
@@ -484,10 +484,12 @@ pub fn run(runtime: Arc<Mutex<Option<Runtime>>>, tokenizer: Tokenizer, receiver:
                         let mut finish = |reason| {
                             let _ = context.sender.send(Token::Stop(reason, count_tokens()));
                             let _ = context.sender.send(Token::Done);
-                            fin = true;
+                            done = true;
                         };
 
-                        if context.stop.iter().any(|stop| model_text.contains(stop)) {
+                        if context.sender.is_disconnected() {
+                            done = true;
+                        } else if context.stop.iter().any(|stop| model_text.contains(stop)) {
                             finish(FinishReason::Stop);
                         } else if context.model_tokens.len() >= context.max_tokens {
                             finish(FinishReason::Length);
@@ -495,7 +497,7 @@ pub fn run(runtime: Arc<Mutex<Option<Runtime>>>, tokenizer: Tokenizer, receiver:
                     }
                 }
 
-                if fin {
+                if done {
                     payload.finalize();
                 }
             }
