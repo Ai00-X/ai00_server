@@ -38,13 +38,11 @@ pub struct EmbeddingResponse {
 }
 
 pub async fn embeddings(
-    State(ThreadState {
-        sender, model_name, ..
-    }): State<ThreadState>,
+    State(ThreadState(sender)): State<ThreadState>,
     Json(request): Json<EmbeddingRequest>,
 ) -> Json<EmbeddingResponse> {
     let (token_sender, token_receiver) = flume::unbounded();
-    let model_name = model_name.read().unwrap().clone();
+    let model_name = String::new();
 
     let _ = sender.send(ThreadRequest::Generate {
         request: request.into(),

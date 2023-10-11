@@ -147,11 +147,11 @@ pub struct ChatResponse {
 }
 
 async fn chat_completions_one(
-    State(ThreadState { sender, model_name }): State<ThreadState>,
+    State(ThreadState(sender)): State<ThreadState>,
     Json(request): Json<ChatRequest>,
 ) -> Json<ChatResponse> {
     let (token_sender, token_receiver) = flume::unbounded();
-    let model_name = model_name.read().unwrap().clone();
+    let model_name = String::new();
 
     let request = request.into();
     let _ = sender.send(ThreadRequest::Generate {
@@ -219,11 +219,11 @@ pub struct PartialChatResponse {
 }
 
 async fn chat_completions_stream(
-    State(ThreadState { sender, model_name }): State<ThreadState>,
+    State(ThreadState(sender)): State<ThreadState>,
     Json(request): Json<ChatRequest>,
 ) -> Sse<impl Stream<Item = Result<Event>>> {
     let (token_sender, token_receiver) = flume::unbounded();
-    let model_name = model_name.read().unwrap().clone();
+    let model_name = String::new();
 
     let request = request.into();
     let _ = sender.send(ThreadRequest::Generate {

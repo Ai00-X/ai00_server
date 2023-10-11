@@ -99,11 +99,11 @@ pub struct CompletionResponse {
 }
 
 async fn completions_one(
-    State(ThreadState { sender, model_name }): State<ThreadState>,
+    State(ThreadState(sender)): State<ThreadState>,
     Json(request): Json<CompletionRequest>,
 ) -> Json<CompletionResponse> {
     let (token_sender, token_receiver) = flume::unbounded();
-    let model_name = model_name.read().unwrap().clone();
+    let model_name = String::new();
 
     let request = GenerateRequest::from(request);
     let _ = sender.send(ThreadRequest::Generate {
@@ -167,11 +167,11 @@ pub struct PartialCompletionResponse {
 }
 
 async fn completions_stream(
-    State(ThreadState { sender, model_name }): State<ThreadState>,
+    State(ThreadState(sender)): State<ThreadState>,
     Json(request): Json<CompletionRequest>,
 ) -> Sse<impl Stream<Item = Result<Event>>> {
     let (token_sender, token_receiver) = flume::unbounded();
-    let model_name = model_name.read().unwrap().clone();
+    let model_name = String::new();
 
     let request = GenerateRequest::from(request);
     let _ = sender.send(ThreadRequest::Generate {

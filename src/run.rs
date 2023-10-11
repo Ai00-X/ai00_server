@@ -1,6 +1,7 @@
 use std::{
     borrow::Borrow,
     collections::{HashMap, HashSet},
+    convert::Infallible,
     sync::{Arc, Mutex},
     time::Instant,
 };
@@ -13,11 +14,11 @@ use rayon::prelude::{
     IndexedParallelIterator, IntoParallelIterator, IntoParallelRefIterator, ParallelIterator,
 };
 use web_rwkv::{
-    model::{BackedState, Model, ModelState},
+    model::{v4, v5, BackedState, FromBuilder, Model, ModelState, StateBuilder},
     tokenizer::Tokenizer,
 };
 
-use crate::{sampler::Sampler, FinishReason, Token, TokenCounter};
+use crate::{sampler::Sampler, FinishReason, Token, TokenCounter, STATE_CHUNK_SIZE};
 
 #[derive(Debug)]
 pub enum SlotResult {
@@ -179,41 +180,48 @@ pub struct GenerateContext {
     pub sender: Sender<Token>,
 }
 
-pub struct Runtime<'a> {
-    model: Arc<Model<'a>>,
-    slots: Vec<SlotState>,
-    state: ModelState,
-    backed: Trie<Tokens, BackedState>,
+pub struct Runtime<M, S, B>
+where
+    B: BackedState,
+    S: ModelState<BackedState = B>,
+    M: Model<ModelState = S>,
+{
+    model: M,
+    state: S,
+    slots: Mutex<Vec<SlotState>>,
+    backed: Mutex<Trie<Tokens, B>>,
     max_runtime_batch: usize,
     embed_layer: usize,
 }
 
-impl<'a> Runtime<'a> {
-    pub fn new(
-        model: Arc<Model<'a>>,
-        state: ModelState,
-        max_runtime_batch: usize,
-        embed_layer: usize,
-    ) -> Self {
+impl<M, S, B> Runtime<M, S, B>
+where
+    for<'a> B: BackedState + Clone + FromBuilder<Builder<'a> = StateBuilder, Error = Infallible>,
+    S: ModelState<BackedState = B>,
+    M: Model<ModelState = S>,
+{
+    pub fn new(model: M, state: S, max_runtime_batch: usize, embed_layer: usize) -> Self {
         let slots = (0..state.max_batch())
             .map(|_| SlotState::default())
             .collect();
 
         Self {
             model,
-            slots,
             state,
-            backed: Trie::new(),
+            slots: Mutex::new(slots),
+            backed: Mutex::new(Trie::new()),
             max_runtime_batch,
             embed_layer,
         }
     }
 
     /// Queue a generation task.
-    pub fn queue(&mut self, context: GenerateContext) -> SlotResult {
+    pub fn queue(&self, context: GenerateContext) -> SlotResult {
+        let mut slots = self.slots.lock().unwrap();
+        let mut cache = self.backed.lock().unwrap();
+
         let tokens = Tokens([context.prefix, context.suffix].concat());
-        let choice = self
-            .slots
+        let choice = slots
             .iter()
             .enumerate()
             .filter_map(|(index, slot)| match slot {
@@ -234,8 +242,8 @@ impl<'a> Runtime<'a> {
                 .into(),
             ),
             Some((batch, false, _, _)) => {
-                let prefix = self.backed.longest_common_prefix(&tokens);
-                let len = match self.backed.contains_key(prefix) {
+                let prefix = cache.longest_common_prefix(&tokens);
+                let len = match cache.contains_key(prefix) {
                     true => prefix.len(),
                     false => 0,
                 };
@@ -249,16 +257,22 @@ impl<'a> Runtime<'a> {
                 );
 
                 let prefix = prefix.to_vec();
-                let reload = self
-                    .backed
+                let reload = cache
                     .remove(prefix[..].as_token_slice())
-                    .unwrap_or_else(|| BackedState::new(self.model.info(), 1));
+                    .unwrap_or_else(|| {
+                        let context = self.model.context();
+                        let info = self.model.info();
+                        StateBuilder::new(context, info)
+                            .with_max_batch(1)
+                            .with_chunk_size(STATE_CHUNK_SIZE)
+                            .build_backed()
+                    });
 
-                std::mem::swap(&mut state, &mut self.slots[batch]);
+                std::mem::swap(&mut state, &mut slots[batch]);
                 match state {
                     SlotState::Idle(content, _) => {
                         let backed = self.state.back_batch(batch).expect("back state");
-                        self.backed.insert(content, backed);
+                        cache.insert(content, backed);
                         self.state.load_batch(&reload, batch).expect("load state");
                         SlotResult::Fault(batch)
                     }
@@ -274,50 +288,23 @@ impl<'a> Runtime<'a> {
                     }
                     .into(),
                 );
-                let _ = std::mem::replace(&mut self.slots[id], state);
+                let _ = std::mem::replace(&mut slots[id], state);
                 SlotResult::Success(id)
             }
         }
     }
 
-    /// Manually back an idle slot.
-    pub fn back(&mut self, batch: usize) -> Option<BackedState> {
-        match &self.slots[batch] {
-            SlotState::Idle(content, _) => {
-                let backed = self.state.back_batch(batch).expect("back state");
-                self.backed.insert(content.clone(), backed.clone());
-                Some(backed)
-            }
-            _ => None,
-        }
-    }
-}
+    fn process(
+        &self,
+        tokenizer: &Tokenizer,
+        penalty_free_tokens: &HashSet<u16>,
+        payloads: &mut Vec<Payload>,
+    ) -> Result<()> {
+        {
+            let mut slots = self.slots.lock().unwrap();
+            let mut cache = self.backed.lock().unwrap();
 
-pub fn run(runtime: Arc<Mutex<Option<Runtime>>>, tokenizer: Tokenizer, receiver: Receiver<()>) {
-    let penalty_free_tokens = (0..u16::MAX)
-        .filter(|token| {
-            let word = tokenizer.decode(&[*token]).unwrap_or_default();
-            let word = String::from_utf8(word).unwrap_or_default();
-            word.contains('\n')
-        })
-        .collect::<HashSet<_>>();
-
-    let mut payloads: Vec<Payload> = Default::default();
-    let mut model: Option<Arc<Model>> = Default::default();
-    let mut state: Option<ModelState> = Default::default();
-
-    let payloads_occupancy = |payloads: &[Payload]| {
-        payloads
-            .iter()
-            .filter(|x| matches!(x, Payload::Busy(_)))
-            .count()
-    };
-
-    let mut process = |payloads: &mut Vec<Payload>| -> Result<()> {
-        if let Some(runtime) = &mut *runtime.lock().unwrap() {
-            payloads.resize_with(runtime.slots.len(), Default::default);
-            model.replace(runtime.model.clone());
-            state.replace(runtime.state.clone());
+            payloads.resize_with(self.state.max_batch(), Default::default);
 
             // reset all finished slots to idle
             payloads
@@ -325,31 +312,33 @@ pub fn run(runtime: Arc<Mutex<Option<Runtime>>>, tokenizer: Tokenizer, receiver:
                 .enumerate()
                 .for_each(|(batch, payload)| {
                     if let Some(context) = payload.take() {
-                        assert!(matches!(runtime.slots[batch], SlotState::Busy));
-                        runtime.slots[batch] = SlotState::Idle(context.prefix, Instant::now());
+                        assert!(matches!(slots[batch], SlotState::Busy));
+                        slots[batch] = SlotState::Idle(context.prefix, Instant::now());
 
-                        if let Some(backed) = runtime.back(batch) {
-                            log::info!("manually backed slot {}", batch);
+                        if let Some(backed) = match &slots[batch] {
+                            SlotState::Idle(content, _) => {
+                                log::info!("manually backed slot {}", batch);
+                                let backed = self.state.back_batch(batch).expect("back state");
+                                cache.insert(content.clone(), backed.clone());
+                                Some(backed)
+                            }
+                            _ => None,
+                        } {
                             if context.embed {
-                                let num_emb = backed.shape[0];
-                                let num_layer = backed.shape[1] / 5;
-                                let embed_layer = runtime.embed_layer;
-
-                                let start = ((num_layer - embed_layer) * 5 + 4) * num_emb;
-                                let end = start + num_emb;
-                                let _ = context
-                                    .sender
-                                    .send(Token::Embed(backed.data[start..end].to_vec()));
+                                let embed = backed.embed(0, self.embed_layer);
+                                let _ = context.sender.send(Token::Embed(embed));
                             }
                         }
                     }
                 });
 
             // take data from some waiting slots
-            let occupancy = payloads_occupancy(payloads);
-            let remain = runtime.max_runtime_batch - runtime.max_runtime_batch.min(occupancy);
-            let batches = runtime
-                .slots
+            let occupancy = payloads
+                .iter()
+                .filter(|x| matches!(x, Payload::Busy(_)))
+                .count();
+            let remain = self.max_runtime_batch - self.max_runtime_batch.min(occupancy);
+            let batches = slots
                 .iter()
                 .enumerate()
                 .filter(|(_, slot)| matches!(slot, SlotState::Wait(_)))
@@ -358,7 +347,7 @@ pub fn run(runtime: Arc<Mutex<Option<Runtime>>>, tokenizer: Tokenizer, receiver:
                 .collect_vec();
             for batch in batches {
                 let mut slot = SlotState::Busy;
-                std::mem::swap(&mut runtime.slots[batch], &mut slot);
+                std::mem::swap(&mut slots[batch], &mut slot);
                 match slot {
                     SlotState::Wait(context) => {
                         let _ = context.sender.send(Token::Start);
@@ -368,153 +357,196 @@ pub fn run(runtime: Arc<Mutex<Option<Runtime>>>, tokenizer: Tokenizer, receiver:
                     _ => unreachable!(),
                 };
             }
-        } else {
-            payloads.clear();
-            model = None;
-            state = None;
         }
 
-        if let (Some(model), Some(state)) = (&model, &state) {
-            let mut input_tokens = payloads
-                .iter()
-                .map(|payload| match payload {
-                    Payload::Busy(context) => context.suffix.0.clone(),
-                    _ => vec![],
-                })
-                .collect_vec();
+        let mut input_tokens = payloads
+            .iter()
+            .map(|payload| match payload {
+                Payload::Busy(context) => context.suffix.0.clone(),
+                _ => vec![],
+            })
+            .collect_vec();
 
-            // run the model until there is at least one slot finished
-            let occupancy = payloads_occupancy(payloads);
-            let logits = match occupancy {
-                0 => vec![None; payloads.len()],
-                _ => loop {
-                    let logits = model.run(&mut input_tokens, state)?;
-                    if logits.iter().any(Option::is_some) {
-                        break logits;
-                    }
-                },
-            };
-            // post-process logits
-            let logits = payloads
-                .par_iter()
-                .zip_eq(logits.into_par_iter())
-                .map(|(payload, logits)| match payload {
-                    Payload::Busy(context) => logits.map(|mut logits| {
-                        context
-                            .penalties
-                            .iter()
-                            .filter(|(token, _)| !penalty_free_tokens.contains(token))
-                            .for_each(|(token, penalty)| logits[*token as usize] -= penalty);
-                        context
-                            .logit_bias
-                            .iter()
-                            .for_each(|(token, bias)| logits[*token as usize] += *bias);
-                        logits
-                    }),
-                    _ => None,
-                })
-                .collect::<Vec<_>>();
-
-            let probs = match occupancy {
-                0 => vec![None; payloads.len()],
-                _ => model.softmax(logits)?,
-            };
-            let output_tokens = payloads
-                .par_iter()
-                .zip_eq(probs.into_par_iter())
-                .map(|(payload, probs)| match payload {
-                    Payload::Busy(context) => probs.map(|probs| context.sampler.sample(probs)),
-                    _ => None,
-                })
-                .collect::<Vec<_>>();
-
-            for (payload, token, tokens) in itertools::multizip((
-                payloads.iter_mut(),
-                output_tokens.into_iter(),
-                input_tokens.into_iter(),
-            )) {
-                let mut done = false;
-
-                if let Payload::Busy(context) = payload {
-                    let prefix = std::mem::take(&mut context.prefix);
-                    let suffix = std::mem::take(&mut context.suffix);
-                    let model_tokens = [prefix.0, suffix.0].concat();
-
-                    // compute new prefix and suffix using the current remaining tokens
-                    assert!(model_tokens.len() >= tokens.len());
-                    let len = model_tokens.len() - tokens.len();
-                    context.prefix = Tokens(model_tokens[..len].to_vec());
-                    context.suffix = Tokens(model_tokens[len..].to_vec());
+        // run the model until there is at least one slot finished
+        let occupancy = payloads
+            .iter()
+            .filter(|x| matches!(x, Payload::Busy(_)))
+            .count();
+        let logits = match occupancy {
+            0 => vec![None; payloads.len()],
+            _ => loop {
+                let logits = self.model.run(&mut input_tokens, &self.state)?;
+                if logits.iter().any(Option::is_some) {
+                    break logits;
+                }
+            },
+        };
+        // post-process logits
+        let logits = payloads
+            .par_iter()
+            .zip_eq(logits.into_par_iter())
+            .map(|(payload, logits)| match payload {
+                Payload::Busy(context) => logits.map(|mut logits| {
                     context
                         .penalties
-                        .iter_mut()
-                        .for_each(|(_, penalty)| *penalty *= context.sampler.penalty_decay);
+                        .iter()
+                        .filter(|(token, _)| !penalty_free_tokens.contains(token))
+                        .for_each(|(token, penalty)| logits[*token as usize] -= penalty);
+                    context
+                        .logit_bias
+                        .iter()
+                        .for_each(|(token, bias)| logits[*token as usize] += *bias);
+                    logits
+                }),
+                _ => None,
+            })
+            .collect::<Vec<_>>();
 
-                    if let Some(token) = token {
-                        assert_eq!(context.suffix.len(), 0);
-                        context.suffix.0.push(token);
+        let probs = match occupancy {
+            0 => vec![None; payloads.len()],
+            _ => self.model.softmax(logits)?,
+        };
+        let output_tokens = payloads
+            .par_iter()
+            .zip_eq(probs.into_par_iter())
+            .map(|(payload, probs)| match payload {
+                Payload::Busy(context) => probs.map(|probs| context.sampler.sample(probs)),
+                _ => None,
+            })
+            .collect::<Vec<_>>();
 
-                        let penalty = match context.penalties.get(&token) {
-                            Some(penalty) => penalty + context.sampler.frequency_penalty,
-                            None => context.sampler.presence_penalty,
-                        };
-                        context.penalties.insert(token, penalty);
+        for (payload, token, tokens) in itertools::multizip((
+            payloads.iter_mut(),
+            output_tokens.into_iter(),
+            input_tokens.into_iter(),
+        )) {
+            let mut done = false;
 
-                        let mut word = tokenizer.decode(&[token])?;
-                        context.model_text.append(&mut word.clone());
-                        context.output_buffer.append(&mut word);
-                        context.model_tokens.push(token);
+            if let Payload::Busy(context) = payload {
+                let prefix = std::mem::take(&mut context.prefix);
+                let suffix = std::mem::take(&mut context.suffix);
+                let model_tokens = [prefix.0, suffix.0].concat();
 
-                        if let Ok(word) = String::from_utf8(context.output_buffer.clone()) {
-                            let _ = context.sender.send(Token::Token(word));
-                            context.output_buffer.clear();
+                // compute new prefix and suffix using the current remaining tokens
+                assert!(model_tokens.len() >= tokens.len());
+                let len = model_tokens.len() - tokens.len();
+                context.prefix = Tokens(model_tokens[..len].to_vec());
+                context.suffix = Tokens(model_tokens[len..].to_vec());
+                context
+                    .penalties
+                    .iter_mut()
+                    .for_each(|(_, penalty)| *penalty *= context.sampler.penalty_decay);
+
+                if let Some(token) = token {
+                    assert_eq!(context.suffix.len(), 0);
+                    context.suffix.0.push(token);
+
+                    let penalty = match context.penalties.get(&token) {
+                        Some(penalty) => penalty + context.sampler.frequency_penalty,
+                        None => context.sampler.presence_penalty,
+                    };
+                    context.penalties.insert(token, penalty);
+
+                    let mut word = tokenizer.decode(&[token])?;
+                    context.model_text.append(&mut word.clone());
+                    context.output_buffer.append(&mut word);
+                    context.model_tokens.push(token);
+
+                    if let Ok(word) = String::from_utf8(context.output_buffer.clone()) {
+                        let _ = context.sender.send(Token::Token(word));
+                        context.output_buffer.clear();
+                    }
+
+                    let model_text = String::from_utf8_lossy(&context.model_text);
+                    let count_tokens = || {
+                        let prompt_tokens = context.prompt_tokens.len();
+                        let completion_tokens = context.model_tokens.len();
+                        let total_tokens = prompt_tokens + completion_tokens;
+                        TokenCounter {
+                            prompt_tokens,
+                            completion_tokens,
+                            total_tokens,
                         }
+                    };
+                    let mut finish = |reason| {
+                        let _ = context.sender.send(Token::Stop(reason, count_tokens()));
+                        let _ = context.sender.send(Token::Done);
+                        done = true;
+                    };
 
-                        let model_text = String::from_utf8_lossy(&context.model_text);
-                        let count_tokens = || {
-                            let prompt_tokens = context.prompt_tokens.len();
-                            let completion_tokens = context.model_tokens.len();
-                            let total_tokens = prompt_tokens + completion_tokens;
-                            TokenCounter {
-                                prompt_tokens,
-                                completion_tokens,
-                                total_tokens,
-                            }
-                        };
-                        let mut finish = |reason| {
-                            let _ = context.sender.send(Token::Stop(reason, count_tokens()));
-                            let _ = context.sender.send(Token::Done);
-                            done = true;
-                        };
-
-                        if context.sender.is_disconnected() {
-                            done = true;
-                        } else if context.stop.iter().any(|stop| model_text.contains(stop)) {
-                            finish(FinishReason::Stop);
-                        } else if context.model_tokens.len() >= context.max_tokens {
-                            finish(FinishReason::Length);
-                        }
+                    if context.sender.is_disconnected() {
+                        done = true;
+                    } else if context.stop.iter().any(|stop| model_text.contains(stop)) {
+                        finish(FinishReason::Stop);
+                    } else if context.model_tokens.len() >= context.max_tokens {
+                        finish(FinishReason::Length);
                     }
                 }
+            }
 
-                if done {
-                    payload.finalize();
-                }
+            if done {
+                payload.finalize();
             }
         }
 
         Ok(())
-    };
+    }
+}
+
+pub enum RuntimeUntyped<'a> {
+    V4(Runtime<v4::Model<'a>, v4::ModelState, v4::BackedState>),
+    V5(Runtime<v5::Model<'a>, v5::ModelState, v5::BackedState>),
+}
+
+impl RuntimeUntyped<'_> {
+    /// Queue a generation task.
+    pub fn queue(&self, context: GenerateContext) -> SlotResult {
+        match self {
+            RuntimeUntyped::V4(runtime) => runtime.queue(context),
+            RuntimeUntyped::V5(runtime) => runtime.queue(context),
+        }
+    }
+
+    fn process(
+        &self,
+        tokenizer: &Tokenizer,
+        penalty_free_tokens: &HashSet<u16>,
+        payloads: &mut Vec<Payload>,
+    ) -> Result<()> {
+        match self {
+            RuntimeUntyped::V4(runtime) => {
+                runtime.process(tokenizer, penalty_free_tokens, payloads)
+            }
+            RuntimeUntyped::V5(runtime) => {
+                runtime.process(tokenizer, penalty_free_tokens, payloads)
+            }
+        }
+    }
+}
+
+pub fn run<'a>(tokenizer: Tokenizer, receiver: Receiver<Option<Arc<RuntimeUntyped<'a>>>>) {
+    let penalty_free_tokens = (0..u16::MAX)
+        .filter(|token| {
+            let word = tokenizer.decode(&[*token]).unwrap_or_default();
+            let word = String::from_utf8(word).unwrap_or_default();
+            word.contains('\n')
+        })
+        .collect::<HashSet<_>>();
+
+    let mut runtime: Option<Arc<RuntimeUntyped<'a>>>;
+    let mut payloads = Vec::new();
 
     loop {
-        let _ = receiver.recv();
+        runtime = receiver.recv().unwrap();
 
-        'run: loop {
-            if let Err(err) = process(&mut payloads) {
-                log::error!("{err}");
-            }
-            if payloads.iter().all(Payload::is_empty) {
-                break 'run;
+        if let Some(runtime) = &runtime {
+            'run: loop {
+                if let Err(err) = runtime.process(&tokenizer, &penalty_free_tokens, &mut payloads) {
+                    log::error!("{}", err);
+                }
+                if payloads.iter().all(Payload::is_empty) {
+                    break 'run;
+                }
             }
         }
     }

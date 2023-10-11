@@ -14,19 +14,17 @@ pub struct ModelResponse {
     pub data: Vec<ModelChoice>,
 }
 
-pub async fn models(
-    State(ThreadState { model_name, .. }): State<ThreadState>,
-) -> Json<ModelResponse> {
+pub async fn models(State(ThreadState(_sender)): State<ThreadState>) -> Json<ModelResponse> {
     Json(ModelResponse {
         data: vec![ModelChoice {
             object: "models".into(),
-            id: model_name.read().unwrap().clone(),
+            id: "".into(),
         }],
     })
 }
 
 pub async fn load(
-    State(ThreadState { sender, .. }): State<ThreadState>,
+    State(ThreadState(sender)): State<ThreadState>,
     Json(request): Json<ReloadRequest>,
 ) {
     let _ = sender.send(ThreadRequest::Reload(request));
