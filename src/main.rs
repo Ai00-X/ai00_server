@@ -605,7 +605,7 @@ struct Args {
     #[arg(long, short, value_name = "FILE")]
     tokenizer: Option<PathBuf>,
     #[arg(long, short, value_name = "FILE")]
-    model: Option<PathBuf>,
+    config: Option<PathBuf>,
     #[arg(long, short)]
     ip: Option<Ipv4Addr>,
     #[arg(long, short, default_value_t = 65530)]
@@ -648,10 +648,10 @@ async fn main() {
     let (sender, receiver) = flume::unbounded::<ThreadRequest>();
 
     {
-        let path = args.model.clone().unwrap_or("Config.toml".into());
-        log::info!("loading model config {}...", path.to_string_lossy());
+        let path = args.config.clone().unwrap_or("assets/Config.toml".into());
+        log::info!("reading config {}...", path.to_string_lossy());
 
-        let request = reload_request_from_config(path).expect("load model config failed");
+        let request = reload_request_from_config(path).expect("load config failed");
         let _ = sender.send(ThreadRequest::Reload(request));
     }
 

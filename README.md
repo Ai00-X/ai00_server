@@ -65,7 +65,7 @@ QQ Group for communication: 30920262
     
 2.  After [downloading the model](https://huggingface.co/cgisky/RWKV-safetensors-fp16), place the model in the `assets/models/` path, for example, `assets/models/RWKV-4-World-0.4B-v1-20230529-ctx4096.st`
 
-3.  Optionally modify `Config.toml` for model configurations like model path, quantization layers, etc.
+3.  Optionally modify [`assets/Config.toml`](./assets/Config.toml) for model configurations like model path, quantization layers, etc.
     
 4.  Run in the command line
     
@@ -106,7 +106,7 @@ QQ Group for communication: 30920262
 
 ## 📝Supported Arguments
 
-*   `--model`: Model configure file path (default: `Config.toml`)
+*   `--config`: Configure file path (default: `assets/Config.toml`)
 *   `--tokenizer`: Tokenizer path
 *   `--port`: Running port
 *   `--adapter`: Adapter (GPU and backend) selection options: `Auto` and `Manual`
@@ -117,7 +117,7 @@ QQ Group for communication: 30920262
 The server listens on port 3000, loads the full-layer quantized (32 > 24) 0.4B model, and selects the high-performance adapter.
 
 ```bash
-$ cargo run --release -- --model Config.toml --port 3000 --adapter auto
+$ cargo run --release -- --model assets/Config.toml --port 3000 --adapter auto
 ```
 
 ## 📙Currently Available APIs

@@ -59,7 +59,7 @@
 
 2. [下载模型](https://huggingface.co/cgisky/RWKV-safetensors-fp16)后把模型放在`assets/models/`路径，例如`assets/models/RWKV-4-World-0.4B-v1-20230529-ctx4096.st`
 
-3. 你可以修改`Config.toml`里面的模型配置，包括模型路径、量化层数等
+3. 你可以修改 [`assets/Config.toml`](./assets/Config.toml) 里面的模型配置，包括模型路径、量化层数等
 
 4. 在命令行运行
 
@@ -102,7 +102,7 @@
 
     
 ## 📝支持的启动参数
-- `--model`: 模型配置文件路径（默认`Config.toml`）
+- `--config`: 模型配置文件路径（默认`assets/Config.toml`）
 - `--tokenizer`: 词表路径
 - `--port`: 运行端口
 - `--adapter`: 适配器（GPU和后端）选择项：`Auto`、`Manual`
@@ -112,7 +112,7 @@
 
 服务器监听3000端口，加载全部层量化（32 > 24）的0.4B模型，自动选择高性能适配器。
 ```bash
-$ cargo run --release -- --model Config.toml --port 3000 --adapter auto
+$ cargo run --release -- --model assets/Config.toml --port 3000 --adapter auto
 ```
 
 
