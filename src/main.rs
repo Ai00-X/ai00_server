@@ -661,7 +661,7 @@ async fn main() {
 
     let app = Router::new()
         .route("/load", post(models::load))
-        .route("/models/info", post(models::info))
+        .route("/models/info", get(models::info))
         .route("/models", get(models::models))
         .route("/v1/models", get(models::models))
         .route("/completions", post(completion::completions))
