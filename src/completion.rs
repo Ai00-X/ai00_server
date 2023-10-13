@@ -102,13 +102,22 @@ async fn completions_one(
     State(ThreadState(sender)): State<ThreadState>,
     Json(request): Json<CompletionRequest>,
 ) -> Json<CompletionResponse> {
-    let (token_sender, token_receiver) = flume::unbounded();
-    let model_name = String::new();
+    let model_name = {
+        let (info_sender, info_receiver) = flume::bounded(1);
+        let _ = sender.send(ThreadRequest::Info(info_sender));
+        let info = info_receiver.recv().unwrap();
+        info.reload
+            .path
+            .into_os_string()
+            .into_string()
+            .unwrap_or_default()
+    };
 
+    let (token_sender, token_receiver) = flume::unbounded();
     let request = GenerateRequest::from(request);
     let _ = sender.send(ThreadRequest::Generate {
         request,
-        token_sender,
+        sender: token_sender,
     });
 
     let mut token_counter = TokenCounter::default();
@@ -170,13 +179,22 @@ async fn completions_stream(
     State(ThreadState(sender)): State<ThreadState>,
     Json(request): Json<CompletionRequest>,
 ) -> Sse<impl Stream<Item = Result<Event>>> {
-    let (token_sender, token_receiver) = flume::unbounded();
-    let model_name = String::new();
+    let model_name = {
+        let (info_sender, info_receiver) = flume::bounded(1);
+        let _ = sender.send(ThreadRequest::Info(info_sender));
+        let info = info_receiver.recv().unwrap();
+        info.reload
+            .path
+            .into_os_string()
+            .into_string()
+            .unwrap_or_default()
+    };
 
+    let (token_sender, token_receiver) = flume::unbounded();
     let request = GenerateRequest::from(request);
     let _ = sender.send(ThreadRequest::Generate {
         request,
-        token_sender,
+        sender: token_sender,
     });
 
     let stream = token_receiver.into_stream().skip(1).map(move |token| {

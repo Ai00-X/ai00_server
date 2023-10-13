@@ -14,7 +14,7 @@ use rayon::prelude::{
     IndexedParallelIterator, IntoParallelIterator, IntoParallelRefIterator, ParallelIterator,
 };
 use web_rwkv::{
-    model::{v4, v5, BackedState, FromBuilder, Model, ModelState, StateBuilder},
+    model::{v4, v5, BackedState, FromBuilder, Model, ModelInfo, ModelState, StateBuilder},
     tokenizer::Tokenizer,
 };
 
@@ -499,6 +499,13 @@ pub enum RuntimeUntyped<'a> {
 }
 
 impl RuntimeUntyped<'_> {
+    pub fn info(&self) -> &ModelInfo {
+        match self {
+            RuntimeUntyped::V4(runtime) => runtime.model.info(),
+            RuntimeUntyped::V5(runtime) => runtime.model.info(),
+        }
+    }
+
     /// Queue a generation task.
     pub fn queue(&self, context: GenerateContext) -> SlotResult {
         match self {
@@ -524,7 +531,7 @@ impl RuntimeUntyped<'_> {
     }
 }
 
-pub fn run<'a>(tokenizer: Tokenizer, receiver: Receiver<Option<Arc<RuntimeUntyped<'a>>>>) {
+pub fn run(tokenizer: Tokenizer, receiver: Receiver<Arc<RuntimeUntyped<'_>>>) {
     let penalty_free_tokens = (0..u16::MAX)
         .filter(|token| {
             let word = tokenizer.decode(&[*token]).unwrap_or_default();
@@ -533,11 +540,11 @@ pub fn run<'a>(tokenizer: Tokenizer, receiver: Receiver<Option<Arc<RuntimeUntype
         })
         .collect::<HashSet<_>>();
 
-    let mut runtime: Option<Arc<RuntimeUntyped<'a>>>;
+    let mut runtime = None;
     let mut payloads = Vec::new();
 
     loop {
-        runtime = receiver.recv().unwrap();
+        runtime.replace(receiver.recv().unwrap());
 
         if let Some(runtime) = &runtime {
             'run: loop {

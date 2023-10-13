@@ -41,12 +41,21 @@ pub async fn embeddings(
     State(ThreadState(sender)): State<ThreadState>,
     Json(request): Json<EmbeddingRequest>,
 ) -> Json<EmbeddingResponse> {
-    let (token_sender, token_receiver) = flume::unbounded();
-    let model_name = String::new();
+    let model_name = {
+        let (info_sender, info_receiver) = flume::bounded(1);
+        let _ = sender.send(ThreadRequest::Info(info_sender));
+        let info = info_receiver.recv().unwrap();
+        info.reload
+            .path
+            .into_os_string()
+            .into_string()
+            .unwrap_or_default()
+    };
 
+    let (token_sender, token_receiver) = flume::unbounded();
     let _ = sender.send(ThreadRequest::Generate {
         request: request.into(),
-        token_sender,
+        sender: token_sender,
     });
 
     let mut token_counter = TokenCounter::default();

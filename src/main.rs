@@ -24,8 +24,8 @@ use tower_http::{cors::CorsLayer, services::ServeDir};
 use web_rwkv::{
     context::{Context, ContextBuilder, Instance},
     model::{
-        loader::Loader, FromBuilder, LayerFlags, Model, ModelBuilder, ModelState, ModelVersion,
-        Quantization, StateBuilder,
+        loader::Loader, FromBuilder, LayerFlags, Model, ModelBuilder, ModelInfo, ModelState,
+        ModelVersion, Quantization, StateBuilder,
     },
     tokenizer::Tokenizer,
     wgpu::PowerPreference,
@@ -91,15 +91,23 @@ where
     }
 }
 
+#[derive(Debug, Clone)]
 pub enum ThreadRequest {
-    Reload(ReloadRequest),
+    Info(Sender<RuntimeInfo>),
     Generate {
         request: GenerateRequest,
-        token_sender: Sender<Token>,
+        sender: Sender<Token>,
     },
+    Reload(ReloadRequest),
 }
 
-#[derive(Debug, Default)]
+#[derive(Debug, Clone, Serialize)]
+pub struct RuntimeInfo {
+    pub reload: ReloadRequest,
+    pub info: ModelInfo,
+}
+
+#[derive(Debug, Default, Clone)]
 pub struct GenerateRequest {
     pub prompt: String,
     pub model_text: String,
@@ -110,7 +118,7 @@ pub struct GenerateRequest {
     pub embed: bool,
 }
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ReloadRequest {
     /// Path to the model.
     pub path: PathBuf,
@@ -455,7 +463,7 @@ fn model_route(
     tokenizer: Tokenizer,
     receiver: Receiver<ThreadRequest>,
 ) -> Result<()> {
-    let mut runtime: Option<Arc<RuntimeUntyped>> = None;
+    let mut env: Option<(Arc<RuntimeUntyped<'_>>, ReloadRequest)> = None;
     let mut pending = Vec::new();
 
     let sender = {
@@ -465,128 +473,120 @@ fn model_route(
         sender
     };
 
-    fn queue<'a>(
-        runtime: &Option<Arc<RuntimeUntyped<'a>>>,
+    fn queue(
+        environment: &Option<(Arc<RuntimeUntyped<'_>>, ReloadRequest)>,
         context: GenerateContext,
-        sender: &Sender<Option<Arc<RuntimeUntyped<'a>>>>,
     ) -> Vec<GenerateContext> {
         let mut pending = Vec::new();
-        match &runtime {
-            Some(runtime) => match runtime.queue(context) {
+        match environment {
+            Some((runtime, _)) => match runtime.queue(context) {
                 SlotResult::Success(batch) => log::info!("queued task at {batch}"),
                 SlotResult::Fault(batch) => log::info!("swapped task at {batch}"),
                 SlotResult::Failure(context) => pending.push(*context),
             },
             None => pending.push(context),
         }
-        let _ = sender.send(runtime.clone());
         pending
     }
 
-    fn listen<'a>(
-        runtime: &mut Option<Arc<RuntimeUntyped<'a>>>,
-        pending: &mut Vec<GenerateContext>,
-        context: &Context,
-        tokenizer: &Tokenizer,
-        receiver: &Receiver<ThreadRequest>,
-        sender: &Sender<Option<Arc<RuntimeUntyped<'a>>>>,
-    ) -> Result<()> {
-        match receiver.recv()? {
-            ThreadRequest::Reload(request) => {
-                let max_runtime_batch = request.max_runtime_batch;
-                let embed_layer = request.embed_layer;
-
-                let file = File::open(&request.path)?;
-                let data = unsafe { Mmap::map(&file)? };
-                let info = Loader::info(&data)?;
-                log::info!("{:#?}", info);
-
-                let rt = match info.version {
-                    ModelVersion::V4 => {
-                        let (model, state) = load_model(context, request, &data)?;
-                        RuntimeUntyped::V4(Runtime::new(
-                            model,
-                            state,
-                            max_runtime_batch,
-                            embed_layer,
-                        ))
-                    }
-                    ModelVersion::V5 => {
-                        let (model, state) = load_model(context, request, &data)?;
-                        RuntimeUntyped::V5(Runtime::new(
-                            model,
-                            state,
-                            max_runtime_batch,
-                            embed_layer,
-                        ))
-                    }
-                };
-                runtime.replace(Arc::new(rt));
-                let _ = sender.send(runtime.clone());
-            }
-            ThreadRequest::Generate {
-                request,
-                token_sender,
-            } => {
-                let GenerateRequest {
-                    prompt,
-                    model_text,
-                    max_tokens,
-                    stop,
-                    sampler,
-                    logit_bias,
-                    embed,
-                } = request;
-
-                let tokens = Tokens(tokenizer.encode(prompt.as_bytes())?);
-                let model_tokens = Tokens(tokenizer.encode(model_text.as_bytes())?);
-                let mut penalties = HashMap::new();
-                for (index, token) in model_tokens.iter().rev().enumerate() {
-                    let ap = sampler.presence_penalty;
-                    let af = sampler.frequency_penalty;
-                    let ad = sampler.penalty_decay;
-                    let mut penalty = penalties.remove(token).unwrap_or(ap);
-                    penalty += af * ad.powf(index as f32);
-                    penalties.insert(*token, penalty);
-                }
-
-                let context = GenerateContext {
-                    prompt_tokens: tokens.to_vec(),
-                    prefix: Default::default(),
-                    suffix: tokens,
-                    penalties,
-                    model_text: Default::default(),
-                    output_buffer: Default::default(),
-                    model_tokens: Default::default(),
-                    max_tokens,
-                    stop,
-                    sampler,
-                    logit_bias,
-                    embed,
-                    sender: token_sender,
-                };
-                pending.append(&mut queue(runtime, context, sender));
-            }
-        };
-        Ok(())
-    }
-
     loop {
-        if let Err(err) = listen(
-            &mut runtime,
-            &mut pending,
-            &context,
-            &tokenizer,
-            &receiver,
-            &sender,
-        ) {
+        let mut listen = || -> Result<()> {
+            match receiver.recv()? {
+                ThreadRequest::Info(sender) => env.iter().for_each(|(runtime, reload)| {
+                    let reload = reload.clone();
+                    let info = runtime.info().clone();
+                    let _ = sender.send(RuntimeInfo { reload, info });
+                }),
+                ThreadRequest::Reload(request) => {
+                    let reload = request.clone();
+                    let max_runtime_batch = request.max_runtime_batch;
+                    let embed_layer = request.embed_layer;
+
+                    let file = File::open(&request.path)?;
+                    let data = unsafe { Mmap::map(&file)? };
+                    let info = Loader::info(&data)?;
+                    log::info!("{:#?}", info);
+
+                    let runtime = Arc::new(match info.version {
+                        ModelVersion::V4 => {
+                            let (model, state) = load_model(&context, request, &data)?;
+                            RuntimeUntyped::V4(Runtime::new(
+                                model,
+                                state,
+                                max_runtime_batch,
+                                embed_layer,
+                            ))
+                        }
+                        ModelVersion::V5 => {
+                            let (model, state) = load_model(&context, request, &data)?;
+                            RuntimeUntyped::V5(Runtime::new(
+                                model,
+                                state,
+                                max_runtime_batch,
+                                embed_layer,
+                            ))
+                        }
+                    });
+                    let _ = sender.send(runtime.clone());
+                    env.replace((runtime, reload));
+                }
+                ThreadRequest::Generate {
+                    request,
+                    sender: token_sender,
+                } => {
+                    let GenerateRequest {
+                        prompt,
+                        model_text,
+                        max_tokens,
+                        stop,
+                        sampler,
+                        logit_bias,
+                        embed,
+                    } = request;
+
+                    let tokens = Tokens(tokenizer.encode(prompt.as_bytes())?);
+                    let model_tokens = Tokens(tokenizer.encode(model_text.as_bytes())?);
+                    let mut penalties = HashMap::new();
+                    for (index, token) in model_tokens.iter().rev().enumerate() {
+                        let ap = sampler.presence_penalty;
+                        let af = sampler.frequency_penalty;
+                        let ad = sampler.penalty_decay;
+                        let mut penalty = penalties.remove(token).unwrap_or(ap);
+                        penalty += af * ad.powf(index as f32);
+                        penalties.insert(*token, penalty);
+                    }
+
+                    let context = GenerateContext {
+                        prompt_tokens: tokens.to_vec(),
+                        prefix: Default::default(),
+                        suffix: tokens,
+                        penalties,
+                        model_text: Default::default(),
+                        output_buffer: Default::default(),
+                        model_tokens: Default::default(),
+                        max_tokens,
+                        stop,
+                        sampler,
+                        logit_bias,
+                        embed,
+                        sender: token_sender,
+                    };
+                    pending.append(&mut queue(&env, context));
+                    let _ = env.iter().map(|(runtime, _)| sender.send(runtime.clone()));
+                }
+            };
+            Ok(())
+        };
+
+        if let Err(err) = listen() {
             log::error!("{err}");
         }
 
         while !pending.is_empty() {
             let mut temp = Vec::new();
             for context in pending.drain(..) {
-                temp.append(&mut queue(&runtime, context, &sender));
+                temp.append(&mut queue(&env, context));
+                let _ = env.iter().map(|(runtime, _)| sender.send(runtime.clone()));
             }
             std::mem::swap(&mut pending, &mut temp);
             std::thread::sleep(Duration::from_secs(1));
@@ -661,6 +661,7 @@ async fn main() {
 
     let app = Router::new()
         .route("/load", post(models::load))
+        .route("/models/info", post(models::info))
         .route("/models", get(models::models))
         .route("/v1/models", get(models::models))
         .route("/completions", post(completion::completions))
