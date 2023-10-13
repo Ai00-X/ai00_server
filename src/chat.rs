@@ -11,8 +11,8 @@ use itertools::Itertools;
 use serde::{Deserialize, Serialize};
 
 use crate::{
-    sampler::Sampler, FinishReason, GenerateRequest, OptionArray, ThreadRequest, ThreadState,
-    Token, TokenCounter,
+    request_info, sampler::Sampler, FinishReason, GenerateRequest, OptionArray, ThreadRequest,
+    ThreadState, Token, TokenCounter,
 };
 
 #[derive(Debug, Default, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -150,16 +150,11 @@ async fn chat_completions_one(
     State(ThreadState(sender)): State<ThreadState>,
     Json(request): Json<ChatRequest>,
 ) -> Json<ChatResponse> {
-    let model_name = {
-        let (info_sender, info_receiver) = flume::bounded(1);
-        let _ = sender.send(ThreadRequest::Info(info_sender));
-        let info = info_receiver.recv().unwrap();
-        info.reload
-            .path
-            .into_os_string()
-            .into_string()
-            .unwrap_or_default()
-    };
+    let model_name = request_info(sender.clone())
+        .map(|info| info.reload.path)
+        .and_then(|path| path.file_name().map(|name| name.to_os_string()))
+        .and_then(|name| name.into_string().ok())
+        .unwrap_or_default();
 
     let (token_sender, token_receiver) = flume::unbounded();
     let request = request.into();
@@ -231,16 +226,11 @@ async fn chat_completions_stream(
     State(ThreadState(sender)): State<ThreadState>,
     Json(request): Json<ChatRequest>,
 ) -> Sse<impl Stream<Item = Result<Event>>> {
-    let model_name = {
-        let (info_sender, info_receiver) = flume::bounded(1);
-        let _ = sender.send(ThreadRequest::Info(info_sender));
-        let info = info_receiver.recv().unwrap();
-        info.reload
-            .path
-            .into_os_string()
-            .into_string()
-            .unwrap_or_default()
-    };
+    let model_name = request_info(sender.clone())
+        .map(|info| info.reload.path)
+        .and_then(|path| path.file_name().map(|name| name.to_os_string()))
+        .and_then(|name| name.into_string().ok())
+        .unwrap_or_default();
 
     let (token_sender, token_receiver) = flume::unbounded();
     let request = request.into();

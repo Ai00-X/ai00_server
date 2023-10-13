@@ -242,229 +242,13 @@ fn reload_request_from_config(path: impl AsRef<Path>) -> Result<ReloadRequest> {
     Ok(toml::from_str(&contents)?)
 }
 
-// fn _monitor(context: &Context, tokenizer: Tokenizer, receiver: Receiver<ThreadRequest>) {
-//     loop {
-//         let request = match receiver.recv() {
-//             Ok(ThreadRequest::Reload(request)) => request,
-//             _ => continue,
-//         };
-
-//         let quantization = if request.quantized_layers.is_empty() {
-//             Quantization::None
-//         } else {
-//             let mut layers = LayerFlags::empty();
-//             request
-//                 .quantized_layers
-//                 .into_iter()
-//                 .for_each(|layer| layers |= LayerFlags::from_layer(layer as u64));
-//             Quantization::Int8(layers)
-//         };
-
-//         let model = match load_model(context.clone(), request.model_path, quantization) {
-//             Ok(model) => model,
-//             Err(err) => {
-//                 log::error!("{}", err);
-//                 continue;
-//             }
-//         }
-//         .into();
-//         let tokenizer = tokenizer.clone();
-//         let receiver = receiver.clone();
-//         std::thread::spawn(move || model_task(model, tokenizer, receiver));
-//     }
-// }
-
-// fn model_task(
-//     args: Args,
-//     context: Context,
-//     tokenizer: Tokenizer,
-//     path: impl AsRef<Path>,
-//     receiver: Receiver<ThreadRequest>,
-// ) {
-//     let quant = match args.quant {
-//         None => Quantization::None,
-//         Some(layer) => {
-//             let mut layers = LayerFlags::empty();
-//             (0..layer).for_each(|layer| layers |= LayerFlags::from_layer(layer as u64));
-//             Quantization::Int8(layers)
-//         }
-//     };
-
-//     let model = match load_model(&context, path, quant, args.head_chunk) {
-//         Ok(model) => model,
-//         Err(err) => {
-//             log::error!("{}", err);
-//             return;
-//         }
-//     };
-
-//     log::info!("{:#?}", context.adapter.get_info());
-//     log::info!("{:#?}", model.info());
-//     log::info!("chosen head chunk size: {}", args.head_chunk);
-
-//     let penalty_free_tokens = {
-//         let mut set = HashSet::new();
-//         for token in 0..u16::MAX {
-//             let word = tokenizer.decode(&[token]).unwrap_or_default();
-//             let word = String::from_utf8(word).unwrap_or_default();
-//             if word.contains('\n') {
-//                 set.insert(token);
-//             }
-//         }
-//         set
-//     };
-
-//     let mut state_cache = Trie::<&[u8], (BackedState, usize)>::new();
-//     let state = ModelState::new(&context, model.info(), 1);
-
-//     let mut respond = || -> Result<()> {
-//         let (request, mut occurrences, token_sender) = match receiver.recv() {
-//             Ok(ThreadRequest::Generate {
-//                 request,
-//                 occurrences,
-//                 token_sender,
-//             }) => (request, occurrences, token_sender),
-//             Ok(ThreadRequest::Reload(_)) => return Ok(()),
-//             Err(_) => return Ok(()),
-//         };
-
-//         let GenerateRequest {
-//             prompt,
-//             max_tokens,
-//             stop,
-//             sampler,
-//             logit_bias,
-//             embedding,
-//         } = request;
-
-//         log::trace!("{:#?}", sampler);
-
-//         let remain = {
-//             let prefix = state_cache
-//                 .longest_common_prefix(prompt.as_bytes())
-//                 .to_vec();
-//             let mut remain = prompt.as_bytes().to_vec();
-//             if let Some(count) = state_cache
-//                 .get_mut(&prefix[..])
-//                 .and_then(|(backed, count)| state.load(backed).ok().and(Some(count)))
-//             {
-//                 log::trace!("state cache hit: {count}");
-//                 *count = 0;
-//                 remain.split_off(prefix.len())
-//             } else {
-//                 log::trace!("state cache miss");
-//                 remain
-//             }
-//         };
-//         let mut model_text = String::new();
-//         let mut token_counter = TokenCounter::default();
-
-//         let mut tokens = tokenizer.encode(&remain).unwrap_or_default();
-//         let _ = token_sender.send(Token::Start);
-
-//         'run: {
-//             token_counter.prompt_tokens = tokens.len();
-//             token_counter.total_tokens = tokens.len();
-
-//             log::trace!("{}", String::from_utf8(remain).unwrap_or_default());
-
-//             for _ in 0..max_tokens {
-//                 if token_sender.is_disconnected() {
-//                     break 'run;
-//                 }
-
-//                 let shape = Shape::new(1, tokens.len(), 1);
-//                 let mut logits = model
-//                     .run(&context.tensor_from_data(shape, tokens)?, &mask, &state)?
-//                     .to_vec();
-//                 for (&token, &count) in occurrences
-//                     .iter()
-//                     .filter(|(token, _)| !penalty_free_tokens.contains(token))
-//                 {
-//                     let penalty =
-//                         sampler.presence_penalty + sampler.frequency_penalty * count as f32;
-//                     logits[token as usize] -= penalty;
-//                 }
-//                 for (&token, &bias) in &logit_bias {
-//                     logits[token as usize] += bias;
-//                 }
-
-//                 let probs = model
-//                     .softmax(&context.tensor_from_data(model.head_shape(1), logits)?)?
-//                     .to_vec();
-//                 let token = sampler.sample(probs);
-//                 let word = tokenizer
-//                     .decode(&[token])
-//                     .ok()
-//                     .and_then(|x| String::from_utf8(x).ok())
-//                     .unwrap_or_default();
-
-//                 print!("{word}");
-
-//                 model_text += &word;
-//                 token_counter.completion_tokens += 1;
-//                 token_counter.total_tokens += 1;
-
-//                 let count = occurrences.get(&token).copied().unwrap_or_default();
-//                 occurrences.insert(token, count + 1);
-
-//                 let _ = token_sender.send(Token::Token(word));
-//                 tokens = vec![token];
-
-//                 if token == 0 || stop.iter().any(|x| model_text.contains(x)) {
-//                     let _ = token_sender.send(Token::Stop(FinishReason::Stop, token_counter));
-//                     break 'run;
-//                 }
-//             }
-
-//             let _ = token_sender.send(Token::Stop(FinishReason::Length, token_counter));
-//         }
-
-//         println!("[DONE]");
-
-//         let back = BackedState::from(state.clone());
-//         if embedding {
-//             let num_layer = model.info().num_layers;
-//             // let embedding = back.0[num_layer - 3][4 * num_emb..].to_vec();
-//             let embedding = back.as_slice((.., 5 * (num_layer - 3) + 4, ..))?.to_vec();
-//             let _ = token_sender.send(Token::Embed(embedding));
-//         }
-
-//         let key = (prompt + &model_text).as_bytes().to_vec();
-//         state_cache.insert(key.leak(), (back, 0));
-
-//         let mut keys_to_remove = vec![];
-//         for (&key, (_, count)) in state_cache.iter_mut() {
-//             *count += 1;
-//             if *count > STATE_CACHE_LRU {
-//                 keys_to_remove.push(key);
-//             }
-//         }
-
-//         log::trace!("state cache evicted: {}", keys_to_remove.len());
-//         for key in keys_to_remove {
-//             state_cache.remove(key);
-//         }
-
-//         let _ = token_sender.send(Token::Done);
-//         Ok(())
-//     };
-
-//     loop {
-//         match respond() {
-//             Ok(()) => {}
-//             Err(err) => log::error!("{}", err),
-//         }
-//     }
-// }
-
 fn model_route(
     context: Context,
     tokenizer: Tokenizer,
     receiver: Receiver<ThreadRequest>,
 ) -> Result<()> {
     let mut env: Option<(Arc<RuntimeUntyped<'_>>, ReloadRequest)> = None;
-    let mut pending = Vec::new();
+    let mut queue = Vec::new();
 
     let sender = {
         let (sender, receiver) = flume::unbounded();
@@ -473,30 +257,31 @@ fn model_route(
         sender
     };
 
-    fn queue(
+    fn enqueue(
+        queue: &mut Vec<GenerateContext>,
         environment: &Option<(Arc<RuntimeUntyped<'_>>, ReloadRequest)>,
         context: GenerateContext,
-    ) -> Vec<GenerateContext> {
-        let mut pending = Vec::new();
+    ) {
         match environment {
             Some((runtime, _)) => match runtime.queue(context) {
                 SlotResult::Success(batch) => log::info!("queued task at {batch}"),
                 SlotResult::Fault(batch) => log::info!("swapped task at {batch}"),
-                SlotResult::Failure(context) => pending.push(*context),
+                SlotResult::Failure(context) => queue.push(*context),
             },
-            None => pending.push(context),
+            None => queue.push(context),
         }
-        pending
     }
 
     loop {
         let mut listen = || -> Result<()> {
             match receiver.recv()? {
-                ThreadRequest::Info(sender) => env.iter().for_each(|(runtime, reload)| {
-                    let reload = reload.clone();
-                    let info = runtime.info().clone();
-                    let _ = sender.send(RuntimeInfo { reload, info });
-                }),
+                ThreadRequest::Info(sender) => {
+                    if let Some((runtime, reload)) = &env {
+                        let reload = reload.clone();
+                        let info = runtime.info().clone();
+                        let _ = sender.send(RuntimeInfo { reload, info });
+                    }
+                }
                 ThreadRequest::Reload(request) => {
                     let reload = request.clone();
                     let max_runtime_batch = request.max_runtime_batch;
@@ -571,8 +356,10 @@ fn model_route(
                         embed,
                         sender: token_sender,
                     };
-                    pending.append(&mut queue(&env, context));
-                    let _ = env.iter().map(|(runtime, _)| sender.send(runtime.clone()));
+                    enqueue(&mut queue, &env, context);
+                    if let Some((runtime, _)) = &env {
+                        let _ = sender.send(runtime.clone());
+                    }
                 }
             };
             Ok(())
@@ -582,16 +369,22 @@ fn model_route(
             log::error!("{err}");
         }
 
-        while !pending.is_empty() {
+        while !queue.is_empty() {
             let mut temp = Vec::new();
-            for context in pending.drain(..) {
-                temp.append(&mut queue(&env, context));
+            for context in queue.drain(..) {
+                enqueue(&mut temp, &env, context);
                 let _ = env.iter().map(|(runtime, _)| sender.send(runtime.clone()));
             }
-            std::mem::swap(&mut pending, &mut temp);
+            std::mem::swap(&mut queue, &mut temp);
             std::thread::sleep(Duration::from_secs(1));
         }
     }
+}
+
+pub fn request_info(sender: Sender<ThreadRequest>) -> Option<RuntimeInfo> {
+    let (info_sender, info_receiver) = flume::unbounded();
+    let _ = sender.send(ThreadRequest::Info(info_sender));
+    info_receiver.recv_timeout(Duration::from_secs(1)).ok()
 }
 
 #[derive(Parser, Debug, Clone)]
