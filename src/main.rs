@@ -239,7 +239,7 @@ fn load_web(path: impl AsRef<Path>, target: &Path) -> Result<()> {
     Ok(())
 }
 
-fn load_plugin(path: impl AsRef<Path>, target: &Path , name: &String) -> Result<()> {
+fn load_plugin(path: impl AsRef<Path>, target: &Path, name: &String) -> Result<()> {
     let file = File::open(path)?;
     let map = unsafe { Mmap::map(&file)? };
     let plugins_dir = target.join("plugins");
@@ -483,10 +483,10 @@ async fn main() {
             .filter_map(|x| x.ok())
             .filter(|x| x.path().is_file())
             .filter(|x| x.path().extension().is_some_and(|ext| ext == "zip"))
-            .filter(|x| x.path().file_name().is_some_and(|name| name != "api.zip"))
             .filter(|x| x.path().file_name().is_some_and(|name| {
-                let name_str = name.to_string_lossy().to_string();
-                if load_plugin(x.path(), &serve_path, &name_str).is_ok() {
+                let name_str = name.to_string_lossy();
+                let name_without_ext = name_str.trim_end_matches(".zip").to_owned();
+                if &name_without_ext != "api" && load_plugin(x.path(), &serve_path, &name_without_ext).is_ok() {
                     return true;
                 }
                 false
