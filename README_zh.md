@@ -112,7 +112,7 @@
 
 服务器监听3000端口，加载全部层量化（32 > 24）的0.4B模型，自动选择高性能适配器。
 ```bash
-$ cargo run --release -- --model assets/Config.toml --port 3000 --adapter auto
+$ cargo run --release -- --config assets/configs/Config.toml --port 3000 --adapter auto
 ```
 
 
