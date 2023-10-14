@@ -36,10 +36,10 @@ use crate::{
     sampler::Sampler,
 };
 
+mod api;
 mod chat;
 mod completion;
 mod embedding;
-mod models;
 mod run;
 mod sampler;
 
@@ -453,10 +453,10 @@ async fn main() {
     load_web("assets/www.zip", &temp_path).unwrap();
 
     let app = Router::new()
-        .route("/load", post(models::load))
-        .route("/models/info", get(models::info))
-        .route("/models", get(models::models))
-        .route("/v1/models", get(models::models))
+        .route("/api/load", post(api::load))
+        .route("/api/info", get(api::info))
+        .route("/models", get(api::models))
+        .route("/v1/models", get(api::models))
         .route("/completions", post(completion::completions))
         .route("/v1/completions", post(completion::completions))
         .route("/chat/completions", post(chat::chat_completions))
