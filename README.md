@@ -117,7 +117,7 @@ QQ Group for communication: 30920262
 The server listens on port 3000, loads the full-layer quantized (32 > 24) 0.4B model, and selects the high-performance adapter.
 
 ```bash
-$ cargo run --release -- --model assets/Config.toml --port 3000 --adapter auto
+$ cargo run --release -- --config assets/configs/Config.toml --port 3000 --adapter auto
 ```
 
 ## 📙Currently Available APIs
