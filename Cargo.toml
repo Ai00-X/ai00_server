@@ -5,9 +5,9 @@ edition = "2021"
 authors = ["Gu ZhenNiu <448885@qq.com>", "Zhang Zhenyuan <cryscan@umich.edu>"]
 license = "MIT OR Apache-2.0"
 description = "An implementation of the RWKV language model in pure WebGPU."
-homepage = "https://github.com/cryscan/web-rwkv"
-repository = "https://github.com/cryscan/web-rwkv"
-keywords = ["deep-learning", "language", "model", "rwkv"]
+homepage = "https://github.com/cgisky1980/ai00_rwkv_server"
+repository = "https://github.com/cgisky1980/ai00_rwkv_server"
+keywords = ["deep-learning", "LLM", "model", "rwkv"]
 categories = ["science"]
 exclude = ["assets"]
 

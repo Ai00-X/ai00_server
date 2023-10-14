@@ -432,7 +432,7 @@ async fn main() {
     let tokenizer_path = args
         .tokenizer
         .clone()
-        .unwrap_or("assets/rwkv_vocab_v20230424.json".into());
+        .unwrap_or("assets/tokens/rwkv_vocab_v20230424.json".into());
 
     let context = create_context(&args).await.unwrap();
     let tokenizer = load_tokenizer(&tokenizer_path).unwrap();
@@ -441,7 +441,7 @@ async fn main() {
     let (sender, receiver) = flume::unbounded::<ThreadRequest>();
 
     {
-        let path = args.config.clone().unwrap_or("assets/Config.toml".into());
+        let path = args.config.clone().unwrap_or("assets/configs/Config.toml".into());
         log::info!("reading config {}...", path.to_string_lossy());
 
         let request = reload_request_from_config(path).expect("load config failed");
@@ -450,20 +450,20 @@ async fn main() {
 
     let temp_dir = tempfile::tempdir().unwrap();
     let temp_path = temp_dir.into_path();
-    load_web("assets/www.zip", &temp_path).unwrap();
+    load_web("assets/www/index.zip", &temp_path).unwrap();
 
     let app = Router::new()
-        .route("/load", post(models::load))
-        .route("/models/info", get(models::info))
-        .route("/models", get(models::models))
-        .route("/v1/models", get(models::models))
-        .route("/completions", post(completion::completions))
-        .route("/v1/completions", post(completion::completions))
-        .route("/chat/completions", post(chat::chat_completions))
-        .route("/v1/chat/completions", post(chat::chat_completions))
-        .route("/embeddings", post(embedding::embeddings))
-        .route("/v1/embeddings", post(embedding::embeddings))
-        .fallback_service(ServeDir::new(temp_path.join("www")))
+        .route("/api/load", post(models::load))
+        .route("/api/models/info", get(models::info))
+        .route("/api/models", get(models::models))
+        .route("/api/v1/models", get(models::models))
+        .route("/api/completions", post(completion::completions))
+        .route("/api/v1/completions", post(completion::completions))
+        .route("/api/chat/completions", post(chat::chat_completions))
+        .route("/api/v1/chat/completions", post(chat::chat_completions))
+        .route("/api/embeddings", post(embedding::embeddings))
+        .route("/api/v1/embeddings", post(embedding::embeddings))
+        .fallback_service(ServeDir::new(temp_path.join(".")))
         .layer(CorsLayer::permissive())
         .with_state(ThreadState(sender));
 
