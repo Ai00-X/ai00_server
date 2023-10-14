@@ -1,4 +1,4 @@
-use std::{path::PathBuf};
+use std::path::PathBuf;
 
 use axum::{extract::State, Json};
 use serde::{Deserialize, Serialize};
@@ -17,7 +17,7 @@ pub struct ModelResponse {
 }
 
 pub async fn models(State(ThreadState(sender)): State<ThreadState>) -> Json<ModelResponse> {
-    let model_name = request_info(sender.clone())
+    let model_name = request_info(sender)
         .map(|info| info.reload.path)
         .and_then(|path| path.file_name().map(|name| name.to_os_string()))
         .and_then(|name| name.into_string().ok())

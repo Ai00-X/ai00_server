@@ -1,7 +1,7 @@
 use std::{
     collections::HashMap,
     convert::Infallible,
-    fs::File,
+    fs::{self, File},
     io::{BufReader, Cursor, Read},
     net::{Ipv4Addr, SocketAddr},
     path::{Path, PathBuf},
@@ -239,6 +239,19 @@ fn load_web(path: impl AsRef<Path>, target: &Path) -> Result<()> {
     Ok(())
 }
 
+fn load_plugin(path: impl AsRef<Path>, target: &Path , name: &String) -> Result<()> {
+    let file = File::open(path)?;
+    let map = unsafe { Mmap::map(&file)? };
+    let plugins_dir = target.join("plugins");
+    if !plugins_dir.exists() {
+        fs::create_dir(&plugins_dir)?;
+    }
+    let plugin_dir = plugins_dir.join(name);
+    fs::create_dir(&plugin_dir)?;
+    zip_extract::extract(Cursor::new(&map), &plugin_dir, false)?;
+    Ok(())
+}
+
 fn load_config(path: impl AsRef<Path>) -> Result<Config> {
     let file = File::open(path)?;
     let mut reader = BufReader::new(file);
@@ -465,31 +478,25 @@ async fn main() {
     };
 
     // extract and load all plugins under `assets/www/plugins`.
-    let plugins = match std::fs::read_dir("assets/www/plugins") {
+    let _plugins = match std::fs::read_dir("assets/www/plugins") {
         Ok(dir) => dir
             .filter_map(|x| x.ok())
             .filter(|x| x.path().is_file())
             .filter(|x| x.path().extension().is_some_and(|ext| ext == "zip"))
-            .filter(|x| x.path().file_name().is_some_and(|name| name != "api"))
-            .filter_map(|x| {
-                let path = tempfile::tempdir()
-                    .expect("create temp dir failed")
-                    .into_path();
-                load_web(x.path(), &path).ok()?;
-                let key = x.file_name().into_string().ok()?;
-                log::info!("loaded plugin {}", key);
-                Some((key, path))
-            })
-            .collect(),
-        Err(_) => HashMap::new(),
+            .filter(|x| x.path().file_name().is_some_and(|name| name != "api.zip"))
+            .filter(|x| x.path().file_name().is_some_and(|name| {
+                let name_str = name.to_string_lossy().to_string();
+                if load_plugin(x.path(), &serve_path, &name_str).is_ok() {
+                    return true;
+                }
+                false
+            }))
+            .collect::<Vec<_>>(),
+        Err(e) => {
+            log::error!("Failed to read plugin directory: {}", e);
+            Vec::new()
+        }
     };
-    let plugins = plugins
-        .into_iter()
-        .fold(Router::new(), |acc, (name, path)| {
-            let route_path = format!("/{name}");
-            let router = Router::new().route_service(&route_path, ServeDir::new(path));
-            acc.merge(router)
-        });
 
     let app = Router::new()
         .route("/api/load", post(api::load))
@@ -505,7 +512,6 @@ async fn main() {
         .route("/api/v1/embeddings", post(embedding::embeddings))
         .fallback_service(ServeDir::new(serve_path))
         .layer(CorsLayer::permissive())
-        .nest("/plugins", plugins)
         .with_state(ThreadState(sender));
 
     let addr = SocketAddr::from((args.ip.unwrap_or(Ipv4Addr::new(0, 0, 0, 0)), args.port));
