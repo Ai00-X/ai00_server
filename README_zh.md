@@ -112,7 +112,7 @@
 
 服务器监听3000端口，加载全部层量化（32 > 24）的0.4B模型，自动选择高性能适配器。
 ```bash
-$ cargo run --release -- --model assets/Config.toml --port 3000 --adapter auto
+$ cargo run --release -- --config assets/configs/Config.toml --port 3000 --adapter auto
 ```
 
 
@@ -120,14 +120,14 @@ $ cargo run --release -- --model assets/Config.toml --port 3000 --adapter auto
 
 API 服务开启于 65530 端口, 数据输入已经输出格式遵循Openai API 规范。
 
-- `/v1/models`
-- `/models`
-- `/v1/chat/completions`
-- `/chat/completions`
-- `/v1/completions`
-- `/completions`
-- `/v1/embeddings`
-- `/embeddings`
+- `/api/v1/models`
+- `/api/models`
+- `/api/v1/chat/completions`
+- `/api/chat/completions`
+- `/api/v1/completions`
+- `/api/completions`
+- `/api/v1/embeddings`
+- `/api/embeddings`
 
 ## 📙WebUI 截图
 

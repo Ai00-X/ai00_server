@@ -117,21 +117,21 @@ QQ Group for communication: 30920262
 The server listens on port 3000, loads the full-layer quantized (32 > 24) 0.4B model, and selects the high-performance adapter.
 
 ```bash
-$ cargo run --release -- --model assets/Config.toml --port 3000 --adapter auto
+$ cargo run --release -- --config assets/configs/Config.toml --port 3000 --adapter auto
 ```
 
 ## 📙Currently Available APIs
 
 The API service starts at port 65530, and the data input and output format follow the Openai API specification.
 
-*   `/v1/models`
-*   `/models`
-*   `/v1/chat/completions`
-*   `/chat/completions`
-*   `/v1/completions`
-*   `/completions`
-*   `/v1/embeddings`
-*   `/embeddings`
+*   `/api/v1/models`
+*   `/api/models`
+*   `/api/v1/chat/completions`
+*   `/api/chat/completions`
+*   `/api/v1/completions`
+*   `/api/completions`
+*   `/api/v1/embeddings`
+*   `/api/embeddings`
 
 ## 📙WebUI Screenshots
 

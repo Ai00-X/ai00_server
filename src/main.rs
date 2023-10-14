@@ -91,6 +91,11 @@ where
     }
 }
 
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct Config {
+    pub model: ReloadRequest,
+}
+
 #[derive(Debug, Clone)]
 pub enum ThreadRequest {
     Info(Sender<RuntimeInfo>),
@@ -234,7 +239,7 @@ fn load_web(path: impl AsRef<Path>, target: &Path) -> Result<()> {
     Ok(())
 }
 
-fn reload_request_from_config(path: impl AsRef<Path>) -> Result<ReloadRequest> {
+fn load_config(path: impl AsRef<Path>) -> Result<Config> {
     let file = File::open(path)?;
     let mut reader = BufReader::new(file);
     let mut contents = String::new();
@@ -432,7 +437,7 @@ async fn main() {
     let tokenizer_path = args
         .tokenizer
         .clone()
-        .unwrap_or("assets/rwkv_vocab_v20230424.json".into());
+        .unwrap_or("assets/tokenizer/rwkv_vocab_v20230424.json".into());
 
     let context = create_context(&args).await.unwrap();
     let tokenizer = load_tokenizer(&tokenizer_path).unwrap();
@@ -441,29 +446,32 @@ async fn main() {
     let (sender, receiver) = flume::unbounded::<ThreadRequest>();
 
     {
-        let path = args.config.clone().unwrap_or("assets/Config.toml".into());
+        let path = args
+            .config
+            .clone()
+            .unwrap_or("assets/configs/Config.toml".into());
         log::info!("reading config {}...", path.to_string_lossy());
 
-        let request = reload_request_from_config(path).expect("load config failed");
-        let _ = sender.send(ThreadRequest::Reload(request));
+        let config = load_config(path).expect("load config failed");
+        let _ = sender.send(ThreadRequest::Reload(config.model));
     }
 
     let temp_dir = tempfile::tempdir().unwrap();
     let temp_path = temp_dir.into_path();
-    load_web("assets/www.zip", &temp_path).unwrap();
+    load_web("assets/www/index.zip", &temp_path).unwrap();
 
     let app = Router::new()
         .route("/api/load", post(api::load))
-        .route("/api/info", get(api::info))
-        .route("/models", get(api::models))
-        .route("/v1/models", get(api::models))
-        .route("/completions", post(completion::completions))
-        .route("/v1/completions", post(completion::completions))
-        .route("/chat/completions", post(chat::chat_completions))
-        .route("/v1/chat/completions", post(chat::chat_completions))
-        .route("/embeddings", post(embedding::embeddings))
-        .route("/v1/embeddings", post(embedding::embeddings))
-        .fallback_service(ServeDir::new(temp_path.join("www")))
+        .route("/api/models/info", get(api::info))
+        .route("/api/models", get(api::models))
+        .route("/api/v1/models", get(api::models))
+        .route("/api/completions", post(completion::completions))
+        .route("/api/v1/completions", post(completion::completions))
+        .route("/api/chat/completions", post(chat::chat_completions))
+        .route("/api/v1/chat/completions", post(chat::chat_completions))
+        .route("/api/embeddings", post(embedding::embeddings))
+        .route("/api/v1/embeddings", post(embedding::embeddings))
+        .fallback_service(ServeDir::new(temp_path.join(".")))
         .layer(CorsLayer::permissive())
         .with_state(ThreadState(sender));
 
