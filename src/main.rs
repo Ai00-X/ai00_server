@@ -14,8 +14,8 @@ use axum::{
     routing::{get, post},
     Router,
 };
-use clap::{Parser, ValueEnum};
-use dialoguer::{theme::ColorfulTheme, Select};
+use clap::Parser;
+use config::{AdapterOption, Config};
 use flume::{Receiver, Sender};
 use memmap::Mmap;
 use run::RuntimeUntyped;
@@ -39,6 +39,7 @@ use crate::{
 mod api;
 mod chat;
 mod completion;
+mod config;
 mod embedding;
 mod run;
 mod sampler;
@@ -71,29 +72,24 @@ pub enum FinishReason {
 
 #[derive(Debug, Default, Clone, Serialize, Deserialize)]
 #[serde(untagged)]
-pub enum OptionArray<T> {
+pub enum Array<T> {
     #[default]
     None,
     Item(T),
-    Array(Vec<T>),
+    Vec(Vec<T>),
 }
 
-impl<T> From<OptionArray<T>> for Vec<T>
+impl<T> From<Array<T>> for Vec<T>
 where
     T: std::fmt::Debug + Clone + Serialize,
 {
-    fn from(value: OptionArray<T>) -> Self {
+    fn from(value: Array<T>) -> Self {
         match value {
-            OptionArray::None => vec![],
-            OptionArray::Item(item) => vec![item],
-            OptionArray::Array(vec) => vec,
+            Array::None => vec![],
+            Array::Item(item) => vec![item],
+            Array::Vec(vec) => vec,
         }
     }
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct Config {
-    pub model: ReloadRequest,
 }
 
 #[derive(Debug, Clone)]
@@ -101,32 +97,41 @@ pub enum ThreadRequest {
     Info(Sender<RuntimeInfo>),
     Generate {
         request: GenerateRequest,
+        tokenizer: Arc<Tokenizer>,
         sender: Sender<Token>,
     },
     Reload(ReloadRequest),
 }
 
-#[derive(Debug, Clone, Serialize)]
+#[derive(Debug, Clone)]
 pub struct RuntimeInfo {
     pub reload: ReloadRequest,
-    pub info: ModelInfo,
+    pub model: ModelInfo,
+    pub tokenizer: Arc<Tokenizer>,
 }
 
 #[derive(Debug, Default, Clone)]
 pub struct GenerateRequest {
+    /// The prompt for the model.
     pub prompt: String,
+    /// All text the model output earlier.
     pub model_text: String,
+    /// Output token limit.
     pub max_tokens: usize,
+    /// Stop indicators.
     pub stop: Vec<String>,
+    /// Sampler parameters.
     pub sampler: Sampler,
+    /// Bias added to tokens before sampling.
     pub logit_bias: HashMap<u16, f32>,
+    /// Whether this is an embedding request.
     pub embed: bool,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ReloadRequest {
     /// Path to the model.
-    pub path: PathBuf,
+    pub model_path: PathBuf,
     /// Specify layers that needs to be quantized.
     pub quant: Vec<usize>,
     /// Maximum tokens to be processed in parallel at once.
@@ -139,20 +144,10 @@ pub struct ReloadRequest {
     pub max_batch: usize,
     /// the (reversed) number of layer at which the output is as embedding.
     pub embed_layer: usize,
-}
-
-impl Default for ReloadRequest {
-    fn default() -> Self {
-        Self {
-            path: "assets/models/RWKV-4-World-0.4B-v1-20230529-ctx4096.st".into(),
-            quant: vec![],
-            token_chunk_size: 32,
-            head_chunk_size: 8192,
-            max_runtime_batch: 8,
-            max_batch: 32,
-            embed_layer: 2,
-        }
-    }
+    /// Path to the tokenizer.
+    pub tokenizer_path: PathBuf,
+    /// Adapter selection.
+    pub adapter: AdapterOption,
 }
 
 #[derive(Debug, Default, Clone, Serialize)]
@@ -165,22 +160,12 @@ pub struct TokenCounter {
 #[derive(Clone)]
 pub struct ThreadState(pub Sender<ThreadRequest>);
 
-async fn create_context(args: &Args) -> Result<Context> {
+async fn create_context(adapter: AdapterOption) -> Result<Context> {
     let instance = Instance::new();
-    let adapter = match args.adapter {
+    let adapter = match adapter {
         AdapterOption::Auto => instance.adapter(PowerPreference::HighPerformance).await,
-        AdapterOption::Manual => {
-            let adapters = instance.adapters();
-            let selection = args.adapter_id.unwrap_or_else(|| {
-                Select::with_theme(&ColorfulTheme::default())
-                    .with_prompt("Please select an adapter")
-                    .default(0)
-                    .items(&adapters)
-                    .interact()
-                    .expect("adapter selection")
-            });
-            instance.select_adapter(selection)
-        }
+        AdapterOption::Economical => instance.adapter(PowerPreference::LowPower).await,
+        AdapterOption::Manual(selection) => instance.select_adapter(selection),
     }?;
 
     let context = ContextBuilder::new(adapter)
@@ -247,18 +232,13 @@ fn load_config(path: impl AsRef<Path>) -> Result<Config> {
     Ok(toml::from_str(&contents)?)
 }
 
-fn model_route(
-    context: Context,
-    tokenizer: Tokenizer,
-    receiver: Receiver<ThreadRequest>,
-) -> Result<()> {
+fn model_route(receiver: Receiver<ThreadRequest>) -> Result<()> {
     let mut env: Option<(Arc<RuntimeUntyped<'_>>, ReloadRequest)> = None;
     let mut queue = Vec::new();
 
     let sender = {
         let (sender, receiver) = flume::unbounded();
-        let tokenizer = tokenizer.clone();
-        std::thread::spawn(move || run::run(tokenizer, receiver));
+        std::thread::spawn(move || run::run(receiver));
         sender
     };
 
@@ -283,24 +263,33 @@ fn model_route(
                 ThreadRequest::Info(sender) => {
                     if let Some((runtime, reload)) = &env {
                         let reload = reload.clone();
-                        let info = runtime.info().clone();
-                        let _ = sender.send(RuntimeInfo { reload, info });
+                        let model = runtime.model_info().clone();
+                        let tokenizer = runtime.tokenizer();
+                        let _ = sender.send(RuntimeInfo {
+                            reload,
+                            model,
+                            tokenizer,
+                        });
                     }
                 }
                 ThreadRequest::Reload(request) => {
-                    let reload = request.clone();
                     let max_runtime_batch = request.max_runtime_batch;
                     let embed_layer = request.embed_layer;
 
-                    let file = File::open(&request.path)?;
+                    let context = pollster::block_on(create_context(request.adapter))?;
+                    let tokenizer = load_tokenizer(&request.tokenizer_path)?;
+                    log::info!("{:#?}", context.adapter.get_info());
+
+                    let file = File::open(&request.model_path)?;
                     let data = unsafe { Mmap::map(&file)? };
                     let info = Loader::info(&data)?;
                     log::info!("{:#?}", info);
 
                     let runtime = Arc::new(match info.version {
                         ModelVersion::V4 => {
-                            let (model, state) = load_model(&context, request, &data)?;
+                            let (model, state) = load_model(&context, request.clone(), &data)?;
                             RuntimeUntyped::V4(Runtime::new(
+                                tokenizer,
                                 model,
                                 state,
                                 max_runtime_batch,
@@ -308,8 +297,9 @@ fn model_route(
                             ))
                         }
                         ModelVersion::V5 => {
-                            let (model, state) = load_model(&context, request, &data)?;
+                            let (model, state) = load_model(&context, request.clone(), &data)?;
                             RuntimeUntyped::V5(Runtime::new(
+                                tokenizer,
                                 model,
                                 state,
                                 max_runtime_batch,
@@ -318,10 +308,11 @@ fn model_route(
                         }
                     });
                     let _ = sender.send(runtime.clone());
-                    env.replace((runtime, reload));
+                    env.replace((runtime, request));
                 }
                 ThreadRequest::Generate {
                     request,
+                    tokenizer,
                     sender: token_sender,
                 } => {
                     let GenerateRequest {
@@ -386,35 +377,21 @@ fn model_route(
     }
 }
 
-pub fn request_info(sender: Sender<ThreadRequest>) -> Option<RuntimeInfo> {
+pub fn request_info(sender: Sender<ThreadRequest>) -> RuntimeInfo {
     let (info_sender, info_receiver) = flume::unbounded();
     let _ = sender.send(ThreadRequest::Info(info_sender));
-    info_receiver.recv_timeout(Duration::from_secs(1)).ok()
+    info_receiver.recv().expect("request info failed")
 }
 
 #[derive(Parser, Debug, Clone)]
 #[command(author, version, about, long_about = None)]
 struct Args {
-    #[arg(long, short, default_value_t = AdapterOption::Manual)]
-    #[clap(value_enum)]
-    adapter: AdapterOption,
-    #[arg(long)]
-    adapter_id: Option<usize>,
-    #[arg(long, short, value_name = "FILE")]
-    tokenizer: Option<PathBuf>,
     #[arg(long, short, value_name = "FILE")]
     config: Option<PathBuf>,
     #[arg(long, short)]
     ip: Option<Ipv4Addr>,
     #[arg(long, short, default_value_t = 65530)]
     port: u16,
-}
-
-#[derive(Debug, Default, Clone, Copy, ValueEnum)]
-enum AdapterOption {
-    Auto,
-    #[default]
-    Manual,
 }
 
 #[tokio::main]
@@ -426,23 +403,6 @@ async fn main() {
         .unwrap();
 
     let args = Args::parse();
-    // let model_name = model_path
-    //     .file_name()
-    //     .and_then(OsStr::to_str)
-    //     .map(String::from_str)
-    //     .and_then(Result::ok)
-    //     .map(|name| name.replace(".st", ""))
-    //     .unwrap();
-
-    let tokenizer_path = args
-        .tokenizer
-        .clone()
-        .unwrap_or("assets/tokenizer/rwkv_vocab_v20230424.json".into());
-
-    let context = create_context(&args).await.unwrap();
-    let tokenizer = load_tokenizer(&tokenizer_path).unwrap();
-    log::info!("{:#?}", context.adapter.get_info());
-
     let (sender, receiver) = flume::unbounded::<ThreadRequest>();
 
     {
@@ -452,8 +412,8 @@ async fn main() {
             .unwrap_or("assets/configs/Config.toml".into());
         log::info!("reading config {}...", path.to_string_lossy());
 
-        let config = load_config(path).expect("load config failed");
-        let _ = sender.send(ThreadRequest::Reload(config.model));
+        let request = load_config(path).expect("load config failed").into();
+        let _ = sender.send(ThreadRequest::Reload(request));
     }
 
     let serve_path = {
@@ -512,6 +472,6 @@ async fn main() {
     let listener = tokio::net::TcpListener::bind(addr).await.unwrap();
     log::info!("server started at http://{addr}");
 
-    std::thread::spawn(move || model_route(context, tokenizer, receiver));
+    std::thread::spawn(move || model_route(receiver));
     axum::serve(listener, app).await.unwrap();
 }

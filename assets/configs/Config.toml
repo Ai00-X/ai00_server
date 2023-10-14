@@ -6,3 +6,9 @@ head_chunk_size = 8192                                          # DO NOT modify 
 max_runtime_batch = 8                                           # The maximum batches that can be scheduled for inference at the same time.
 max_batch = 2                                                   # The maximum batches that are cached on GPU.
 embed_layer = 2                                                 # The (reversed) layer number whose output is used as embedding.
+
+[tokenizer]
+path = "assets/tokenizer/rwkv_vocab_v20230424.json" # Path to the tokenizer.
+
+[adapter]
+Auto = {}

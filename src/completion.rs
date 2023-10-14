@@ -10,31 +10,31 @@ use futures_util::{Stream, StreamExt};
 use serde::{Deserialize, Serialize};
 
 use crate::{
-    request_info, sampler::Sampler, FinishReason, GenerateRequest, OptionArray, ThreadRequest,
+    request_info, sampler::Sampler, Array, FinishReason, GenerateRequest, ThreadRequest,
     ThreadState, Token, TokenCounter,
 };
 
 #[derive(Debug, Deserialize)]
 #[serde(default)]
 pub struct CompletionRequest {
-    pub prompt: OptionArray<String>,
-    pub max_tokens: usize,
-    pub stop: OptionArray<String>,
-    pub stream: bool,
-    pub temperature: f32,
-    pub top_p: f32,
-    pub presence_penalty: f32,
-    pub frequency_penalty: f32,
-    pub penalty_decay: f32,
-    pub logit_bias: HashMap<u16, f32>,
+    prompt: Array<String>,
+    max_tokens: usize,
+    stop: Array<String>,
+    stream: bool,
+    temperature: f32,
+    top_p: f32,
+    presence_penalty: f32,
+    frequency_penalty: f32,
+    penalty_decay: f32,
+    logit_bias: HashMap<u16, f32>,
 }
 
 impl Default for CompletionRequest {
     fn default() -> Self {
         Self {
-            prompt: OptionArray::default(),
+            prompt: Array::default(),
             max_tokens: 256,
-            stop: OptionArray::default(),
+            stop: Array::default(),
             stream: false,
             temperature: 1.0,
             top_p: 1.0,
@@ -84,34 +84,32 @@ impl From<CompletionRequest> for GenerateRequest {
 
 #[derive(Debug, Serialize)]
 pub struct CompletionChoice {
-    pub text: String,
-    pub index: usize,
-    pub finish_reason: FinishReason,
+    text: String,
+    index: usize,
+    finish_reason: FinishReason,
 }
 
 #[derive(Debug, Serialize)]
 pub struct CompletionResponse {
-    pub object: String,
-    pub model: String,
-    pub choices: Vec<CompletionChoice>,
+    object: String,
+    model: String,
+    choices: Vec<CompletionChoice>,
     #[serde(rename = "usage")]
-    pub counter: TokenCounter,
+    counter: TokenCounter,
 }
 
 async fn completions_one(
     State(ThreadState(sender)): State<ThreadState>,
     Json(request): Json<CompletionRequest>,
 ) -> Json<CompletionResponse> {
-    let model_name = request_info(sender.clone())
-        .map(|info| info.reload.path)
-        .and_then(|path| path.file_name().map(|name| name.to_os_string()))
-        .and_then(|name| name.into_string().ok())
-        .unwrap_or_default();
+    let info = request_info(sender.clone());
+    let model_name = info.reload.model_path.to_string_lossy().into_owned();
 
     let (token_sender, token_receiver) = flume::unbounded();
     let request = GenerateRequest::from(request);
     let _ = sender.send(ThreadRequest::Generate {
         request,
+        tokenizer: info.tokenizer,
         sender: token_sender,
     });
 
@@ -158,32 +156,30 @@ pub enum PartialCompletionRecord {
 
 #[derive(Debug, Default, Serialize)]
 pub struct PartialCompletionChoice {
-    pub delta: PartialCompletionRecord,
-    pub index: usize,
-    pub finish_reason: FinishReason,
+    delta: PartialCompletionRecord,
+    index: usize,
+    finish_reason: FinishReason,
 }
 
 #[derive(Debug, Serialize)]
 pub struct PartialCompletionResponse {
-    pub object: String,
-    pub model: String,
-    pub choices: Vec<PartialCompletionChoice>,
+    object: String,
+    model: String,
+    choices: Vec<PartialCompletionChoice>,
 }
 
 async fn completions_stream(
     State(ThreadState(sender)): State<ThreadState>,
     Json(request): Json<CompletionRequest>,
 ) -> Sse<impl Stream<Item = Result<Event>>> {
-    let model_name = request_info(sender.clone())
-        .map(|info| info.reload.path)
-        .and_then(|path| path.file_name().map(|name| name.to_os_string()))
-        .and_then(|name| name.into_string().ok())
-        .unwrap_or_default();
+    let info = request_info(sender.clone());
+    let model_name = info.reload.model_path.to_string_lossy().into_owned();
 
     let (token_sender, token_receiver) = flume::unbounded();
     let request = GenerateRequest::from(request);
     let _ = sender.send(ThreadRequest::Generate {
         request,
+        tokenizer: info.tokenizer,
         sender: token_sender,
     });
 

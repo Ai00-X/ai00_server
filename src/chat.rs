@@ -11,7 +11,7 @@ use itertools::Itertools;
 use serde::{Deserialize, Serialize};
 
 use crate::{
-    request_info, sampler::Sampler, FinishReason, GenerateRequest, OptionArray, ThreadRequest,
+    request_info, sampler::Sampler, Array, FinishReason, GenerateRequest, ThreadRequest,
     ThreadState, Token, TokenCounter,
 };
 
@@ -41,31 +41,31 @@ impl std::fmt::Display for Role {
 
 #[derive(Default, Debug, Clone, Serialize, Deserialize)]
 pub struct ChatRecord {
-    pub role: Role,
-    pub content: String,
+    role: Role,
+    content: String,
 }
 
 #[derive(Debug, Deserialize)]
 #[serde(default)]
 pub struct ChatRequest {
-    pub messages: OptionArray<ChatRecord>,
-    pub max_tokens: usize,
-    pub stop: OptionArray<String>,
-    pub stream: bool,
-    pub temperature: f32,
-    pub top_p: f32,
-    pub presence_penalty: f32,
-    pub frequency_penalty: f32,
-    pub penalty_decay: f32,
-    pub logit_bias: HashMap<u16, f32>,
+    messages: Array<ChatRecord>,
+    max_tokens: usize,
+    stop: Array<String>,
+    stream: bool,
+    temperature: f32,
+    top_p: f32,
+    presence_penalty: f32,
+    frequency_penalty: f32,
+    penalty_decay: f32,
+    logit_bias: HashMap<u16, f32>,
 }
 
 impl Default for ChatRequest {
     fn default() -> Self {
         Self {
-            messages: OptionArray::default(),
+            messages: Array::default(),
             max_tokens: 256,
-            stop: OptionArray::Item("\n\n".into()),
+            stop: Array::Item("\n\n".into()),
             stream: false,
             temperature: 1.0,
             top_p: 1.0,
@@ -131,35 +131,33 @@ impl From<ChatRequest> for GenerateRequest {
 }
 
 #[derive(Debug, Serialize)]
-pub struct ChatChoice {
-    pub message: ChatRecord,
-    pub index: usize,
-    pub finish_reason: FinishReason,
+struct ChatChoice {
+    message: ChatRecord,
+    index: usize,
+    finish_reason: FinishReason,
 }
 
 #[derive(Debug, Serialize)]
-pub struct ChatResponse {
-    pub object: String,
-    pub model: String,
-    pub choices: Vec<ChatChoice>,
+struct ChatResponse {
+    object: String,
+    model: String,
+    choices: Vec<ChatChoice>,
     #[serde(rename = "usage")]
-    pub counter: TokenCounter,
+    counter: TokenCounter,
 }
 
 async fn chat_completions_one(
     State(ThreadState(sender)): State<ThreadState>,
     Json(request): Json<ChatRequest>,
 ) -> Json<ChatResponse> {
-    let model_name = request_info(sender.clone())
-        .map(|info| info.reload.path)
-        .and_then(|path| path.file_name().map(|name| name.to_os_string()))
-        .and_then(|name| name.into_string().ok())
-        .unwrap_or_default();
+    let info = request_info(sender.clone());
+    let model_name = info.reload.model_path.to_string_lossy().into_owned();
 
     let (token_sender, token_receiver) = flume::unbounded();
     let request = request.into();
     let _ = sender.send(ThreadRequest::Generate {
         request,
+        tokenizer: info.tokenizer,
         sender: token_sender,
     });
 
@@ -200,7 +198,7 @@ async fn chat_completions_one(
 
 #[derive(Debug, Default, Serialize)]
 #[serde(rename_all = "snake_case")]
-pub enum PartialChatRecord {
+enum PartialChatRecord {
     #[default]
     #[serde(rename = "")]
     None,
@@ -209,33 +207,31 @@ pub enum PartialChatRecord {
 }
 
 #[derive(Debug, Default, Serialize)]
-pub struct PartialChatChoice {
-    pub delta: PartialChatRecord,
-    pub index: usize,
-    pub finish_reason: FinishReason,
+struct PartialChatChoice {
+    delta: PartialChatRecord,
+    index: usize,
+    finish_reason: FinishReason,
 }
 
 #[derive(Debug, Serialize)]
-pub struct PartialChatResponse {
-    pub object: String,
-    pub model: String,
-    pub choices: Vec<PartialChatChoice>,
+struct PartialChatResponse {
+    object: String,
+    model: String,
+    choices: Vec<PartialChatChoice>,
 }
 
 async fn chat_completions_stream(
     State(ThreadState(sender)): State<ThreadState>,
     Json(request): Json<ChatRequest>,
 ) -> Sse<impl Stream<Item = Result<Event>>> {
-    let model_name = request_info(sender.clone())
-        .map(|info| info.reload.path)
-        .and_then(|path| path.file_name().map(|name| name.to_os_string()))
-        .and_then(|name| name.into_string().ok())
-        .unwrap_or_default();
+    let info = request_info(sender.clone());
+    let model_name = info.reload.model_path.to_string_lossy().into_owned();
 
     let (token_sender, token_receiver) = flume::unbounded();
     let request = request.into();
     let _ = sender.send(ThreadRequest::Generate {
         request,
+        tokenizer: info.tokenizer,
         sender: token_sender,
     });
 

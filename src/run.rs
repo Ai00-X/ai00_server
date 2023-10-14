@@ -171,12 +171,17 @@ pub struct GenerateContext {
     pub output_buffer: Vec<u8>,
     /// Tokens that are output by the model.
     pub model_tokens: Vec<u16>,
-
+    /// Output token limit.
     pub max_tokens: usize,
+    /// Stop indicators.
     pub stop: Vec<String>,
+    /// Sampler parameters.
     pub sampler: Sampler,
+    /// Bias added to tokens before sampling.
     pub logit_bias: HashMap<u16, f32>,
+    /// Whether this is an embedding request.
     pub embed: bool,
+    /// To send back generated tokens.
     pub sender: Sender<Token>,
 }
 
@@ -186,12 +191,14 @@ where
     S: ModelState<BackedState = B>,
     M: Model<ModelState = S>,
 {
+    tokenizer: Arc<Tokenizer>,
     model: M,
     state: S,
     slots: Mutex<Vec<SlotState>>,
     backed: Mutex<Trie<Tokens, B>>,
     max_runtime_batch: usize,
     embed_layer: usize,
+    penalty_free_tokens: HashSet<u16>,
 }
 
 impl<M, S, B> Runtime<M, S, B>
@@ -200,18 +207,34 @@ where
     S: ModelState<BackedState = B>,
     M: Model<ModelState = S>,
 {
-    pub fn new(model: M, state: S, max_runtime_batch: usize, embed_layer: usize) -> Self {
+    pub fn new(
+        tokenizer: Tokenizer,
+        model: M,
+        state: S,
+        max_runtime_batch: usize,
+        embed_layer: usize,
+    ) -> Self {
+        let tokenizer = Arc::new(tokenizer);
         let slots = (0..state.max_batch())
             .map(|_| SlotState::default())
             .collect();
+        let penalty_free_tokens = (0..u16::MAX)
+            .filter(|token| {
+                let word = tokenizer.decode(&[*token]).unwrap_or_default();
+                let word = String::from_utf8(word).unwrap_or_default();
+                word.contains('\n')
+            })
+            .collect();
 
         Self {
+            tokenizer,
             model,
             state,
             slots: Mutex::new(slots),
             backed: Mutex::new(Trie::new()),
             max_runtime_batch,
             embed_layer,
+            penalty_free_tokens,
         }
     }
 
@@ -294,12 +317,7 @@ where
         }
     }
 
-    fn process(
-        &self,
-        tokenizer: &Tokenizer,
-        penalty_free_tokens: &HashSet<u16>,
-        payloads: &mut Vec<Payload>,
-    ) -> Result<()> {
+    fn process(&self, payloads: &mut Vec<Payload>) -> Result<()> {
         {
             let mut slots = self.slots.lock().unwrap();
             let mut cache = self.backed.lock().unwrap();
@@ -382,6 +400,7 @@ where
             },
         };
         // post-process logits
+        let penalty_free_tokens = &self.penalty_free_tokens;
         let logits = payloads
             .par_iter()
             .zip_eq(logits.into_par_iter())
@@ -447,7 +466,7 @@ where
                     };
                     context.penalties.insert(token, penalty);
 
-                    let mut word = tokenizer.decode(&[token])?;
+                    let mut word = self.tokenizer.decode(&[token])?;
                     context.model_text.append(&mut word.clone());
                     context.output_buffer.append(&mut word);
                     context.model_tokens.push(token);
@@ -499,14 +518,24 @@ pub enum RuntimeUntyped<'a> {
 }
 
 impl RuntimeUntyped<'_> {
-    pub fn info(&self) -> &ModelInfo {
+    #[inline]
+    pub fn model_info(&self) -> &ModelInfo {
         match self {
             RuntimeUntyped::V4(runtime) => runtime.model.info(),
             RuntimeUntyped::V5(runtime) => runtime.model.info(),
         }
     }
 
+    #[inline]
+    pub fn tokenizer(&self) -> Arc<Tokenizer> {
+        match self {
+            RuntimeUntyped::V4(runtime) => runtime.tokenizer.clone(),
+            RuntimeUntyped::V5(runtime) => runtime.tokenizer.clone(),
+        }
+    }
+
     /// Queue a generation task.
+    #[inline]
     pub fn queue(&self, context: GenerateContext) -> SlotResult {
         match self {
             RuntimeUntyped::V4(runtime) => runtime.queue(context),
@@ -514,32 +543,16 @@ impl RuntimeUntyped<'_> {
         }
     }
 
-    fn process(
-        &self,
-        tokenizer: &Tokenizer,
-        penalty_free_tokens: &HashSet<u16>,
-        payloads: &mut Vec<Payload>,
-    ) -> Result<()> {
+    #[inline]
+    fn process(&self, payloads: &mut Vec<Payload>) -> Result<()> {
         match self {
-            RuntimeUntyped::V4(runtime) => {
-                runtime.process(tokenizer, penalty_free_tokens, payloads)
-            }
-            RuntimeUntyped::V5(runtime) => {
-                runtime.process(tokenizer, penalty_free_tokens, payloads)
-            }
+            RuntimeUntyped::V4(runtime) => runtime.process(payloads),
+            RuntimeUntyped::V5(runtime) => runtime.process(payloads),
         }
     }
 }
 
-pub fn run(tokenizer: Tokenizer, receiver: Receiver<Arc<RuntimeUntyped<'_>>>) {
-    let penalty_free_tokens = (0..u16::MAX)
-        .filter(|token| {
-            let word = tokenizer.decode(&[*token]).unwrap_or_default();
-            let word = String::from_utf8(word).unwrap_or_default();
-            word.contains('\n')
-        })
-        .collect::<HashSet<_>>();
-
+pub fn run(receiver: Receiver<Arc<RuntimeUntyped<'_>>>) {
     let mut runtime = None;
     let mut payloads = Vec::new();
 
@@ -548,7 +561,7 @@ pub fn run(tokenizer: Tokenizer, receiver: Receiver<Arc<RuntimeUntyped<'_>>>) {
 
         if let Some(runtime) = &runtime {
             'run: loop {
-                if let Err(err) = runtime.process(&tokenizer, &penalty_free_tokens, &mut payloads) {
+                if let Err(err) = runtime.process(&mut payloads) {
                     log::error!("{}", err);
                 }
                 if payloads.iter().all(Payload::is_empty) {

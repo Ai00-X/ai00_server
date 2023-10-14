@@ -2,26 +2,24 @@ use std::{ffi::OsString, path::PathBuf};
 
 use axum::{extract::State, Json};
 use serde::{Deserialize, Serialize};
+use web_rwkv::model::ModelInfo;
 
 use crate::{request_info, ReloadRequest, RuntimeInfo, ThreadRequest, ThreadState};
 
 #[derive(Debug, Serialize)]
-pub struct ModelChoice {
-    pub object: String,
-    pub id: String,
+struct ModelChoice {
+    object: String,
+    id: String,
 }
 
 #[derive(Debug, Serialize)]
 pub struct ModelResponse {
-    pub data: Vec<ModelChoice>,
+    data: Vec<ModelChoice>,
 }
 
 pub async fn models(State(ThreadState(sender)): State<ThreadState>) -> Json<ModelResponse> {
-    let model_name = request_info(sender.clone())
-        .map(|info| info.reload.path)
-        .and_then(|path| path.file_name().map(|name| name.to_os_string()))
-        .and_then(|name| name.into_string().ok())
-        .unwrap_or_default();
+    let info = request_info(sender);
+    let model_name = info.reload.model_path.to_string_lossy().into_owned();
 
     Json(ModelResponse {
         data: vec![ModelChoice {
@@ -31,19 +29,15 @@ pub async fn models(State(ThreadState(sender)): State<ThreadState>) -> Json<Mode
     })
 }
 
-#[derive(Debug, Default, Serialize)]
-#[serde(untagged)]
-pub enum InfoResponse {
-    Some(RuntimeInfo),
-    #[default]
-    None,
+#[derive(Debug, Clone, Serialize)]
+pub struct InfoResponse {
+    reload: ReloadRequest,
+    model: ModelInfo,
 }
 
 pub async fn info(State(ThreadState(sender)): State<ThreadState>) -> Json<InfoResponse> {
-    match request_info(sender) {
-        Some(info) => Json(InfoResponse::Some(info)),
-        None => Json(InfoResponse::None),
-    }
+    let RuntimeInfo { reload, model, .. } = request_info(sender);
+    Json(InfoResponse { reload, model })
 }
 
 pub async fn load(
@@ -56,13 +50,13 @@ pub async fn load(
 
 #[derive(Debug, Clone, Deserialize)]
 pub struct FileInfoRequest {
-    pub path: PathBuf,
+    path: PathBuf,
 }
 
 #[derive(Debug, Clone, Serialize)]
 pub struct FileInfo {
-    pub name: OsString,
-    pub size: u64,
+    name: OsString,
+    size: u64,
 }
 
 #[derive(Debug, Default, Clone, Serialize)]

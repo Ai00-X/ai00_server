@@ -3,13 +3,13 @@ use futures_util::StreamExt;
 use serde::{Deserialize, Serialize};
 
 use crate::{
-    request_info, GenerateRequest, OptionArray, ThreadRequest, ThreadState, Token, TokenCounter,
+    request_info, Array, GenerateRequest, ThreadRequest, ThreadState, Token, TokenCounter,
 };
 
 #[derive(Debug, Default, Clone, Deserialize)]
 #[serde(default)]
 pub struct EmbeddingRequest {
-    pub input: OptionArray<String>,
+    input: Array<String>,
 }
 
 impl From<EmbeddingRequest> for GenerateRequest {
@@ -25,33 +25,31 @@ impl From<EmbeddingRequest> for GenerateRequest {
 
 #[derive(Debug, Serialize)]
 pub struct EmbeddingData {
-    pub object: String,
-    pub index: usize,
-    pub embedding: Vec<f32>,
+    object: String,
+    index: usize,
+    embedding: Vec<f32>,
 }
 
 #[derive(Debug, Serialize)]
 pub struct EmbeddingResponse {
-    pub object: String,
-    pub model: String,
-    pub data: Vec<EmbeddingData>,
+    object: String,
+    model: String,
+    data: Vec<EmbeddingData>,
     #[serde(rename = "usage")]
-    pub counter: TokenCounter,
+    counter: TokenCounter,
 }
 
 pub async fn embeddings(
     State(ThreadState(sender)): State<ThreadState>,
     Json(request): Json<EmbeddingRequest>,
 ) -> Json<EmbeddingResponse> {
-    let model_name = request_info(sender.clone())
-        .map(|info| info.reload.path)
-        .and_then(|path| path.file_name().map(|name| name.to_os_string()))
-        .and_then(|name| name.into_string().ok())
-        .unwrap_or_default();
+    let info = request_info(sender.clone());
+    let model_name = info.reload.model_path.to_string_lossy().into_owned();
 
     let (token_sender, token_receiver) = flume::unbounded();
     let _ = sender.send(ThreadRequest::Generate {
         request: request.into(),
+        tokenizer: info.tokenizer,
         sender: token_sender,
     });
 
