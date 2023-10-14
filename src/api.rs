@@ -1,4 +1,4 @@
-use std::{ffi::OsString, path::PathBuf};
+use std::{path::PathBuf};
 
 use axum::{extract::State, Json};
 use serde::{Deserialize, Serialize};
@@ -61,7 +61,7 @@ pub struct FileInfoRequest {
 
 #[derive(Debug, Clone, Serialize)]
 pub struct FileInfo {
-    pub name: OsString,
+    pub name: String,
     pub size: u64,
 }
 
@@ -84,7 +84,7 @@ pub async fn files(
                 .filter(|x| x.path().is_file())
                 .filter_map(|x| Some((x.file_name(), x.metadata().ok()?)))
                 .map(|(name, meta)| FileInfo {
-                    name,
+                    name: name.to_string_lossy().into_owned(),
                     size: meta.len(),
                 })
                 .collect(),
