@@ -19,3 +19,4 @@ qdrant/
 .qdrant-initialized
 run.bat
 node_modules/
+.vscode/
