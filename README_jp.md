@@ -106,21 +106,21 @@ OpenAIのChatGPT APIインターフェースと互換性があります。
 サーバーはポート3000でリッスンし、全レイヤー量子化（32 > 24）の0.4Bモデルをロードし、高性能アダプターの自動選択。
 
 ```bash
-$ cargo run --release -- --model assets/Config.toml --port 3000 --adapter auto
+$ cargo run --release -- --config assets/configs/Config.toml --port 3000 --adapter auto
 ```
 
 ## 📙現在利用可能なAPI
 
 APIサービスは65530ポートで開始され、データ入力と出力の形式はOpenai APIの規格に従います。
 
-*   `/v1/models`
-*   `/models`
-*   `/v1/chat/completions`
-*   `/chat/completions`
-*   `/v1/completions`
-*   `/completions`
-*   `/v1/embeddings`
-*   `/embeddings`
+*   `/api/v1/models`
+*   `/api/models`
+*   `/api/v1/chat/completions`
+*   `/api/chat/completions`
+*   `/api/v1/completions`
+*   `/api/completions`
+*   `/api/v1/embeddings`
+*   `/api/embeddings`
 
 ## 📙WebUIスクリーンショット
 
