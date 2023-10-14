@@ -1,5 +1,7 @@
+use std::{ffi::OsString, path::PathBuf};
+
 use axum::{extract::State, Json};
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 
 use crate::{request_info, ReloadRequest, RuntimeInfo, ThreadRequest, ThreadState};
 
@@ -50,4 +52,46 @@ pub async fn load(
 ) -> Json<InfoResponse> {
     let _ = sender.send(ThreadRequest::Reload(request));
     info(State(ThreadState(sender))).await
+}
+
+#[derive(Debug, Clone, Deserialize)]
+pub struct FileInfoRequest {
+    pub path: PathBuf,
+}
+
+#[derive(Debug, Clone, Serialize)]
+pub struct FileInfo {
+    pub name: OsString,
+    pub size: u64,
+}
+
+#[derive(Debug, Default, Clone, Serialize)]
+#[serde(untagged)]
+pub enum FileInfoResponse {
+    Accepted(Vec<FileInfo>),
+    #[default]
+    Denied,
+}
+
+pub async fn files(
+    State(ThreadState(_)): State<ThreadState>,
+    Json(request): Json<FileInfoRequest>,
+) -> Json<FileInfoResponse> {
+    if request.path.is_dir() && request.path.starts_with("assets/") {
+        let files = match std::fs::read_dir(request.path) {
+            Ok(dir) => dir
+                .filter_map(|x| x.ok())
+                .filter(|x| x.path().is_file())
+                .filter_map(|x| Some((x.file_name(), x.metadata().ok()?)))
+                .map(|(name, meta)| FileInfo {
+                    name,
+                    size: meta.len(),
+                })
+                .collect(),
+            Err(_) => Vec::new(),
+        };
+        Json(FileInfoResponse::Accepted(files))
+    } else {
+        Json(FileInfoResponse::Denied)
+    }
 }

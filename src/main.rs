@@ -456,12 +456,44 @@ async fn main() {
         let _ = sender.send(ThreadRequest::Reload(config.model));
     }
 
-    let temp_dir = tempfile::tempdir().unwrap();
-    let temp_path = temp_dir.into_path();
-    load_web("assets/www/index.zip", &temp_path).unwrap();
+    let serve_path = {
+        let path = tempfile::tempdir()
+            .expect("create temp dir failed")
+            .into_path();
+        load_web("assets/www/index.zip", &path).expect("load frontend failed");
+        path
+    };
+
+    // extract and load all plugins under `assets/www/plugins`.
+    let plugins = match std::fs::read_dir("assets/www/plugins") {
+        Ok(dir) => dir
+            .filter_map(|x| x.ok())
+            .filter(|x| x.path().is_file())
+            .filter(|x| x.path().extension().is_some_and(|ext| ext == "zip"))
+            .filter(|x| x.path().file_name().is_some_and(|name| name != "api"))
+            .filter_map(|x| {
+                let path = tempfile::tempdir()
+                    .expect("create temp dir failed")
+                    .into_path();
+                load_web(x.path(), &path).ok()?;
+                let key = x.file_name().into_string().ok()?;
+                log::info!("loaded plugin {}", key);
+                Some((key, path))
+            })
+            .collect(),
+        Err(_) => HashMap::new(),
+    };
+    let plugins = plugins
+        .into_iter()
+        .fold(Router::new(), |acc, (name, path)| {
+            let route_path = format!("/{name}");
+            let router = Router::new().route_service(&route_path, ServeDir::new(path));
+            acc.merge(router)
+        });
 
     let app = Router::new()
         .route("/api/load", post(api::load))
+        .route("/api/files", post(api::files))
         .route("/api/models/info", get(api::info))
         .route("/api/models", get(api::models))
         .route("/api/v1/models", get(api::models))
@@ -471,8 +503,9 @@ async fn main() {
         .route("/api/v1/chat/completions", post(chat::chat_completions))
         .route("/api/embeddings", post(embedding::embeddings))
         .route("/api/v1/embeddings", post(embedding::embeddings))
-        .fallback_service(ServeDir::new(temp_path.join(".")))
+        .fallback_service(ServeDir::new(serve_path))
         .layer(CorsLayer::permissive())
+        .nest("/plugins", plugins)
         .with_state(ThreadState(sender));
 
     let addr = SocketAddr::from((args.ip.unwrap_or(Ipv4Addr::new(0, 0, 0, 0)), args.port));
