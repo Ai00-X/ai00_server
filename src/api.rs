@@ -105,9 +105,9 @@ pub async fn dir(
     State(ThreadState(_)): State<ThreadState>,
     Json(request): Json<FileInfoRequest>,
 ) -> Json<FileInfoResponse> {
-    if request.path.is_dir() && request.path.starts_with("./") {
-        let files = match std::fs::read_dir(request.path) {
-            Ok(dir) => dir
+    match std::fs::read_dir(request.path) {
+        Ok(dir) => {
+            let files = dir
                 .filter_map(|x| x.ok())
                 .filter(|x| x.path().is_file())
                 .filter_map(|x| {
@@ -127,40 +127,22 @@ pub async fn dir(
                         sha,
                     })
                 })
-                .collect(),
-            Err(_) => Vec::new(),
-        };
-        Json(FileInfoResponse::Accepted(files))
-    } else {
-        Json(FileInfoResponse::Denied)
+                .collect();
+            Json(FileInfoResponse::Accepted(files))
+        }
+        Err(_) => Json(FileInfoResponse::Denied),
     }
 }
 
-#[derive(Debug, Default, Clone, Serialize)]
-pub struct ModelListResponse(Vec<FileInfo>);
-
-pub async fn list_models(State(ThreadState(_)): State<ThreadState>) -> Json<ModelListResponse> {
-    let models = match std::fs::read_dir("assets/models") {
-        Ok(dir) => dir
-            .filter_map(|x| x.ok())
-            .filter(|x| x.path().is_file())
-            .filter_map(|x| {
-                let path = x.path();
-                let meta = x.metadata().ok()?;
-
-                let name = x.file_name().to_string_lossy().into();
-                let sha = compute_sha(path, &meta).ok()?;
-
-                Some(FileInfo {
-                    name,
-                    size: meta.len(),
-                    sha,
-                })
-            })
-            .collect(),
-        Err(_) => Vec::new(),
-    };
-    Json(ModelListResponse(models))
+pub async fn list_models(state: State<ThreadState>) -> Json<FileInfoResponse> {
+    dir(
+        state,
+        Json(FileInfoRequest {
+            path: "assets/models".into(),
+            is_sha: true,
+        }),
+    )
+    .await
 }
 
 #[derive(Debug, Clone, Deserialize)]
