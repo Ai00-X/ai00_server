@@ -12,30 +12,7 @@ use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
 use web_rwkv::model::ModelInfo;
 
-use crate::{request_info, ReloadRequest, RuntimeInfo, ThreadRequest, ThreadState};
-
-#[derive(Debug, Serialize)]
-struct ModelChoice {
-    object: String,
-    id: String,
-}
-
-#[derive(Debug, Serialize)]
-pub struct ModelResponse {
-    data: Vec<ModelChoice>,
-}
-
-pub async fn models(State(ThreadState(sender)): State<ThreadState>) -> Json<ModelResponse> {
-    let info = request_info(sender);
-    let model_name = info.reload.model_path.to_string_lossy().into();
-
-    Json(ModelResponse {
-        data: vec![ModelChoice {
-            object: "models".into(),
-            id: model_name,
-        }],
-    })
-}
+use crate::{request_info, AdapterList, ReloadRequest, RuntimeInfo, ThreadRequest, ThreadState};
 
 #[derive(Debug, Clone, Serialize)]
 pub struct LoadResponse {
@@ -134,7 +111,7 @@ pub async fn dir(
     }
 }
 
-pub async fn list_models(state: State<ThreadState>) -> Json<FileInfoResponse> {
+pub async fn models(state: State<ThreadState>) -> Json<FileInfoResponse> {
     dir(
         state,
         Json(FileInfoRequest {
@@ -182,4 +159,14 @@ pub async fn unzip(
             Json(UnzipResponse::Err)
         }
     }
+}
+
+#[derive(Debug, Default, Clone, Serialize)]
+pub struct AdapterResponse(Vec<String>);
+
+pub async fn adapters(State(ThreadState(sender)): State<ThreadState>) -> Json<AdapterResponse> {
+    let (list_sender, list_receiver) = flume::unbounded();
+    let _ = sender.send(ThreadRequest::Adapter(list_sender));
+    let AdapterList(list) = list_receiver.recv().unwrap_or_default();
+    Json(AdapterResponse(list))
 }

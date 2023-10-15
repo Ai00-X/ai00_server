@@ -28,7 +28,7 @@ use web_rwkv::{
         ModelVersion, Quantization, StateBuilder,
     },
     tokenizer::Tokenizer,
-    wgpu::PowerPreference,
+    wgpu::{Backends, PowerPreference},
 };
 
 use crate::{
@@ -37,10 +37,8 @@ use crate::{
 };
 
 mod api;
-mod chat;
-mod completion;
 mod config;
-mod embedding;
+mod oai;
 mod run;
 mod sampler;
 
@@ -94,6 +92,7 @@ where
 
 #[derive(Debug, Clone)]
 pub enum ThreadRequest {
+    Adapter(Sender<AdapterList>),
     Info(Sender<RuntimeInfo>),
     Generate {
         request: GenerateRequest,
@@ -109,6 +108,9 @@ pub struct RuntimeInfo {
     pub model: ModelInfo,
     pub tokenizer: Arc<Tokenizer>,
 }
+
+#[derive(Debug, Default, Clone)]
+pub struct AdapterList(pub Vec<String>);
 
 #[derive(Debug, Default, Clone)]
 pub struct GenerateRequest {
@@ -159,6 +161,16 @@ pub struct TokenCounter {
 
 #[derive(Clone)]
 pub struct ThreadState(pub Sender<ThreadRequest>);
+
+fn list_adapters() -> AdapterList {
+    let instance = Instance::new();
+    let list = instance
+        .enumerate_adapters(Backends::VULKAN)
+        .map(|adapter| adapter.get_info())
+        .map(|info| format!("{} ({:?})", info.name, info.backend))
+        .collect();
+    AdapterList(list)
+}
 
 async fn create_context(adapter: AdapterOption) -> Result<Context> {
     let instance = Instance::new();
@@ -273,6 +285,9 @@ fn model_route(receiver: Receiver<ThreadRequest>) -> Result<()> {
     loop {
         let mut listen = || -> Result<()> {
             match receiver.recv()? {
+                ThreadRequest::Adapter(sender) => {
+                    let _ = sender.send(list_adapters());
+                }
                 ThreadRequest::Info(sender) => {
                     if let Some((runtime, reload)) = &env {
                         let reload = reload.clone();
@@ -462,20 +477,21 @@ async fn main() {
     };
 
     let app = Router::new()
+        .route("/api/adapters", get(api::adapters))
         .route("/api/files/unzip", post(api::unzip))
         .route("/api/files/dir", post(api::dir))
         .route("/api/files/ls", post(api::dir))
-        .route("/api/models/list", get(api::list_models))
+        .route("/api/models/list", get(api::models))
         .route("/api/models/load", post(api::load))
         .route("/api/models/info", get(api::info))
-        .route("/api/oai/models", get(api::models))
-        .route("/api/oai/v1/models", get(api::models))
-        .route("/api/oai/completions", post(completion::completions))
-        .route("/api/oai/v1/completions", post(completion::completions))
-        .route("/api/oai/chat/completions", post(chat::chat_completions))
-        .route("/api/oai/v1/chat/completions", post(chat::chat_completions))
-        .route("/api/oai/embeddings", post(embedding::embeddings))
-        .route("/api/oai/v1/embeddings", post(embedding::embeddings))
+        .route("/api/oai/models", get(oai::models))
+        .route("/api/oai/v1/models", get(oai::models))
+        .route("/api/oai/completions", post(oai::completions))
+        .route("/api/oai/v1/completions", post(oai::completions))
+        .route("/api/oai/chat/completions", post(oai::chat_completions))
+        .route("/api/oai/v1/chat/completions", post(oai::chat_completions))
+        .route("/api/oai/embeddings", post(oai::embeddings))
+        .route("/api/oai/v1/embeddings", post(oai::embeddings))
         .fallback_service(ServeDir::new(serve_path))
         .layer(CorsLayer::permissive())
         .with_state(ThreadState(sender));
