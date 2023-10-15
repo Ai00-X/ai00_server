@@ -1,8 +1,7 @@
 use std::{
     fs::{File, Metadata},
     io::{BufReader, Cursor, Read, Seek, SeekFrom},
-    path::Path,
-    path::PathBuf,
+    path::{Path, PathBuf},
 };
 
 use anyhow::Result;
@@ -10,28 +9,8 @@ use axum::{extract::State, Json};
 use memmap::Mmap;
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
-use web_rwkv::model::ModelInfo;
 
-use crate::{request_info, AdapterList, ReloadRequest, RuntimeInfo, ThreadRequest, ThreadState};
-
-#[derive(Debug, Clone, Serialize)]
-pub struct LoadResponse {
-    reload: ReloadRequest,
-    model: ModelInfo,
-}
-
-pub async fn info(State(ThreadState(sender)): State<ThreadState>) -> Json<LoadResponse> {
-    let RuntimeInfo { reload, model, .. } = request_info(sender);
-    Json(LoadResponse { reload, model })
-}
-
-pub async fn load(
-    State(ThreadState(sender)): State<ThreadState>,
-    Json(request): Json<ReloadRequest>,
-) -> Json<LoadResponse> {
-    let _ = sender.send(ThreadRequest::Reload(request));
-    info(State(ThreadState(sender))).await
-}
+use crate::ThreadState;
 
 fn compute_sha(path: impl AsRef<Path>, meta: &Metadata) -> Result<String> {
     let file = File::open(path.as_ref())?;
@@ -78,6 +57,7 @@ pub enum FileInfoResponse {
     Denied,
 }
 
+/// `/api/dir`, `/api/ls`.
 pub async fn dir(
     State(ThreadState(_)): State<ThreadState>,
     Json(request): Json<FileInfoRequest>,
@@ -111,6 +91,7 @@ pub async fn dir(
     }
 }
 
+/// `/api/models/list`.
 pub async fn models(state: State<ThreadState>) -> Json<FileInfoResponse> {
     dir(
         state,
@@ -135,6 +116,7 @@ pub enum UnzipResponse {
     Err,
 }
 
+/// `/api/unzip`.
 pub async fn unzip(
     State(ThreadState(_)): State<ThreadState>,
     Json(request): Json<UnzipRequest>,
@@ -159,14 +141,4 @@ pub async fn unzip(
             Json(UnzipResponse::Err)
         }
     }
-}
-
-#[derive(Debug, Default, Clone, Serialize)]
-pub struct AdapterResponse(Vec<String>);
-
-pub async fn adapters(State(ThreadState(sender)): State<ThreadState>) -> Json<AdapterResponse> {
-    let (list_sender, list_receiver) = flume::unbounded();
-    let _ = sender.send(ThreadRequest::Adapter(list_sender));
-    let AdapterList(list) = list_receiver.recv().unwrap_or_default();
-    Json(AdapterResponse(list))
 }
