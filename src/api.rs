@@ -1,6 +1,6 @@
 use std::{
-    fs::{self, File},
-    io::Cursor,
+    fs::{File, Metadata},
+    io::{BufReader, Cursor, Read, Seek, SeekFrom},
     path::Path,
     path::PathBuf,
 };
@@ -9,6 +9,7 @@ use anyhow::Result;
 use axum::{extract::State, Json};
 use memmap::Mmap;
 use serde::{Deserialize, Serialize};
+use sha2::{Digest, Sha256};
 use web_rwkv::model::ModelInfo;
 
 use crate::{request_info, ReloadRequest, RuntimeInfo, ThreadRequest, ThreadState};
@@ -26,7 +27,7 @@ pub struct ModelResponse {
 
 pub async fn models(State(ThreadState(sender)): State<ThreadState>) -> Json<ModelResponse> {
     let info = request_info(sender);
-    let model_name = info.reload.model_path.to_string_lossy().into_owned();
+    let model_name = info.reload.model_path.to_string_lossy().into();
 
     Json(ModelResponse {
         data: vec![ModelChoice {
@@ -37,33 +38,59 @@ pub async fn models(State(ThreadState(sender)): State<ThreadState>) -> Json<Mode
 }
 
 #[derive(Debug, Clone, Serialize)]
-pub struct InfoResponse {
+pub struct LoadResponse {
     reload: ReloadRequest,
     model: ModelInfo,
 }
 
-pub async fn info(State(ThreadState(sender)): State<ThreadState>) -> Json<InfoResponse> {
+pub async fn info(State(ThreadState(sender)): State<ThreadState>) -> Json<LoadResponse> {
     let RuntimeInfo { reload, model, .. } = request_info(sender);
-    Json(InfoResponse { reload, model })
+    Json(LoadResponse { reload, model })
 }
 
 pub async fn load(
     State(ThreadState(sender)): State<ThreadState>,
     Json(request): Json<ReloadRequest>,
-) -> Json<InfoResponse> {
+) -> Json<LoadResponse> {
     let _ = sender.send(ThreadRequest::Reload(request));
     info(State(ThreadState(sender))).await
+}
+
+fn compute_sha(path: impl AsRef<Path>, meta: &Metadata) -> Result<String> {
+    let file = File::open(path.as_ref())?;
+    let mut reader = BufReader::new(file);
+    let mut buffer = Vec::new();
+
+    if meta.len() > 10_000_000 {
+        let segment_size = meta.len() / 10;
+        for i in 0..10 {
+            let mut segment_buffer = vec![0; 1_000_000];
+            reader.seek(SeekFrom::Start(i * segment_size))?;
+            reader.read_exact(&mut segment_buffer)?;
+            buffer.extend(segment_buffer);
+        }
+    } else {
+        reader.read_to_end(&mut buffer)?;
+    }
+
+    let mut sha = Sha256::new();
+    sha.update(&buffer);
+    let result = sha.finalize();
+
+    Ok(format!("{:x}", result))
 }
 
 #[derive(Debug, Clone, Deserialize)]
 pub struct FileInfoRequest {
     path: PathBuf,
+    is_sha: bool,
 }
 
 #[derive(Debug, Clone, Serialize)]
 pub struct FileInfo {
-    pub name: String,
-    pub size: u64,
+    name: String,
+    size: u64,
+    sha: String,
 }
 
 #[derive(Debug, Default, Clone, Serialize)]
@@ -74,19 +101,31 @@ pub enum FileInfoResponse {
     Denied,
 }
 
-pub async fn files(
+pub async fn dir(
     State(ThreadState(_)): State<ThreadState>,
     Json(request): Json<FileInfoRequest>,
 ) -> Json<FileInfoResponse> {
-    if request.path.is_dir() && request.path.starts_with("assets/") {
+    if request.path.is_dir() && request.path.starts_with("./") {
         let files = match std::fs::read_dir(request.path) {
             Ok(dir) => dir
                 .filter_map(|x| x.ok())
                 .filter(|x| x.path().is_file())
-                .filter_map(|x| Some((x.file_name(), x.metadata().ok()?)))
-                .map(|(name, meta)| FileInfo {
-                    name: name.to_string_lossy().into(),
-                    size: meta.len(),
+                .filter_map(|x| {
+                    let path = x.path();
+                    let meta = x.metadata().ok()?;
+
+                    let name = x.file_name().to_string_lossy().into();
+                    let sha = request
+                        .is_sha
+                        .then(|| compute_sha(path, &meta).ok())
+                        .flatten()
+                        .unwrap_or_default();
+
+                    Some(FileInfo {
+                        name,
+                        size: meta.len(),
+                        sha,
+                    })
                 })
                 .collect(),
             Err(_) => Vec::new(),
@@ -97,10 +136,37 @@ pub async fn files(
     }
 }
 
+#[derive(Debug, Default, Clone, Serialize)]
+pub struct ModelListResponse(Vec<FileInfo>);
+
+pub async fn list_models(State(ThreadState(_)): State<ThreadState>) -> Json<ModelListResponse> {
+    let models = match std::fs::read_dir("assets/models") {
+        Ok(dir) => dir
+            .filter_map(|x| x.ok())
+            .filter(|x| x.path().is_file())
+            .filter_map(|x| {
+                let path = x.path();
+                let meta = x.metadata().ok()?;
+
+                let name = x.file_name().to_string_lossy().into();
+                let sha = compute_sha(path, &meta).ok()?;
+
+                Some(FileInfo {
+                    name,
+                    size: meta.len(),
+                    sha,
+                })
+            })
+            .collect(),
+        Err(_) => Vec::new(),
+    };
+    Json(ModelListResponse(models))
+}
+
 #[derive(Debug, Clone, Deserialize)]
 pub struct UnzipRequest {
-    pub path: PathBuf,
-    pub target: PathBuf,
+    zip_path: PathBuf,
+    target_dir: PathBuf,
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -115,14 +181,14 @@ pub async fn unzip(
     Json(request): Json<UnzipRequest>,
 ) -> Json<UnzipResponse> {
     let unzip = move || -> Result<()> {
-        if Path::new(&request.target).exists() {
-            fs::remove_dir_all(&request.target)?;
+        if Path::new(&request.target_dir).exists() {
+            std::fs::remove_dir_all(&request.target_dir)?;
         }
-        fs::create_dir_all(&request.target)?;
+        std::fs::create_dir_all(&request.target_dir)?;
 
-        let file = File::open(&request.path)?;
+        let file = File::open(&request.zip_path)?;
         let map = unsafe { Mmap::map(&file)? };
-        zip_extract::extract(Cursor::new(&map), &request.target, false)?;
+        zip_extract::extract(Cursor::new(&map), &request.target_dir, false)?;
 
         Ok(())
     };
