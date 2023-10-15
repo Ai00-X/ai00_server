@@ -1,6 +1,13 @@
-use std::{ffi::OsString, path::PathBuf};
+use std::{
+    fs::{self, File},
+    io::Cursor,
+    path::Path,
+    path::PathBuf,
+};
 
+use anyhow::Result;
 use axum::{extract::State, Json};
+use memmap::Mmap;
 use serde::{Deserialize, Serialize};
 use web_rwkv::model::ModelInfo;
 
@@ -55,8 +62,8 @@ pub struct FileInfoRequest {
 
 #[derive(Debug, Clone, Serialize)]
 pub struct FileInfo {
-    name: OsString,
-    size: u64,
+    pub name: String,
+    pub size: u64,
 }
 
 #[derive(Debug, Default, Clone, Serialize)]
@@ -78,7 +85,7 @@ pub async fn files(
                 .filter(|x| x.path().is_file())
                 .filter_map(|x| Some((x.file_name(), x.metadata().ok()?)))
                 .map(|(name, meta)| FileInfo {
-                    name,
+                    name: name.to_string_lossy().into(),
                     size: meta.len(),
                 })
                 .collect(),
@@ -87,5 +94,44 @@ pub async fn files(
         Json(FileInfoResponse::Accepted(files))
     } else {
         Json(FileInfoResponse::Denied)
+    }
+}
+
+#[derive(Debug, Clone, Deserialize)]
+pub struct UnzipRequest {
+    pub path: PathBuf,
+    pub target: PathBuf,
+}
+
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "UPPERCASE")]
+pub enum UnzipResponse {
+    Ok,
+    Err,
+}
+
+pub async fn unzip(
+    State(ThreadState(_)): State<ThreadState>,
+    Json(request): Json<UnzipRequest>,
+) -> Json<UnzipResponse> {
+    let unzip = move || -> Result<()> {
+        if Path::new(&request.target).exists() {
+            fs::remove_dir_all(&request.target)?;
+        }
+        fs::create_dir_all(&request.target)?;
+
+        let file = File::open(&request.path)?;
+        let map = unsafe { Mmap::map(&file)? };
+        zip_extract::extract(Cursor::new(&map), &request.target, false)?;
+
+        Ok(())
+    };
+
+    match unzip() {
+        Ok(_) => Json(UnzipResponse::Ok),
+        Err(err) => {
+            log::error!("failed to unzip: {}", err);
+            Json(UnzipResponse::Err)
+        }
     }
 }
