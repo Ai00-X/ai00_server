@@ -1,10 +1,12 @@
-use std::path::PathBuf;
-
-use axum::{extract::State, Json};
-use serde::{Deserialize, Serialize};
-
 use crate::{request_info, ReloadRequest, RuntimeInfo, ThreadRequest, ThreadState};
-
+use axum::{extract::State, Json};
+use memmap::Mmap;
+use serde::{Deserialize, Serialize};
+use std::{
+    fs::{self, File},
+    io::Cursor,
+    path::{Path, PathBuf},
+};
 #[derive(Debug, Serialize)]
 pub struct ModelChoice {
     pub object: String,
@@ -93,5 +95,36 @@ pub async fn files(
         Json(FileInfoResponse::Accepted(files))
     } else {
         Json(FileInfoResponse::Denied)
+    }
+}
+
+#[derive(Debug, Clone, Deserialize)]
+pub struct UnzipRequest {
+    pub target_dir: PathBuf,
+    pub zip_path: PathBuf,
+}
+
+#[derive(Debug, Serialize)]
+pub struct UnzipResponse {
+    pub state: String,
+}
+
+pub async fn unzip(
+    State(ThreadState(_)): State<ThreadState>,
+    Json(request): Json<UnzipRequest>,
+) -> Json<UnzipResponse> {
+    if Path::new(&request.target_dir).exists() {
+        // If exists, remove it
+        fs::remove_dir_all(&request.target_dir).unwrap();
+    }
+    fs::create_dir_all(&request.target_dir).unwrap();
+
+    let file = File::open(&request.zip_path).unwrap();
+    let map = unsafe { Mmap::map(&file).unwrap() };
+    match zip_extract::extract(Cursor::new(&map), &request.target_dir, false) {
+        Ok(_) => Json(UnzipResponse { state: "OK".into() }),
+        Err(_) => Json(UnzipResponse {
+            state: "ERR".into(),
+        }),
     }
 }

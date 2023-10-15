@@ -483,14 +483,18 @@ async fn main() {
             .filter_map(|x| x.ok())
             .filter(|x| x.path().is_file())
             .filter(|x| x.path().extension().is_some_and(|ext| ext == "zip"))
-            .filter(|x| x.path().file_name().is_some_and(|name| {
-                let name_str = name.to_string_lossy();
-                let name_without_ext = name_str.trim_end_matches(".zip").to_owned();
-                if &name_without_ext != "api" && load_plugin(x.path(), &serve_path, &name_without_ext).is_ok() {
-                    return true;
-                }
-                false
-            }))
+            .filter(|x| {
+                x.path().file_name().is_some_and(|name| {
+                    let name_str = name.to_string_lossy();
+                    let name_without_ext = name_str.trim_end_matches(".zip").to_owned();
+                    if &name_without_ext != "api"
+                        && load_plugin(x.path(), &serve_path, &name_without_ext).is_ok()
+                    {
+                        return true;
+                    }
+                    false
+                })
+            })
             .collect::<Vec<_>>(),
         Err(e) => {
             log::error!("Failed to read plugin directory: {}", e);
@@ -499,6 +503,7 @@ async fn main() {
     };
 
     let app = Router::new()
+        .route("/api/unzip", post(api::unzip))
         .route("/api/load", post(api::load))
         .route("/api/files", post(api::files))
         .route("/api/models/info", get(api::info))
