@@ -298,6 +298,7 @@ async fn main() -> Result<()> {
     std::thread::spawn(move || model_task(env, model_path, tokenizer_path, receiver));
 
     let app = Router::new()
+<<<<<<< Updated upstream
         .route("/completions", post(completion::completions))
         .route("/v1/completions", post(completion::completions))
         .route("/chat/completions", post(chat::chat_completions))
@@ -305,6 +306,26 @@ async fn main() -> Result<()> {
         .route("/embeddings", post(embedding::embeddings))
         .route("/v1/embeddings", post(embedding::embeddings))
         .fallback_service(ServeDir::new("assets/www"))
+=======
+        .route("/api/files/unzip", post(api::unzip))
+        .route("/api/files/dir", post(api::dir))
+        .route("/api/files/ls", post(api::dir))
+        .route("/api/models/list", get(api::models_list))
+        .route("/api/models/load", post(api::load))
+        .route("/api/models/info", get(api::info))
+        .route("/api/openai/models", get(api::models))
+        .route("/api/openai/v1/models", get(api::models))
+        .route("/api/openai/completions", post(completion::completions))
+        .route("/api/openai/v1/completions", post(completion::completions))
+        .route("/api/openai/chat/completions", post(chat::chat_completions))
+        .route(
+            "/api/openai/v1/chat/completions",
+            post(chat::chat_completions),
+        )
+        .route("/api/openai/embeddings", post(embedding::embeddings))
+        .route("/api/openai/v1/embeddings", post(embedding::embeddings))
+        .fallback_service(ServeDir::new(serve_path))
+>>>>>>> Stashed changes
         .layer(CorsLayer::permissive())
         .with_state(ThreadState { sender, model_name });
 
