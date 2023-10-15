@@ -163,9 +163,10 @@ pub struct TokenCounter {
 pub struct ThreadState(pub Sender<ThreadRequest>);
 
 fn list_adapters() -> AdapterList {
+    let backends = Backends::VULKAN | Backends::METAL;
     let instance = Instance::new();
     let list = instance
-        .enumerate_adapters(Backends::VULKAN)
+        .enumerate_adapters(backends)
         .map(|adapter| adapter.get_info())
         .map(|info| format!("{} ({:?})", info.name, info.backend))
         .collect();
@@ -173,11 +174,12 @@ fn list_adapters() -> AdapterList {
 }
 
 async fn create_context(adapter: AdapterOption) -> Result<Context> {
+    let backends = Backends::VULKAN | Backends::METAL;
     let instance = Instance::new();
     let adapter = match adapter {
         AdapterOption::Auto => instance.adapter(PowerPreference::HighPerformance).await,
         AdapterOption::Economical => instance.adapter(PowerPreference::LowPower).await,
-        AdapterOption::Manual(selection) => instance.select_adapter(selection),
+        AdapterOption::Manual(selection) => instance.select_adapter(backends, selection),
     }?;
 
     let context = ContextBuilder::new(adapter)
