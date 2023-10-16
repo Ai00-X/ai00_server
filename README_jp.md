@@ -95,32 +95,22 @@ OpenAIのChatGPT APIインターフェースと互換性があります。
 ## 📝サポートされている起動パラメーター
 
 *   `--config`: モデル設定ファイルのパス（既定：`assets/Config.toml`）
-*   `--tokenizer`: トークナイザーのパス
+*   `--ip`: トークナイザーのパスサーバーにバインドされた IP アドレス
 *   `--port`: 実行ポート
-*   `--quant`: 量子化レイヤーの数を指定
-*   `--adapter`: アダプター（GPUおよびバックエンド）の選択オプション：`Auto` と `Manual`
-*   `--adapter_id`: CLIでアダプターを指定します（--adapterを上書きします）
 
-### 例
-
-サーバーはポート3000でリッスンし、全レイヤー量子化（32 > 24）の0.4Bモデルをロードし、高性能アダプターの自動選択。
-
-```bash
-$ cargo run --release -- --config assets/configs/Config.toml --port 3000 --adapter auto
-```
 
 ## 📙現在利用可能なAPI
 
 APIサービスは65530ポートで開始され、データ入力と出力の形式はOpenai APIの規格に従います。
 
-*   `/api/v1/models`
-*   `/api/models`
-*   `/api/v1/chat/completions`
-*   `/api/chat/completions`
-*   `/api/v1/completions`
-*   `/api/completions`
-*   `/api/v1/embeddings`
-*   `/api/embeddings`
+*   `/api/oai/v1/models`
+*   `/api/oai/models`
+*   `/api/oai/v1/chat/completions`
+*   `/api/oai/chat/completions`
+*   `/api/oai/v1/completions`
+*   `/api/oai/completions`
+*   `/api/oai/v1/embeddings`
+*   `/api/oai/embeddings`
 
 ## 📙WebUIスクリーンショット
 

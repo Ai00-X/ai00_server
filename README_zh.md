@@ -103,31 +103,22 @@
     
 ## 📝支持的启动参数
 - `--config`: 模型配置文件路径（默认`assets/Config.toml`）
-- `--tokenizer`: 词表路径
+- `--ip`: 服务器绑定的IP地址
 - `--port`: 运行端口
-- `--adapter`: 适配器（GPU和后端）选择项：`Auto`、`Manual`
-- `--adapter_id`: 在控制台指定适配器（覆写`--adapter`选项）
-
-### 示例
-
-服务器监听3000端口，加载全部层量化（32 > 24）的0.4B模型，自动选择高性能适配器。
-```bash
-$ cargo run --release -- --config assets/configs/Config.toml --port 3000 --adapter auto
-```
 
 
 ## 📙目前可用的API
 
 API 服务开启于 65530 端口, 数据输入已经输出格式遵循Openai API 规范。
 
-- `/api/v1/models`
-- `/api/models`
-- `/api/v1/chat/completions`
-- `/api/chat/completions`
-- `/api/v1/completions`
-- `/api/completions`
-- `/api/v1/embeddings`
-- `/api/embeddings`
+- `/api/oai/v1/models`
+- `/api/oai/models`
+- `/api/oai/v1/chat/completions`
+- `/api/oai/chat/completions`
+- `/api/oai/v1/completions`
+- `/api/oai/completions`
+- `/api/oai/v1/embeddings`
+- `/api/oai/embeddings`
 
 ## 📙WebUI 截图
 

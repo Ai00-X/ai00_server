@@ -107,31 +107,22 @@ QQ Group for communication: 30920262
 ## 📝Supported Arguments
 
 *   `--config`: Configure file path (default: `assets/Config.toml`)
-*   `--tokenizer`: Tokenizer path
+*   `--ip`: The IP address the server is bound to
 *   `--port`: Running port
-*   `--adapter`: Adapter (GPU and backend) selection options: `Auto` and `Manual`
-*   `--adapter_id`: Specify the adapter in CLI (overrides `--adapter`)
 
-### Example
-
-The server listens on port 3000, loads the full-layer quantized (32 > 24) 0.4B model, and selects the high-performance adapter.
-
-```bash
-$ cargo run --release -- --config assets/configs/Config.toml --port 3000 --adapter auto
-```
 
 ## 📙Currently Available APIs
 
 The API service starts at port 65530, and the data input and output format follow the Openai API specification.
 
-*   `/api/v1/models`
-*   `/api/models`
-*   `/api/v1/chat/completions`
-*   `/api/chat/completions`
-*   `/api/v1/completions`
-*   `/api/completions`
-*   `/api/v1/embeddings`
-*   `/api/embeddings`
+*   `/api/oai/v1/models`
+*   `/api/oai/models`
+*   `/api/oai/v1/chat/completions`
+*   `/api/oai/chat/completions`
+*   `/api/oai/v1/completions`
+*   `/api/oai/completions`
+*   `/api/oai/v1/embeddings`
+*   `/api/oai/embeddings`
 
 ## 📙WebUI Screenshots
 
