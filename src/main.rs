@@ -135,7 +135,7 @@ pub struct ReloadRequest {
     /// Path to the model.
     pub model_path: PathBuf,
     /// Specify layers that needs to be quantized.
-    pub quant: Vec<usize>,
+    pub quant: usize,
     /// Maximum tokens to be processed in parallel at once.
     pub token_chunk_size: usize,
     /// The chunk size for each split of the head matrix.
@@ -209,14 +209,9 @@ where
         head_chunk_size,
         ..
     } = request;
-    let quant = if quant.is_empty() {
-        Quantization::None
-    } else {
-        let mut layers = LayerFlags::empty();
-        quant
-            .into_iter()
-            .for_each(|x| layers.insert(LayerFlags::from_layer(x as u64)));
-        Quantization::Int8(layers)
+    let quant = match quant {
+        0 => Quantization::None,
+        x => Quantization::Int8(LayerFlags::from_bits_retain((1 << x) - 1)),
     };
 
     let model: M = ModelBuilder::new(context, data)

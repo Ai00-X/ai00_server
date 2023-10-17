@@ -46,7 +46,7 @@ pub struct ModelConfig {
     /// Path to the model.
     pub path: PathBuf,
     /// Specify layers that needs to be quantized.
-    pub quant: Vec<usize>,
+    pub quant: usize,
     /// Maximum tokens to be processed in parallel at once.
     pub token_chunk_size: usize,
     /// The chunk size for each split of the head matrix.
