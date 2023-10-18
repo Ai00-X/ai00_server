@@ -1,3 +1,5 @@
+use std::time::Duration;
+
 use axum::{extract::State, Json};
 use serde::Serialize;
 
@@ -15,7 +17,7 @@ pub struct ModelResponse {
 }
 
 pub async fn models(State(ThreadState(sender)): State<ThreadState>) -> Json<ModelResponse> {
-    let info = request_info(sender);
+    let info = request_info(sender, Duration::from_secs(1)).await;
     let model_name = info.reload.model_path.to_string_lossy().into();
 
     Json(ModelResponse {

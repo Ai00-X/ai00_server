@@ -402,10 +402,19 @@ fn model_route(receiver: Receiver<ThreadRequest>) -> Result<()> {
     }
 }
 
-pub fn request_info(sender: Sender<ThreadRequest>) -> RuntimeInfo {
+pub fn try_request_info(sender: Sender<ThreadRequest>) -> Result<RuntimeInfo> {
     let (info_sender, info_receiver) = flume::unbounded();
     let _ = sender.send(ThreadRequest::Info(info_sender));
-    info_receiver.recv().expect("request info failed")
+    info_receiver.recv().map_err(|err| err.into())
+}
+
+pub async fn request_info(sender: Sender<ThreadRequest>, sleep: Duration) -> RuntimeInfo {
+    loop {
+        if let Ok(info) = try_request_info(sender.clone()) {
+            break info;
+        }
+        tokio::time::sleep(sleep).await;
+    }
 }
 
 #[derive(Parser, Debug, Clone)]

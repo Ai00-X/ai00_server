@@ -1,3 +1,5 @@
+use std::time::Duration;
+
 use axum::{extract::State, Json};
 use serde::Serialize;
 use web_rwkv::model::ModelInfo;
@@ -12,7 +14,7 @@ pub struct LoadResponse {
 
 /// `/api/models/info`.
 pub async fn info(State(ThreadState(sender)): State<ThreadState>) -> Json<LoadResponse> {
-    let RuntimeInfo { reload, model, .. } = request_info(sender);
+    let RuntimeInfo { reload, model, .. } = request_info(sender, Duration::from_secs(1)).await;
     Json(LoadResponse { reload, model })
 }
 

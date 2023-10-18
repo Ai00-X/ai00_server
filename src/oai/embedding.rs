@@ -1,3 +1,5 @@
+use std::time::Duration;
+
 use axum::{extract::State, Json};
 use futures_util::StreamExt;
 use serde::{Deserialize, Serialize};
@@ -43,7 +45,7 @@ pub async fn embeddings(
     State(ThreadState(sender)): State<ThreadState>,
     Json(request): Json<EmbeddingRequest>,
 ) -> Json<EmbeddingResponse> {
-    let info = request_info(sender.clone());
+    let info = request_info(sender.clone(), Duration::from_secs(1)).await;
     let model_name = info.reload.model_path.to_string_lossy().into_owned();
 
     let (token_sender, token_receiver) = flume::unbounded();

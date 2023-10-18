@@ -1,4 +1,4 @@
-use std::collections::HashMap;
+use std::{collections::HashMap, time::Duration};
 
 use anyhow::Result;
 use axum::{
@@ -102,7 +102,7 @@ async fn completions_one(
     State(ThreadState(sender)): State<ThreadState>,
     Json(request): Json<CompletionRequest>,
 ) -> Json<CompletionResponse> {
-    let info = request_info(sender.clone());
+    let info = request_info(sender.clone(), Duration::from_secs(1)).await;
     let model_name = info.reload.model_path.to_string_lossy().into_owned();
 
     let (token_sender, token_receiver) = flume::unbounded();
@@ -172,7 +172,7 @@ async fn completions_stream(
     State(ThreadState(sender)): State<ThreadState>,
     Json(request): Json<CompletionRequest>,
 ) -> Sse<impl Stream<Item = Result<Event>>> {
-    let info = request_info(sender.clone());
+    let info = request_info(sender.clone(), Duration::from_secs(1)).await;
     let model_name = info.reload.model_path.to_string_lossy().into_owned();
 
     let (token_sender, token_receiver) = flume::unbounded();
