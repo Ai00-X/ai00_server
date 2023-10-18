@@ -2,7 +2,7 @@ use std::{
     borrow::Borrow,
     collections::{HashMap, HashSet},
     convert::Infallible,
-    sync::{Arc, Mutex},
+    sync::{Arc, Mutex, RwLock},
     time::Instant,
 };
 
@@ -18,7 +18,7 @@ use web_rwkv::{
     tokenizer::Tokenizer,
 };
 
-use crate::{sampler::Sampler, FinishReason, Token, TokenCounter, STATE_CHUNK_SIZE};
+use crate::{sampler::Sampler, Environment, FinishReason, Token, TokenCounter, STATE_CHUNK_SIZE};
 
 #[derive(Debug)]
 pub enum SlotResult {
@@ -552,21 +552,20 @@ impl RuntimeUntyped<'_> {
     }
 }
 
-pub fn run(receiver: Receiver<Arc<RuntimeUntyped<'_>>>) {
-    let mut runtime = None;
+pub fn run(receiver: Receiver<()>, environment: Arc<RwLock<Environment>>) {
     let mut payloads = Vec::new();
 
     loop {
-        runtime.replace(receiver.recv().unwrap());
-
-        if let Some(runtime) = &runtime {
-            'run: loop {
+        let _ = receiver.recv();
+        'run: loop {
+            let environment = environment.read().unwrap();
+            if let Environment::Loaded { runtime, .. } = &*environment {
                 if let Err(err) = runtime.process(&mut payloads) {
                     log::error!("{}", err);
                 }
-                if payloads.iter().all(Payload::is_empty) {
-                    break 'run;
-                }
+            }
+            if payloads.iter().all(Payload::is_empty) {
+                break 'run;
             }
         }
     }

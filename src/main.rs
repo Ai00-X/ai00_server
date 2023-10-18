@@ -5,7 +5,7 @@ use std::{
     io::{BufReader, Cursor, Read},
     net::{Ipv4Addr, SocketAddr},
     path::{Path, PathBuf},
-    sync::Arc,
+    sync::{Arc, RwLock},
     time::Duration,
 };
 
@@ -100,6 +100,16 @@ pub enum ThreadRequest {
         sender: Sender<Token>,
     },
     Reload(ReloadRequest),
+}
+
+#[derive(Default)]
+pub enum Environment<'a> {
+    Loaded {
+        runtime: RuntimeUntyped<'a>,
+        reload: ReloadRequest,
+    },
+    #[default]
+    None,
 }
 
 #[derive(Debug, Clone)]
@@ -255,27 +265,28 @@ fn load_config(path: impl AsRef<Path>) -> Result<Config> {
 }
 
 fn model_route(receiver: Receiver<ThreadRequest>) -> Result<()> {
-    let mut env: Option<(Arc<RuntimeUntyped<'_>>, ReloadRequest)> = None;
+    let environment: Arc<RwLock<Environment>> = Default::default();
     let mut queue = Vec::new();
 
     let sender = {
         let (sender, receiver) = flume::unbounded();
-        std::thread::spawn(move || run::run(receiver));
+        let environment = environment.clone();
+        std::thread::spawn(move || run::run(receiver, environment));
         sender
     };
 
     fn enqueue(
         queue: &mut Vec<GenerateContext>,
-        environment: &Option<(Arc<RuntimeUntyped<'_>>, ReloadRequest)>,
+        environment: &Arc<RwLock<Environment>>,
         context: GenerateContext,
     ) {
-        match environment {
-            Some((runtime, _)) => match runtime.queue(context) {
+        match &*environment.read().unwrap() {
+            Environment::Loaded { runtime, .. } => match runtime.queue(context) {
                 SlotResult::Success(batch) => log::info!("queued task at {batch}"),
                 SlotResult::Fault(batch) => log::info!("swapped task at {batch}"),
                 SlotResult::Failure(context) => queue.push(*context),
             },
-            None => queue.push(context),
+            Environment::None => queue.push(context),
         }
     }
 
@@ -286,7 +297,7 @@ fn model_route(receiver: Receiver<ThreadRequest>) -> Result<()> {
                     let _ = sender.send(list_adapters());
                 }
                 ThreadRequest::Info(sender) => {
-                    if let Some((runtime, reload)) = &env {
+                    if let Environment::Loaded { runtime, reload } = &*environment.read().unwrap() {
                         let reload = reload.clone();
                         let model = runtime.model_info().clone();
                         let tokenizer = runtime.tokenizer();
@@ -298,42 +309,58 @@ fn model_route(receiver: Receiver<ThreadRequest>) -> Result<()> {
                     }
                 }
                 ThreadRequest::Reload(request) => {
-                    let max_runtime_batch = request.max_runtime_batch;
-                    let embed_layer = request.embed_layer;
-
-                    let context = pollster::block_on(create_context(request.adapter))?;
-                    let tokenizer = load_tokenizer(&request.tokenizer_path)?;
-                    log::info!("{:#?}", context.adapter.get_info());
-
-                    let file = File::open(&request.model_path)?;
-                    let data = unsafe { Mmap::map(&file)? };
-                    let info = Loader::info(&data)?;
-                    log::info!("{:#?}", info);
-
-                    let runtime = Arc::new(match info.version {
-                        ModelVersion::V4 => {
-                            let (model, state) = load_model(&context, request.clone(), &data)?;
-                            RuntimeUntyped::V4(Runtime::new(
-                                tokenizer,
-                                model,
-                                state,
-                                max_runtime_batch,
-                                embed_layer,
-                            ))
+                    let environment = environment.clone();
+                    let sender = sender.clone();
+                    std::thread::spawn(move || -> Result<()> {
+                        {
+                            let mut environment = environment.write().unwrap();
+                            *environment = Environment::None;
                         }
-                        ModelVersion::V5 => {
-                            let (model, state) = load_model(&context, request.clone(), &data)?;
-                            RuntimeUntyped::V5(Runtime::new(
-                                tokenizer,
-                                model,
-                                state,
-                                max_runtime_batch,
-                                embed_layer,
-                            ))
+
+                        let max_runtime_batch = request.max_runtime_batch;
+                        let embed_layer = request.embed_layer;
+
+                        let context = pollster::block_on(create_context(request.adapter))?;
+                        let tokenizer = load_tokenizer(&request.tokenizer_path)?;
+                        log::info!("{:#?}", context.adapter.get_info());
+
+                        let file = File::open(&request.model_path)?;
+                        let data = unsafe { Mmap::map(&file)? };
+                        let info = Loader::info(&data)?;
+                        log::info!("{:#?}", info);
+
+                        let runtime = match info.version {
+                            ModelVersion::V4 => {
+                                let (model, state) = load_model(&context, request.clone(), &data)?;
+                                RuntimeUntyped::V4(Runtime::new(
+                                    tokenizer,
+                                    model,
+                                    state,
+                                    max_runtime_batch,
+                                    embed_layer,
+                                ))
+                            }
+                            ModelVersion::V5 => {
+                                let (model, state) = load_model(&context, request.clone(), &data)?;
+                                RuntimeUntyped::V5(Runtime::new(
+                                    tokenizer,
+                                    model,
+                                    state,
+                                    max_runtime_batch,
+                                    embed_layer,
+                                ))
+                            }
+                        };
+
+                        {
+                            let mut environment = environment.write().unwrap();
+                            let reload = request;
+                            *environment = Environment::Loaded { runtime, reload };
+                            let _ = sender.send(());
                         }
+
+                        Ok(())
                     });
-                    let _ = sender.send(runtime.clone());
-                    env.replace((runtime, request));
                 }
                 ThreadRequest::Generate {
                     request,
@@ -377,10 +404,8 @@ fn model_route(receiver: Receiver<ThreadRequest>) -> Result<()> {
                         embed,
                         sender: token_sender,
                     };
-                    enqueue(&mut queue, &env, context);
-                    if let Some((runtime, _)) = &env {
-                        let _ = sender.send(runtime.clone());
-                    }
+                    enqueue(&mut queue, &environment, context);
+                    let _ = sender.send(());
                 }
             };
             Ok(())
@@ -393,8 +418,8 @@ fn model_route(receiver: Receiver<ThreadRequest>) -> Result<()> {
         while !queue.is_empty() {
             let mut temp = Vec::new();
             for context in queue.drain(..) {
-                enqueue(&mut temp, &env, context);
-                let _ = env.iter().map(|(runtime, _)| sender.send(runtime.clone()));
+                enqueue(&mut temp, &environment, context);
+                let _ = sender.send(());
             }
             std::mem::swap(&mut queue, &mut temp);
             std::thread::sleep(Duration::from_secs(1));
@@ -403,9 +428,9 @@ fn model_route(receiver: Receiver<ThreadRequest>) -> Result<()> {
 }
 
 pub fn try_request_info(sender: Sender<ThreadRequest>) -> Result<RuntimeInfo> {
-    let (info_sender, info_receiver) = flume::unbounded();
-    let _ = sender.send(ThreadRequest::Info(info_sender));
-    info_receiver.recv().map_err(|err| err.into())
+    let channel = flume::unbounded();
+    let _ = sender.send(ThreadRequest::Info(channel.0));
+    channel.1.recv().map_err(|err| err.into())
 }
 
 pub async fn request_info(sender: Sender<ThreadRequest>, sleep: Duration) -> RuntimeInfo {
