@@ -5,7 +5,7 @@ use std::{
     io::{BufReader, Cursor, Read},
     net::{Ipv4Addr, SocketAddr},
     path::{Path, PathBuf},
-    sync::{Arc, RwLock},
+    sync::{Arc, Mutex, RwLock},
     time::Duration,
 };
 
@@ -265,22 +265,23 @@ fn load_config(path: impl AsRef<Path>) -> Result<Config> {
 }
 
 fn model_route(receiver: Receiver<ThreadRequest>) -> Result<()> {
-    let environment: Arc<RwLock<Environment>> = Default::default();
+    let env: Arc<RwLock<Environment>> = Default::default();
+    let reload_lock: Arc<Mutex<()>> = Default::default();
     let mut queue = Vec::new();
 
     let sender = {
         let (sender, receiver) = flume::unbounded();
-        let environment = environment.clone();
-        std::thread::spawn(move || run::run(receiver, environment));
+        let env = env.clone();
+        std::thread::spawn(move || run::run(receiver, env));
         sender
     };
 
     fn enqueue(
         queue: &mut Vec<GenerateContext>,
-        environment: &Arc<RwLock<Environment>>,
+        env: &Arc<RwLock<Environment>>,
         context: GenerateContext,
     ) {
-        match &*environment.read().unwrap() {
+        match &*env.read().unwrap() {
             Environment::Loaded { runtime, .. } => match runtime.queue(context) {
                 SlotResult::Success(batch) => log::info!("queued task at {batch}"),
                 SlotResult::Fault(batch) => log::info!("swapped task at {batch}"),
@@ -297,7 +298,7 @@ fn model_route(receiver: Receiver<ThreadRequest>) -> Result<()> {
                     let _ = sender.send(list_adapters());
                 }
                 ThreadRequest::Info(sender) => {
-                    if let Environment::Loaded { runtime, reload } = &*environment.read().unwrap() {
+                    if let Environment::Loaded { runtime, reload } = &*env.read().unwrap() {
                         let reload = reload.clone();
                         let model = runtime.model_info().clone();
                         let tokenizer = runtime.tokenizer();
@@ -309,12 +310,14 @@ fn model_route(receiver: Receiver<ThreadRequest>) -> Result<()> {
                     }
                 }
                 ThreadRequest::Reload(request) => {
-                    let environment = environment.clone();
+                    let env = env.clone();
+                    let reload_lock = reload_lock.clone();
                     let sender = sender.clone();
                     std::thread::spawn(move || -> Result<()> {
+                        let _lock = reload_lock.lock().unwrap();
                         {
-                            let mut environment = environment.write().unwrap();
-                            *environment = Environment::None;
+                            let mut env = env.write().unwrap();
+                            *env = Environment::None;
                         }
 
                         let max_runtime_batch = request.max_runtime_batch;
@@ -353,12 +356,12 @@ fn model_route(receiver: Receiver<ThreadRequest>) -> Result<()> {
                         };
 
                         {
-                            let mut environment = environment.write().unwrap();
+                            let mut env = env.write().unwrap();
                             let reload = request;
-                            *environment = Environment::Loaded { runtime, reload };
-                            let _ = sender.send(());
+                            *env = Environment::Loaded { runtime, reload };
                         }
 
+                        let _ = sender.send(());
                         Ok(())
                     });
                 }
@@ -404,7 +407,7 @@ fn model_route(receiver: Receiver<ThreadRequest>) -> Result<()> {
                         embed,
                         sender: token_sender,
                     };
-                    enqueue(&mut queue, &environment, context);
+                    enqueue(&mut queue, &env, context);
                     let _ = sender.send(());
                 }
             };
@@ -418,7 +421,7 @@ fn model_route(receiver: Receiver<ThreadRequest>) -> Result<()> {
         while !queue.is_empty() {
             let mut temp = Vec::new();
             for context in queue.drain(..) {
-                enqueue(&mut temp, &environment, context);
+                enqueue(&mut temp, &env, context);
                 let _ = sender.send(());
             }
             std::mem::swap(&mut queue, &mut temp);

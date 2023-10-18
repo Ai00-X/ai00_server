@@ -552,14 +552,14 @@ impl RuntimeUntyped<'_> {
     }
 }
 
-pub fn run(receiver: Receiver<()>, environment: Arc<RwLock<Environment>>) {
+pub fn run(receiver: Receiver<()>, env: Arc<RwLock<Environment>>) {
     let mut payloads = Vec::new();
 
     loop {
         let _ = receiver.recv();
         'run: loop {
-            let environment = environment.read().unwrap();
-            if let Environment::Loaded { runtime, .. } = &*environment {
+            let env = env.read().unwrap();
+            if let Environment::Loaded { runtime, .. } = &*env {
                 if let Err(err) = runtime.process(&mut payloads) {
                     log::error!("{}", err);
                 }
