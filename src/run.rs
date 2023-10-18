@@ -308,7 +308,6 @@ where
                         .with_chunk_size(STATE_CHUNK_SIZE)
                         .build_backed()
                 });
-            cache.insert(Tokens(prefix.clone()), reload.clone());
             (prefix, reload)
         };
 
