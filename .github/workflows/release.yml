@@ -14,7 +14,7 @@ env:
   LINUX_TARGET: x86_64-unknown-linux-gnu
 
   # Space separated paths to include in the archive.
-  RELEASE_ADDS: README.md README_zh.md README_jp.md LICENSE assets
+  RELEASE_ADDS: README.md README_zh.md LICENSE assets
 
 jobs:
   build:
