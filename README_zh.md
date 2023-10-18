@@ -7,7 +7,7 @@
 [![All Contributors](https://img.shields.io/badge/all_contributors-4-orange.svg?style=flat-square)](#contributors-) 
 <!-- ALL-CONTRIBUTORS-BADGE:END -->
  
- [English](README.md) | [中文](README_zh.md)  | [日本語](README_jp.md)
+ [English](README.md) | [中文](README_zh.md) 
 
 
 ---
