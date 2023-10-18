@@ -15,17 +15,15 @@ use crate::{
     ThreadState, Token, TokenCounter,
 };
 
-#[derive(Debug, Default, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Default, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
 pub enum Role {
+    #[default]
     #[serde(alias = "system")]
     System,
-    #[default]
     #[serde(alias = "user")]
     User,
     #[serde(alias = "assistant")]
     Assistant,
-    #[serde(rename = "")]
-    Custom(String),
 }
 
 impl std::fmt::Display for Role {
@@ -34,7 +32,6 @@ impl std::fmt::Display for Role {
             Role::System => write!(f, "System"),
             Role::User => write!(f, "User"),
             Role::Assistant => write!(f, "Assistant"),
-            Role::Custom(name) => write!(f, "{}", name),
         }
     }
 }
@@ -49,6 +46,7 @@ pub struct ChatRecord {
 #[serde(default)]
 pub struct ChatRequest {
     messages: Array<ChatRecord>,
+    names: HashMap<Role, String>,
     max_tokens: usize,
     stop: Array<String>,
     stream: bool,
@@ -64,6 +62,7 @@ impl Default for ChatRequest {
     fn default() -> Self {
         Self {
             messages: Array::default(),
+            names: HashMap::new(),
             max_tokens: 256,
             stop: Array::Item("\n\n".into()),
             stream: false,
@@ -81,6 +80,7 @@ impl From<ChatRequest> for GenerateRequest {
     fn from(value: ChatRequest) -> Self {
         let ChatRequest {
             messages,
+            names,
             max_tokens,
             stop,
             temperature,
@@ -95,7 +95,7 @@ impl From<ChatRequest> for GenerateRequest {
         let prompt = Vec::from(messages.clone())
             .into_iter()
             .map(|ChatRecord { role, content }| {
-                let role = role.to_string();
+                let role = names.get(&role).cloned().unwrap_or(role.to_string());
                 let content = content.trim();
                 format!("{role}: {content}")
             })
