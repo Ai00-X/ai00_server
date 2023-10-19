@@ -19,7 +19,7 @@ use web_rwkv::{
     tokenizer::Tokenizer,
 };
 
-use crate::{sampler::Sampler, Environment, FinishReason, Token, TokenCounter, STATE_CHUNK_SIZE};
+use crate::{Environment, FinishReason, GenerateRequest, Token, TokenCounter, STATE_CHUNK_SIZE};
 
 #[derive(Debug)]
 pub enum SlotResult {
@@ -200,16 +200,8 @@ pub struct GenerateContext {
     pub output_buffer: Vec<u8>,
     /// Tokens that are output by the model.
     pub model_tokens: Vec<u16>,
-    /// Output token limit.
-    pub max_tokens: usize,
-    /// Stop indicators.
-    pub stop: Vec<String>,
-    /// Sampler parameters.
-    pub sampler: Sampler,
-    /// Bias added to tokens before sampling.
-    pub logit_bias: HashMap<u16, f32>,
-    /// Whether this is an embedding request.
-    pub embed: bool,
+    /// Generate request provided by the caller.
+    pub request: GenerateRequest,
     /// To send back generated tokens.
     pub sender: Sender<Token>,
 }
@@ -267,7 +259,15 @@ where
         }
     }
 
-    /// Queue a generation task.
+    pub fn info(&self) -> &ModelInfo {
+        self.model.info()
+    }
+
+    pub fn tokenizer(&self) -> Arc<Tokenizer> {
+        self.tokenizer.clone()
+    }
+
+    /// Queue an inference task.
     pub fn queue(&self, context: GenerateContext) -> SlotResult {
         let mut slots = self.slots.lock().unwrap();
         let mut cache = self.backed.lock().unwrap();
@@ -404,7 +404,7 @@ where
                             }
                             _ => None,
                         } {
-                            if context.embed {
+                            if context.request.embed {
                                 let embed = backed.embed(0, self.embed_layer);
                                 let _ = context.sender.send(Token::Embed(embed));
                             }
@@ -461,7 +461,6 @@ where
                 }
             },
         };
-        // post-process logits
         let penalty_free_tokens = &self.penalty_free_tokens;
         let logits = payloads
             .par_iter()
@@ -474,6 +473,7 @@ where
                         .filter(|(token, _)| !penalty_free_tokens.contains(token))
                         .for_each(|(token, penalty)| logits[*token as usize] -= penalty);
                     context
+                        .request
                         .logit_bias
                         .iter()
                         .for_each(|(token, bias)| logits[*token as usize] += *bias);
@@ -491,7 +491,7 @@ where
             .par_iter()
             .zip_eq(probs.into_par_iter())
             .map(|(payload, probs)| match payload {
-                Payload::Busy(context) => probs.map(|probs| context.sampler.sample(probs)),
+                Payload::Busy(context) => probs.map(|probs| context.request.sampler.sample(probs)),
                 _ => None,
             })
             .collect::<Vec<_>>();
@@ -516,15 +516,15 @@ where
                 context
                     .penalties
                     .iter_mut()
-                    .for_each(|(_, penalty)| *penalty *= context.sampler.penalty_decay);
+                    .for_each(|(_, penalty)| *penalty *= context.request.sampler.penalty_decay);
 
                 if let Some(token) = token {
                     assert_eq!(context.suffix.len(), 0);
                     context.suffix.0.push(token);
 
                     let penalty = match context.penalties.get(&token) {
-                        Some(penalty) => penalty + context.sampler.frequency_penalty,
-                        None => context.sampler.presence_penalty,
+                        Some(penalty) => penalty + context.request.sampler.frequency_penalty,
+                        None => context.request.sampler.presence_penalty,
                     };
                     context.penalties.insert(token, penalty);
 
@@ -557,9 +557,14 @@ where
 
                     if context.sender.is_disconnected() {
                         done = true;
-                    } else if context.stop.iter().any(|stop| model_text.contains(stop)) {
+                    } else if context
+                        .request
+                        .stop
+                        .iter()
+                        .any(|stop| model_text.contains(stop))
+                    {
                         finish(FinishReason::Stop);
-                    } else if context.model_tokens.len() >= context.max_tokens {
+                    } else if context.model_tokens.len() >= context.request.max_tokens {
                         finish(FinishReason::Length);
                     }
                 }
@@ -579,40 +584,41 @@ pub enum RuntimeUntyped<'a> {
     V5(Runtime<v5::Model<'a>, v5::ModelState, v5::BackedState>),
 }
 
-impl RuntimeUntyped<'_> {
-    #[inline]
-    pub fn model_info(&self) -> &ModelInfo {
-        match self {
-            RuntimeUntyped::V4(runtime) => runtime.model.info(),
-            RuntimeUntyped::V5(runtime) => runtime.model.info(),
-        }
-    }
+macro_rules! impl_runtime_untyped {
+    ($($variant:ident),* $(,)?) => {
+        impl RuntimeUntyped<'_> {
+            #[inline]
+            pub fn model_info(&self) -> &ModelInfo {
+                match self {
+                    $(RuntimeUntyped::$variant(runtime) => runtime.info(),)*
+                }
+            }
 
-    #[inline]
-    pub fn tokenizer(&self) -> Arc<Tokenizer> {
-        match self {
-            RuntimeUntyped::V4(runtime) => runtime.tokenizer.clone(),
-            RuntimeUntyped::V5(runtime) => runtime.tokenizer.clone(),
-        }
-    }
+            #[inline]
+            pub fn tokenizer(&self) -> Arc<Tokenizer> {
+                match self {
+                    $(RuntimeUntyped::$variant(runtime) => runtime.tokenizer(),)*
+                }
+            }
 
-    /// Queue a generation task.
-    #[inline]
-    pub fn queue(&self, context: GenerateContext) -> SlotResult {
-        match self {
-            RuntimeUntyped::V4(runtime) => runtime.queue(context),
-            RuntimeUntyped::V5(runtime) => runtime.queue(context),
-        }
-    }
+            #[inline]
+            pub fn queue(&self, context: GenerateContext) -> SlotResult {
+                match self {
+                    $(RuntimeUntyped::$variant(runtime) => runtime.queue(context),)*
+                }
+            }
 
-    #[inline]
-    fn process(&self, payloads: &mut Vec<Payload>) -> Result<()> {
-        match self {
-            RuntimeUntyped::V4(runtime) => runtime.process(payloads),
-            RuntimeUntyped::V5(runtime) => runtime.process(payloads),
+            #[inline]
+            fn process(&self, payloads: &mut Vec<Payload>) -> Result<()> {
+                match self {
+                    $(RuntimeUntyped::$variant(runtime) => runtime.process(payloads),)*
+                }
+            }
         }
-    }
+    };
 }
+
+impl_runtime_untyped!(V4, V5);
 
 pub fn run(receiver: Receiver<()>, env: Arc<RwLock<Environment>>) {
     let mut payloads = Vec::new();
