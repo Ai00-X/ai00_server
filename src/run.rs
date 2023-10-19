@@ -588,7 +588,7 @@ macro_rules! impl_runtime_untyped {
     ($($variant:ident),* $(,)?) => {
         impl RuntimeUntyped<'_> {
             #[inline]
-            pub fn model_info(&self) -> &ModelInfo {
+            pub fn info(&self) -> &ModelInfo {
                 match self {
                     $(RuntimeUntyped::$variant(runtime) => runtime.info(),)*
                 }

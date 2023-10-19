@@ -18,6 +18,7 @@ use clap::Parser;
 use config::{AdapterOption, Config};
 use flume::{Receiver, Sender};
 use memmap::Mmap;
+use rayon::{ThreadPool, ThreadPoolBuilder};
 use run::RuntimeUntyped;
 use serde::{Deserialize, Serialize};
 use tower_http::{cors::CorsLayer, services::ServeDir};
@@ -100,6 +101,7 @@ pub enum ThreadRequest {
         sender: Sender<Token>,
     },
     Reload(ReloadRequest),
+    Unload,
 }
 
 #[derive(Default)]
@@ -264,15 +266,16 @@ fn load_config(path: impl AsRef<Path>) -> Result<Config> {
     Ok(toml::from_str(&contents)?)
 }
 
-fn model_route(receiver: Receiver<ThreadRequest>) -> Result<()> {
+fn model_route(receiver: Receiver<ThreadRequest>, pool: ThreadPool) -> Result<()> {
     let env: Arc<RwLock<Environment>> = Default::default();
     let reload_lock: Arc<Mutex<()>> = Default::default();
+
     let mut queue = Vec::new();
 
     let sender = {
         let (sender, receiver) = flume::unbounded();
         let env = env.clone();
-        std::thread::spawn(move || run::run(receiver, env));
+        pool.spawn(move || run::run(receiver, env));
         sender
     };
 
@@ -353,7 +356,7 @@ fn model_route(receiver: Receiver<ThreadRequest>) -> Result<()> {
                 ThreadRequest::Info(sender) => {
                     if let Environment::Loaded { runtime, reload } = &*env.read().unwrap() {
                         let reload = reload.clone();
-                        let model = runtime.model_info().clone();
+                        let model = runtime.info().clone();
                         let tokenizer = runtime.tokenizer();
                         let _ = sender.send(RuntimeInfo {
                             reload,
@@ -363,7 +366,16 @@ fn model_route(receiver: Receiver<ThreadRequest>) -> Result<()> {
                     }
                 }
                 ThreadRequest::Reload(request) => {
-                    std::thread::spawn(move || reload(request));
+                    let reload = move || {
+                        if let Err(err) = reload(request) {
+                            log::error!("reload model failed: {}", err);
+                        }
+                    };
+                    pool.spawn(reload);
+                }
+                ThreadRequest::Unload => {
+                    let mut env = env.write().unwrap();
+                    *env = Environment::None;
                 }
                 ThreadRequest::Generate {
                     request,
@@ -416,16 +428,32 @@ fn model_route(receiver: Receiver<ThreadRequest>) -> Result<()> {
     }
 }
 
-pub fn try_request_info(sender: Sender<ThreadRequest>) -> Result<RuntimeInfo> {
-    let channel = flume::unbounded();
-    let _ = sender.send(ThreadRequest::Info(channel.0));
-    channel.1.recv().map_err(|err| err.into())
+pub async fn try_request_info(sender: Sender<ThreadRequest>) -> Result<RuntimeInfo> {
+    let (info_sender, info_receiver) = flume::unbounded();
+    let _ = sender.send(ThreadRequest::Info(info_sender));
+    let info = info_receiver.recv_async().await?;
+    Ok(info)
 }
 
 pub async fn request_info(sender: Sender<ThreadRequest>, sleep: Duration) -> RuntimeInfo {
     loop {
-        if let Ok(info) = try_request_info(sender.clone()) {
+        if let Ok(info) = try_request_info(sender.clone()).await {
             break info;
+        }
+        tokio::time::sleep(sleep).await;
+    }
+}
+
+pub async fn request_info_stream(
+    sender: Sender<ThreadRequest>,
+    info_sender: Sender<RuntimeInfo>,
+    sleep: Duration,
+) {
+    loop {
+        if let Ok(info) = try_request_info(sender.clone()).await {
+            if info_sender.send(info).is_err() {
+                break;
+            }
         }
         tokio::time::sleep(sleep).await;
     }
@@ -440,6 +468,8 @@ struct Args {
     ip: Option<Ipv4Addr>,
     #[arg(long, short, default_value_t = 65530)]
     port: u16,
+    #[arg(long, short, default_value_t = 0)]
+    threads: usize,
 }
 
 #[tokio::main]
@@ -502,8 +532,10 @@ async fn main() {
         .route("/api/files/dir", post(api::dir))
         .route("/api/files/ls", post(api::dir))
         .route("/api/models/list", get(api::models))
-        .route("/api/models/load", post(api::load))
         .route("/api/models/info", get(api::info))
+        .route("/api/models/state", get(api::state))
+        .route("/api/models/load", post(api::load))
+        .route("/api/models/unload", get(api::unload))
         .route("/api/oai/models", get(oai::models))
         .route("/api/oai/v1/models", get(oai::models))
         .route("/api/oai/completions", post(oai::completions))
@@ -520,6 +552,10 @@ async fn main() {
     let listener = tokio::net::TcpListener::bind(addr).await.unwrap();
     log::info!("server started at http://{addr}");
 
-    std::thread::spawn(move || model_route(receiver));
+    let pool = ThreadPoolBuilder::new()
+        .num_threads(args.threads)
+        .build()
+        .unwrap();
+    std::thread::spawn(move || model_route(receiver, pool));
     axum::serve(listener, app).await.unwrap();
 }

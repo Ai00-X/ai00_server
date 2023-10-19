@@ -4,4 +4,4 @@ pub mod load;
 
 pub use adapter::adapters;
 pub use file::{dir, models, unzip};
-pub use load::{info, load};
+pub use load::{info, load, state, unload};
