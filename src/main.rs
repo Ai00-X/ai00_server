@@ -17,6 +17,7 @@ use axum::{
 use clap::Parser;
 use config::{AdapterOption, Config};
 use flume::{Receiver, Sender};
+use itertools::Itertools;
 use memmap::Mmap;
 use rayon::{ThreadPool, ThreadPoolBuilder};
 use run::RuntimeUntyped;
@@ -25,8 +26,8 @@ use tower_http::{cors::CorsLayer, services::ServeDir};
 use web_rwkv::{
     context::{Context, ContextBuilder, Instance},
     model::{
-        loader::Loader, FromBuilder, LayerFlags, Model, ModelBuilder, ModelInfo, ModelState,
-        ModelVersion, Quantization, StateBuilder,
+        loader::Loader, FromBuilder, LayerFlags, Lora, LoraBlend, Model, ModelBuilder, ModelInfo,
+        ModelState, ModelVersion, Quantization, StateBuilder,
     },
     tokenizer::Tokenizer,
     wgpu::{Backends, PowerPreference},
@@ -143,9 +144,12 @@ pub struct GenerateRequest {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(default)]
 pub struct ReloadRequest {
     /// Path to the model.
     pub model_path: PathBuf,
+    /// List of LoRA blended on the model.
+    pub lora: Vec<config::Lora>,
     /// Specify layers that needs to be quantized.
     pub quant: usize,
     /// Maximum tokens to be processed in parallel at once.
@@ -162,6 +166,23 @@ pub struct ReloadRequest {
     pub tokenizer_path: PathBuf,
     /// Adapter selection.
     pub adapter: AdapterOption,
+}
+
+impl Default for ReloadRequest {
+    fn default() -> Self {
+        Self {
+            model_path: Default::default(),
+            lora: Default::default(),
+            quant: Default::default(),
+            token_chunk_size: 32,
+            head_chunk_size: 8192,
+            max_runtime_batch: 8,
+            max_batch: 16,
+            embed_layer: 2,
+            tokenizer_path: Default::default(),
+            adapter: Default::default(),
+        }
+    }
 }
 
 #[derive(Debug, Default, Clone, Serialize)]
@@ -217,6 +238,7 @@ where
 {
     let ReloadRequest {
         quant,
+        lora,
         token_chunk_size,
         head_chunk_size,
         ..
@@ -226,11 +248,25 @@ where
         x => Quantization::Int8(LayerFlags::from_bits_retain((1 << x) - 1)),
     };
 
-    let model: M = ModelBuilder::new(context, data)
+    let lora: Vec<Lora> = lora
+        .into_iter()
+        .map(|lora| -> Result<Lora> {
+            let file = File::open(&lora.path)?;
+            let data = unsafe { Mmap::map(&file) }?.to_vec();
+            let blend = LoraBlend::full(lora.alpha);
+            Ok(Lora { data, blend })
+        })
+        .try_collect()?;
+
+    let model = ModelBuilder::new(context, data)
         .with_quant(quant)
         .with_token_chunk_size(token_chunk_size)
-        .with_head_chunk_size(head_chunk_size)
+        .with_head_chunk_size(head_chunk_size);
+    let model: M = lora
+        .into_iter()
+        .fold(model, |acc, x| acc.add_lora(x))
         .build()?;
+
     let state: S = StateBuilder::new(context, model.info())
         .with_max_batch(request.max_batch)
         .with_chunk_size(STATE_CHUNK_SIZE)

@@ -4,31 +4,37 @@ use serde::{Deserialize, Serialize};
 
 use crate::ReloadRequest;
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Default, Clone, Serialize, Deserialize)]
+#[serde(default)]
 pub struct Config {
-    pub model: ModelConfig,
-    pub tokenizer: TokenizerConfig,
+    pub model: Model,
+    pub lora: Vec<Lora>,
+    pub tokenizer: Tokenizer,
     pub adapter: AdapterOption,
 }
 
 impl From<Config> for ReloadRequest {
     fn from(value: Config) -> Self {
-        let ModelConfig {
-            path: model_path,
-            quant,
-            token_chunk_size,
-            head_chunk_size,
-            max_runtime_batch,
-            max_batch,
-            embed_layer,
-        } = value.model;
-        let TokenizerConfig {
-            path: tokenizer_path,
-        } = value.tokenizer;
-        let adapter = value.adapter;
-
+        let Config {
+            model:
+                Model {
+                    path: model_path,
+                    quant,
+                    token_chunk_size,
+                    head_chunk_size,
+                    max_runtime_batch,
+                    max_batch,
+                    embed_layer,
+                },
+            lora,
+            tokenizer: Tokenizer {
+                path: tokenizer_path,
+            },
+            adapter,
+        } = value;
         Self {
             model_path,
+            lora,
             quant,
             token_chunk_size,
             head_chunk_size,
@@ -42,7 +48,8 @@ impl From<Config> for ReloadRequest {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct ModelConfig {
+#[serde(default)]
+pub struct Model {
     /// Path to the model.
     pub path: PathBuf,
     /// Specify layers that needs to be quantized.
@@ -59,8 +66,41 @@ pub struct ModelConfig {
     pub embed_layer: usize,
 }
 
+impl Default for Model {
+    fn default() -> Self {
+        Self {
+            path: Default::default(),
+            quant: Default::default(),
+            token_chunk_size: 32,
+            head_chunk_size: 8192,
+            max_runtime_batch: 8,
+            max_batch: 16,
+            embed_layer: 2,
+        }
+    }
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct TokenizerConfig {
+#[serde(default)]
+pub struct Lora {
+    /// Path to the LoRA.
+    pub path: PathBuf,
+    /// Blend factor.
+    pub alpha: f32,
+}
+
+impl Default for Lora {
+    fn default() -> Self {
+        Self {
+            path: Default::default(),
+            alpha: 1.0,
+        }
+    }
+}
+
+#[derive(Debug, Default, Clone, Serialize, Deserialize)]
+#[serde(default)]
+pub struct Tokenizer {
     pub path: PathBuf,
 }
 
