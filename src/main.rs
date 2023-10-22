@@ -170,18 +170,7 @@ pub struct ReloadRequest {
 
 impl Default for ReloadRequest {
     fn default() -> Self {
-        Self {
-            model_path: Default::default(),
-            lora: Default::default(),
-            quant: Default::default(),
-            token_chunk_size: 32,
-            head_chunk_size: 8192,
-            max_runtime_batch: 8,
-            max_batch: 16,
-            embed_layer: 2,
-            tokenizer_path: Default::default(),
-            adapter: Default::default(),
-        }
+        config::Config::default().into()
     }
 }
 

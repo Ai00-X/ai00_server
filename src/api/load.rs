@@ -53,6 +53,7 @@ pub async fn load(
 }
 
 #[derive(Debug, Clone, Copy, Serialize)]
+#[serde(rename_all = "UPPERCASE")]
 pub enum UnloadResponse {
     Ok,
 }

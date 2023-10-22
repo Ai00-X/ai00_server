@@ -52,9 +52,9 @@ pub struct FileInfo {
 #[derive(Debug, Default, Clone, Serialize)]
 #[serde(untagged)]
 pub enum FileInfoResponse {
-    Accepted(Vec<FileInfo>),
+    Ok(Vec<FileInfo>),
     #[default]
-    Denied,
+    Err,
 }
 
 /// `/api/dir`, `/api/ls`.
@@ -85,9 +85,12 @@ pub async fn dir(
                     })
                 })
                 .collect();
-            Json(FileInfoResponse::Accepted(files))
+            Json(FileInfoResponse::Ok(files))
         }
-        Err(_) => Json(FileInfoResponse::Denied),
+        Err(err) => {
+            log::error!("failed to read directory: {}", err);
+            Json(FileInfoResponse::Err)
+        }
     }
 }
 
