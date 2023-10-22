@@ -556,6 +556,8 @@ async fn main() {
         .route("/api/files/unzip", post(api::unzip))
         .route("/api/files/dir", post(api::dir))
         .route("/api/files/ls", post(api::dir))
+        .route("/api/files/config/load", post(api::load_config))
+        .route("/api/files/config/save", post(api::save_config))
         .route("/api/models/list", get(api::models))
         .route("/api/models/info", get(api::info))
         .route("/api/models/state", get(api::state))

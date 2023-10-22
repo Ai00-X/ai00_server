@@ -1,6 +1,6 @@
 use std::{
     fs::{File, Metadata},
-    io::{BufReader, Cursor, Read, Seek, SeekFrom},
+    io::{BufReader, Cursor, Read, Seek, SeekFrom, Write},
     path::{Path, PathBuf},
 };
 
@@ -10,7 +10,7 @@ use memmap::Mmap;
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
 
-use crate::ThreadState;
+use crate::{config::Config, ThreadState};
 
 fn compute_sha(path: impl AsRef<Path>, meta: &Metadata) -> Result<String> {
     let file = File::open(path.as_ref())?;
@@ -39,6 +39,7 @@ fn compute_sha(path: impl AsRef<Path>, meta: &Metadata) -> Result<String> {
 #[derive(Debug, Clone, Deserialize)]
 pub struct FileInfoRequest {
     path: PathBuf,
+    #[serde(default)]
     is_sha: bool,
 }
 
@@ -49,12 +50,12 @@ pub struct FileInfo {
     sha: String,
 }
 
-#[derive(Debug, Default, Clone, Serialize)]
-#[serde(untagged)]
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "UPPERCASE")]
 pub enum FileInfoResponse {
-    Ok(Vec<FileInfo>),
-    #[default]
     Err,
+    #[serde(untagged)]
+    Ok(Vec<FileInfo>),
 }
 
 /// `/api/dir`, `/api/ls`.
@@ -106,24 +107,24 @@ pub async fn models(state: State<ThreadState>) -> Json<FileInfoResponse> {
     .await
 }
 
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "UPPERCASE")]
+pub enum FileOpResponse {
+    Ok,
+    Err,
+}
+
 #[derive(Debug, Clone, Deserialize)]
 pub struct UnzipRequest {
     zip_path: PathBuf,
     target_dir: PathBuf,
 }
 
-#[derive(Debug, Clone, Serialize)]
-#[serde(rename_all = "UPPERCASE")]
-pub enum UnzipResponse {
-    Ok,
-    Err,
-}
-
 /// `/api/unzip`.
 pub async fn unzip(
     State(ThreadState(_)): State<ThreadState>,
     Json(request): Json<UnzipRequest>,
-) -> Json<UnzipResponse> {
+) -> Json<FileOpResponse> {
     let unzip = move || -> Result<()> {
         if Path::new(&request.target_dir).exists() {
             std::fs::remove_dir_all(&request.target_dir)?;
@@ -138,10 +139,70 @@ pub async fn unzip(
     };
 
     match unzip() {
-        Ok(_) => Json(UnzipResponse::Ok),
+        Ok(_) => Json(FileOpResponse::Ok),
         Err(err) => {
             log::error!("failed to unzip: {}", err);
-            Json(UnzipResponse::Err)
+            Json(FileOpResponse::Err)
+        }
+    }
+}
+
+#[derive(Debug, Clone, Deserialize)]
+pub struct LoadRequest {
+    path: PathBuf,
+}
+
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "UPPERCASE")]
+pub enum LoadResponse {
+    Err,
+    Ok(Config),
+}
+
+pub async fn load_config(
+    State(ThreadState(_)): State<ThreadState>,
+    Json(request): Json<LoadRequest>,
+) -> Json<LoadResponse> {
+    match crate::load_config(request.path) {
+        Ok(config) => Json(LoadResponse::Ok(config)),
+        Err(err) => {
+            log::error!("failed to load config: {}", err);
+            Json(LoadResponse::Err)
+        }
+    }
+}
+
+#[derive(Debug, Clone, Deserialize)]
+pub struct SaveRequest {
+    path: PathBuf,
+    config: Config,
+}
+
+pub async fn save_config(
+    State(ThreadState(_)): State<ThreadState>,
+    Json(request): Json<SaveRequest>,
+) -> Json<FileOpResponse> {
+    let write = || -> Result<()> {
+        let mut file = File::create(&request.path)?;
+        let buf = toml::to_string(&request.config)?.into_bytes();
+        file.write_all(&buf)?;
+        Ok(())
+    };
+
+    match request.path.extension() {
+        Some(ext) if ext == "toml" => match write() {
+            Ok(_) => Json(FileOpResponse::Ok),
+            Err(err) => {
+                log::error!("failed to save config: {err}");
+                Json(FileOpResponse::Err)
+            }
+        },
+        _ => {
+            log::error!(
+                "failed to save config: file path {} is not toml",
+                request.path.to_string_lossy()
+            );
+            Json(FileOpResponse::Err)
         }
     }
 }
