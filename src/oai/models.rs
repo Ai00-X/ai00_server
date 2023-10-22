@@ -18,12 +18,17 @@ pub struct ModelResponse {
 
 pub async fn models(State(ThreadState(sender)): State<ThreadState>) -> Json<ModelResponse> {
     let info = request_info(sender, Duration::from_secs(1)).await;
-    let model_name = info.reload.model_path.to_string_lossy().into();
+    let model_name = info
+        .reload
+        .model_path
+        .file_stem()
+        .map(|stem| stem.to_string_lossy())
+        .unwrap_or_default();
 
     Json(ModelResponse {
         data: vec![ModelChoice {
             object: "models".into(),
-            id: model_name,
+            id: model_name.into(),
         }],
     })
 }
