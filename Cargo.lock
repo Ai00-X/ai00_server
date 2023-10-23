@@ -2332,9 +2332,8 @@ checksum = "ca6ad05a4870b2bf5fe995117d3728437bd27d7cd5f06f13c17443ef369775a1"
 
 [[package]]
 name = "web-rwkv"
-version = "0.3.6"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "d526cbf86e43b2736a618b7d1b96f79095a1cd49f7ef8e9e465b2cdfdb88de21"
+version = "0.3.7"
+source = "git+https://github.com/cryscan/web-rwkv?branch=main#70157610903ebc608a710180286b661b01d28c6e"
 dependencies = [
  "ahash",
  "anyhow",
@@ -2358,8 +2357,7 @@ dependencies = [
 [[package]]
 name = "web-rwkv-derive"
 version = "0.2.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "7853e68f05577afc0c66b73191fb2f11c5177d273e0017270ffb3df1f135325f"
+source = "git+https://github.com/cryscan/web-rwkv?branch=main#70157610903ebc608a710180286b661b01d28c6e"
 dependencies = [
  "quote",
  "syn 2.0.38",
