@@ -315,17 +315,23 @@ fn model_route(receiver: Receiver<ThreadRequest>, pool: ThreadPool) -> Result<()
         };
 
     loop {
+        let unload = {
+            let env = env.clone();
+            move || {
+                let mut env = env.write().unwrap();
+                *env = Environment::None;
+            }
+        };
+
         let reload = {
             let env = env.clone();
             let reload_lock = reload_lock.clone();
             let sender = sender.clone();
+            let unload = unload.clone();
 
             move |request: ReloadRequest| -> Result<()> {
                 let _lock = reload_lock.lock().unwrap();
-                {
-                    let mut env = env.write().unwrap();
-                    *env = Environment::None;
-                }
+                unload();
 
                 let max_runtime_batch = request.max_runtime_batch;
                 let embed_layer = request.embed_layer;
@@ -391,6 +397,7 @@ fn model_route(receiver: Receiver<ThreadRequest>, pool: ThreadPool) -> Result<()
                     }
                 }
                 ThreadRequest::Reload(request) => {
+                    unload();
                     let reload = move || {
                         log::info!("{:#?}", request);
                         if let Err(err) = reload(request) {
@@ -400,8 +407,7 @@ fn model_route(receiver: Receiver<ThreadRequest>, pool: ThreadPool) -> Result<()
                     pool.spawn(reload);
                 }
                 ThreadRequest::Unload => {
-                    let mut env = env.write().unwrap();
-                    *env = Environment::None;
+                    unload();
                     log::info!("model unloaded");
                 }
                 ThreadRequest::Generate {
