@@ -392,6 +392,7 @@ fn model_route(receiver: Receiver<ThreadRequest>, pool: ThreadPool) -> Result<()
                 }
                 ThreadRequest::Reload(request) => {
                     let reload = move || {
+                        log::info!("{:#?}", request);
                         if let Err(err) = reload(request) {
                             log::error!("reload model failed: {}", err);
                         }
@@ -401,6 +402,7 @@ fn model_route(receiver: Receiver<ThreadRequest>, pool: ThreadPool) -> Result<()
                 ThreadRequest::Unload => {
                     let mut env = env.write().unwrap();
                     *env = Environment::None;
+                    log::info!("model unloaded");
                 }
                 ThreadRequest::Generate {
                     request,
