@@ -58,7 +58,7 @@ pub enum FileInfoResponse {
     Ok(Vec<FileInfo>),
 }
 
-/// `/api/dir`, `/api/ls`.
+/// `/api/files/dir`, `/api/files/ls`.
 pub async fn dir(
     State(ThreadState(_)): State<ThreadState>,
     Json(request): Json<FileInfoRequest>,
@@ -120,7 +120,7 @@ pub struct UnzipRequest {
     target_dir: PathBuf,
 }
 
-/// `/api/unzip`.
+/// `/api/files/unzip`.
 pub async fn unzip(
     State(ThreadState(_)): State<ThreadState>,
     Json(request): Json<UnzipRequest>,
@@ -159,6 +159,7 @@ pub enum LoadResponse {
     Ok(Config),
 }
 
+/// `/api/files/config/load`.
 pub async fn load_config(
     State(ThreadState(_)): State<ThreadState>,
     Json(request): Json<LoadRequest>,
@@ -178,6 +179,7 @@ pub struct SaveRequest {
     config: Config,
 }
 
+/// `/api/files/config/save`.
 pub async fn save_config(
     State(ThreadState(_)): State<ThreadState>,
     Json(request): Json<SaveRequest>,

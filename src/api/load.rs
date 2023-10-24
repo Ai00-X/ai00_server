@@ -27,7 +27,7 @@ pub async fn info(State(ThreadState(sender)): State<ThreadState>) -> Json<LoadRe
     Json(LoadResponse { reload, model })
 }
 
-/// `/api/models/state`
+/// `/api/models/state`.
 pub async fn state(
     State(ThreadState(sender)): State<ThreadState>,
 ) -> Sse<impl Stream<Item = Result<Event>>> {
