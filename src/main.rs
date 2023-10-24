@@ -368,11 +368,9 @@ fn model_route(receiver: Receiver<ThreadRequest>, pool: ThreadPool) -> Result<()
                     }
                 };
 
-                {
-                    let mut env = env.write().unwrap();
-                    let reload = request;
-                    *env = Environment::Loaded { runtime, reload };
-                }
+                let mut env = env.write().unwrap();
+                let reload = request;
+                *env = Environment::Loaded { runtime, reload };
 
                 let _ = sender.send(());
                 Ok(())
