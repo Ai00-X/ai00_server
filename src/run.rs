@@ -291,13 +291,13 @@ where
 
         let mut checkout = |batch: usize| -> (Vec<u16>, B) {
             let prefix = cache.longest_common_prefix(&tokens);
-            log::info!(
-                "slot {} checks out backed cache of length {}",
-                batch,
-                prefix.len()
-            );
+            let len = (1..=prefix.len())
+                .rev()
+                .find(|len| cache.contains_key(prefix[0..*len].as_token_slice()))
+                .unwrap_or_default();
+            log::info!("slot {} checks out backed cache of length {}", batch, len);
 
-            let prefix = prefix.to_vec();
+            let prefix = prefix[0..len].to_vec();
             let reload = cache
                 .remove(prefix[..].as_token_slice())
                 .unwrap_or_else(|| {
