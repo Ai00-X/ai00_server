@@ -291,7 +291,8 @@ where
 
         let mut checkout = |batch: usize| -> (Vec<u16>, B) {
             let prefix = cache.longest_common_prefix(&tokens);
-            let len = (1..=prefix.len())
+            let len = prefix.len().min(tokens.len().max(1) - 1);
+            let len = (1..=len)
                 .rev()
                 .find(|len| cache.contains_key(prefix[0..*len].as_token_slice()))
                 .unwrap_or_default();
