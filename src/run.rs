@@ -274,6 +274,7 @@ where
         let mut slots = self.slots.lock().unwrap();
         let mut cache = self.backed.lock().unwrap();
 
+        // we must ensure that there is at least one token as the suffix, otherwise the whole slot will loop forever as there is no input
         let (last, tokens) = match [context.prefix, context.suffix].concat().split_last() {
             Some((last, tokens)) => (*last, tokens.to_vec()),
             None => return SlotResult::Error,
