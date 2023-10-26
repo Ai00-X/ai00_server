@@ -307,9 +307,10 @@ fn model_route(receiver: Receiver<ThreadRequest>, pool: ThreadPool) -> Result<()
     let enqueue =
         |queue: &mut Vec<GenerateContext>, context: GenerateContext| match &*env.read().unwrap() {
             Environment::Loaded { runtime, .. } => match runtime.queue(context) {
-                SlotResult::Success(batch) => log::info!("queued task at {batch}"),
-                SlotResult::Fault(batch) => log::info!("swapped task at {batch}"),
+                SlotResult::Success(batch) => log::info!("queued task at slot {batch}"),
+                SlotResult::Fault(batch) => log::info!("swapped task at slot {batch}"),
                 SlotResult::Failure(context) => queue.push(*context),
+                SlotResult::Error => log::error!("empty task is not queued"),
             },
             Environment::None => queue.push(context),
         };

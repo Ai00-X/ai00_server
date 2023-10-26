@@ -29,6 +29,8 @@ pub enum SlotResult {
     Fault(usize),
     /// There is no idle slot left.
     Failure(Box<GenerateContext>),
+    /// An error occurred.
+    Error,
 }
 
 #[derive(Debug)]
@@ -272,7 +274,14 @@ where
         let mut slots = self.slots.lock().unwrap();
         let mut cache = self.backed.lock().unwrap();
 
-        let tokens = Tokens([context.prefix, context.suffix].concat());
+        let tokens: Vec<_> = [context.prefix, context.suffix].concat();
+        if tokens.is_empty() {
+            return SlotResult::Error;
+        }
+
+        assert_ne!(tokens.len(), 0);
+        let last = tokens[tokens.len() - 1];
+        let tokens = tokens[..tokens.len() - 1].to_vec();
         let choice = slots
             .iter()
             .enumerate()
@@ -290,9 +299,8 @@ where
             .max_by(|lhs, rhs| lhs.0.cmp(&rhs.0).then(lhs.1.cmp(&rhs.1)));
 
         let mut checkout = |batch: usize| -> (Vec<u16>, B) {
-            let prefix = cache.longest_common_prefix(&tokens);
-            let len = prefix.len().min(tokens.len().max(1) - 1);
-            let len = (1..=len)
+            let prefix = cache.longest_common_prefix(tokens.as_token_slice());
+            let len = (1..=prefix.len())
                 .rev()
                 .find(|len| cache.contains_key(prefix[0..*len].as_token_slice()))
                 .unwrap_or_default();
@@ -316,7 +324,7 @@ where
             None => SlotResult::Failure(
                 GenerateContext {
                     prefix: Default::default(),
-                    suffix: tokens,
+                    suffix: Tokens([tokens, vec![last]].concat()),
                     ..context
                 }
                 .into(),
@@ -325,6 +333,7 @@ where
                 log::info!("start at non-empty slot {}", batch);
                 let (prefix, reload) = checkout(batch);
 
+                let tokens = [tokens, vec![last]].concat();
                 let len = prefix.len();
                 let mut state = SlotState::Wait(
                     GenerateContext {
@@ -350,6 +359,7 @@ where
                 log::info!("start at empty slot {}", batch);
                 let (prefix, reload) = checkout(batch);
 
+                let tokens = [tokens, vec![last]].concat();
                 let len = prefix.len();
                 let state = SlotState::Wait(
                     GenerateContext {
@@ -366,6 +376,7 @@ where
             }
             Some((SlotChoice::Continue(batch, len), _)) => {
                 log::info!("continue at slot {}", batch);
+                let tokens = [tokens, vec![last]].concat();
                 let state = SlotState::Wait(
                     GenerateContext {
                         prefix: Tokens(tokens[..len].to_vec()),
