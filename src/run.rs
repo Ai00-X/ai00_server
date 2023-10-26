@@ -274,14 +274,11 @@ where
         let mut slots = self.slots.lock().unwrap();
         let mut cache = self.backed.lock().unwrap();
 
-        let tokens: Vec<_> = [context.prefix, context.suffix].concat();
-        if tokens.is_empty() {
-            return SlotResult::Error;
-        }
+        let (last, tokens) = match [context.prefix, context.suffix].concat().split_last() {
+            Some((last, tokens)) => (*last, tokens.to_vec()),
+            None => return SlotResult::Error,
+        };
 
-        assert_ne!(tokens.len(), 0);
-        let last = tokens[tokens.len() - 1];
-        let tokens = tokens[..tokens.len() - 1].to_vec();
         let choice = slots
             .iter()
             .enumerate()
