@@ -30,7 +30,7 @@ serde_json = "1"
 qp-trie = "0.8"
 fastrand = "2"
 itertools = "0.11"
-flume = "0.10"
+flume = "0.11.0"
 futures-util = "0.3"
 rayon = "1.8"
 anyhow = "1"
@@ -38,8 +38,8 @@ log = "0.4"
 simple_logger = { version = "4.2", features = ["stderr"] }
 zip-extract = "0.1"
 tempfile = "3.6"
-toml = "0.7"
-sha2 = "0.9.8"
+toml = "0.8.6"
+sha2 = "0.10.8"
 
 [profile.release]
 lto = true
