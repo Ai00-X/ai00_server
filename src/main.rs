@@ -101,7 +101,10 @@ pub enum ThreadRequest {
         tokenizer: Arc<Tokenizer>,
         sender: Sender<Token>,
     },
-    Reload(ReloadRequest),
+    Reload {
+        request: ReloadRequest,
+        sender: Option<Sender<bool>>,
+    },
     Unload,
 }
 
@@ -395,14 +398,24 @@ fn model_route(receiver: Receiver<ThreadRequest>, pool: ThreadPool) -> Result<()
                         });
                     }
                 }
-                ThreadRequest::Reload(request) => {
-                    unload();
-                    let reload = move || {
-                        log::info!("{:#?}", request);
-                        if let Err(err) = reload(request) {
-                            log::error!("reload model failed: {}", err);
+                ThreadRequest::Reload { request, sender } => {
+                    let send_result = move |result: bool| {
+                        if let Some(sender) = sender {
+                            let _ = sender.send(result);
                         }
                     };
+                    let reload = move || {
+                        log::info!("{:#?}", request);
+                        match reload(request) {
+                            Ok(_) => send_result(true),
+                            Err(err) => {
+                                send_result(false);
+                                log::error!("reload model failed: {}", err);
+                            }
+                        }
+                    };
+
+                    unload();
                     pool.spawn(reload);
                 }
                 ThreadRequest::Unload => {
@@ -523,7 +536,10 @@ async fn main() {
         log::info!("reading config {}...", path.to_string_lossy());
 
         let request = load_config(path).expect("load config failed").into();
-        let _ = sender.send(ThreadRequest::Reload(request));
+        let _ = sender.send(ThreadRequest::Reload {
+            request,
+            sender: None,
+        });
     }
 
     let serve_path = {

@@ -156,6 +156,7 @@ pub struct LoadRequest {
 #[serde(rename_all = "UPPERCASE")]
 pub enum LoadResponse {
     Err,
+    #[serde(untagged)]
     Ok(Config),
 }
 
