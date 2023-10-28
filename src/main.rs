@@ -534,13 +534,12 @@ async fn main() {
         path
     };
 
-    //判断 'assets/www/plugins' 目录是否存在，不存在则创建这个目录
+    // create `assets/www/plugins` if it doesn't exist
     if !Path::new("assets/www/plugins").exists() {
         fs::create_dir("assets/www/plugins").expect("create plugins dir failed");
     }
 
-    // extract and load all plugins under `assets/www/plugins`.
-
+    // extract and load all plugins under `assets/www/plugins`
     match std::fs::read_dir("assets/www/plugins") {
         Ok(dir) => dir
             .filter_map(|x| x.ok())
