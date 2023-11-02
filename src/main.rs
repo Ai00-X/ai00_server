@@ -26,8 +26,8 @@ use tower_http::{cors::CorsLayer, services::ServeDir};
 use web_rwkv::{
     context::{Context, ContextBuilder, Instance},
     model::{
-        loader::Loader, FromBuilder, LayerFlags, Lora, LoraBlend, Model, ModelBuilder, ModelInfo,
-        ModelState, ModelVersion, Quantization, StateBuilder,
+        loader::Loader, FromBuilder, Lora, LoraBlend, Model, ModelBuilder, ModelInfo, ModelState,
+        ModelVersion, Quant, StateBuilder,
     },
     tokenizer::Tokenizer,
     wgpu::{Backends, PowerPreference},
@@ -235,10 +235,7 @@ where
         head_chunk_size,
         ..
     } = request;
-    let quant = match quant {
-        0 => Quantization::None,
-        x => Quantization::Int8(LayerFlags::from_bits_retain((1 << x) - 1)),
-    };
+    let quant = (0..quant).map(|layer| (layer, Quant::Int8)).collect();
 
     let lora: Vec<Lora> = lora
         .into_iter()
