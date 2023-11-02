@@ -315,6 +315,10 @@ where
                         .with_chunk_size(STATE_CHUNK_SIZE)
                         .build_backed()
                 });
+            if len > 0 {
+                let key = Tokens(prefix.clone());
+                cache.insert(key, reload.clone());
+            }
             (prefix, reload)
         };
 
@@ -407,7 +411,7 @@ where
 
                         if let Some(backed) = match &slots[batch] {
                             SlotState::Idle(content, _) => {
-                                log::info!("manually backed slot {}", batch);
+                                log::info!("backed slot {}", batch);
                                 let backed = self.state.back_batch(batch).expect("back state");
                                 cache.insert(content.clone(), backed.clone());
                                 Some(backed)
