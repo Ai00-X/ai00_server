@@ -155,6 +155,8 @@ pub struct ReloadRequest {
     pub lora: Vec<config::Lora>,
     /// Specify layers that needs to be quantized.
     pub quant: usize,
+    /// Whether to use alternative GEMM kernel to speed-up long prompts.
+    pub turbo: bool,
     /// Maximum tokens to be processed in parallel at once.
     pub token_chunk_size: usize,
     /// The chunk size for each split of the head matrix.
@@ -209,7 +211,6 @@ async fn create_context(adapter: AdapterOption) -> Result<Context> {
 
     let context = ContextBuilder::new(adapter)
         .with_default_pipelines()
-        .with_quant_pipelines()
         .build()
         .await?;
     Ok(context)
@@ -233,6 +234,7 @@ where
         lora,
         token_chunk_size,
         head_chunk_size,
+        turbo,
         ..
     } = request;
     let quant = (0..quant).map(|layer| (layer, Quant::Int8)).collect();
@@ -249,6 +251,7 @@ where
 
     let model = ModelBuilder::new(context, data)
         .with_quant(quant)
+        .with_turbo(turbo)
         .with_token_chunk_size(token_chunk_size)
         .with_head_chunk_size(head_chunk_size);
     let model: M = lora
