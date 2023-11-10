@@ -109,7 +109,11 @@ impl From<ChatRequest> for GenerateRequest {
             .map(|record| record.content)
             .join("\n\n");
 
-        let assistant = Role::Assistant.to_string();
+        let assistant = Role::Assistant;
+        let assistant = names
+            .get(&assistant)
+            .cloned()
+            .unwrap_or(assistant.to_string());
         let prompt = prompt + &format!("\n\n{assistant}:");
 
         let max_tokens = max_tokens.min(crate::MAX_TOKENS);
