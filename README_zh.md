@@ -96,7 +96,23 @@ You may download the official RWKV World series models from HuggingFace, and con
 6. 打开浏览器，访问WebUI
    [`http://127.0.0.1:65530`](http://127.0.0.1:65530)
 
-    
+### 📒模型转换
+
+本项目目前仅支持`.st`后缀的 Safetensors 模型，通过`torch`保存的`.pth`后缀模型需要在使用前进行转换。
+
+1. [下载pth模型](https://huggingface.co/BlinkDL)
+
+2. 克隆或下载本仓库下[convert_safetensors.py](./convert_safetensors.py)程序，并安装相应的依赖库
+
+3. 运行上述程序，并指定输入输出路径
+
+    ```bash
+    $ python convert_safetensors.py --input filename.pth --output filename.st
+    ```
+
+4. 根据上文步骤，将转换所得的`.st`模型文件放在`assets/models/`路径下，并修改  [`assets/Config.toml`](./assets/Config.toml) 中的模型路径
+
+
 ## 📝支持的启动参数
 - `--config`: 模型配置文件路径（默认`assets/Config.toml`）
 - `--ip`: 服务器绑定的IP地址
