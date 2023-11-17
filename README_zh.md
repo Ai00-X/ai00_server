@@ -107,7 +107,7 @@ You may download the official RWKV World series models from HuggingFace, and con
 3. 运行上述程序，并指定输入输出路径
 
     ```bash
-    $ python convert_safetensors.py --input filename.pth --output filename.st
+    $ python convert_safetensors.py --input ./filename.pth --output ./filename.st
     ```
 
 4. 根据上文步骤，将转换所得的`.st`模型文件放在`assets/models/`路径下，并修改  [`assets/Config.toml`](./assets/Config.toml) 中的模型路径
