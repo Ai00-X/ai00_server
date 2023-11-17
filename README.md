@@ -114,7 +114,7 @@ It only supports Safetensors models with the `.st` extension now. Models saved w
 3. Run the above program, specifying the input and output paths.
 
     ```bash
-    $ python convert_safetensors.py --input filename.pth --output filename.st
+    $ python convert_safetensors.py --input ./filename.pth --output ./filename.st
     ```
 
 4. Just like the steps mentioned above, place the model in the `.st` model in the `assets/models/` path and modify the model path in [`assets/Config.toml`](./assets/Config.toml)
