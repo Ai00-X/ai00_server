@@ -16,6 +16,7 @@
 
 [English](README.md) | [中文](README_zh.md) 
 
+<div align="left"> 
  
 ---
 `AI00 Server`是一个基于[`RWKV`模型](https://github.com/BlinkDL/ChatRWKV)的推理API服务器。
