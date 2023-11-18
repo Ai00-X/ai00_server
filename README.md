@@ -102,6 +102,22 @@ QQ Group for communication: 30920262
     ```
     
 6.  Open the browser and visit the WebUI [`http://127.0.0.1:65530`](http://127.0.0.1:65530)
+
+### 📒Convert the Model
+
+It only supports Safetensors models with the `.st` extension now. Models saved with the `.pth` extension using torch need to be converted before use.
+
+1. [Download the `.pth` model](https://huggingface.co/BlinkDL)
+
+2. Clone or download the [convert_safetensors.py](./convert_safetensors.py) from this repository and install the corresponding dependencies.
+
+3. Run the above program, specifying the input and output paths.
+
+    ```bash
+    $ python convert_safetensors.py --input ./filename.pth --output ./filename.st
+    ```
+
+4. Just like the steps mentioned above, place the model in the `.st` model in the `assets/models/` path and modify the model path in [`assets/Config.toml`](./assets/Config.toml)
     
 
 ## 📝Supported Arguments
