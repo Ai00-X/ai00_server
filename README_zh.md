@@ -7,9 +7,20 @@
 [![All Contributors](https://img.shields.io/badge/all_contributors-4-orange.svg?style=flat-square)](#contributors-) 
 <!-- ALL-CONTRIBUTORS-BADGE:END -->
  
- [English](README.md) | [中文](README_zh.md) 
+<div align="center"> 
+    
+![license](https://shields.io/badge/license-MIT%2FApache--2.0-blue)
+[![Rust Version](https://img.shields.io/badge/Rust-1.65.0+-blue)](https://releases.rs/docs/1.65.0)
+![PRs welcome](https://img.shields.io/badge/PRs-Welcome-brightgreen)     
+<!-- ALL-CONTRIBUTORS-BADGE:START - Do not remove or modify this section -->
+[![All Contributors](https://img.shields.io/badge/all_contributors-5-orange.svg?style=flat-square)](#contributors-)
+<!-- ALL-CONTRIBUTORS-BADGE:END -->
 
 
+
+[English](README.md) | [中文](README_zh.md) 
+
+ 
 ---
 `AI00 Server`是一个基于[`RWKV`模型](https://github.com/BlinkDL/ChatRWKV)的推理API服务器。
 
