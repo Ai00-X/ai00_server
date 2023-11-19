@@ -21,7 +21,7 @@ hero:
       link: https://github.com/cgisky1980/ai00_rwkv_server
   image:
     src: /logo.gif
-    alt: VitePress
+    alt: VitePress 
 features:
   - title: 开源
     details: 
