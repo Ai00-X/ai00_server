@@ -4,7 +4,7 @@ layout: home
 
 hero:
   name: "Ai00 server"
-  text: "Just for RWKV"
+  text: "Just for RWKV "
   tagline: 支持 Vulkan/Dx12/openGL 的并发推理服务器
   actions:
     - theme: brand
