@@ -14,9 +14,11 @@ target/
 *.pdb
 
 *.st
-ai00_server.exe
+*.exe
 qdrant/
 .qdrant-initialized
 run.bat
 node_modules/
+docs/.vitepress/dist
+docs/.vitepress/cache
 .vscode/
