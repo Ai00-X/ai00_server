@@ -25,7 +25,7 @@ hero:
 features:
   - title: 开源  
     details: 
-  - title: Feature B
+  - title: 快速
     details: Lorem ipsum dolor sit amet, consectetur adipiscing elit
   - title: Feature C
     details: Lorem ipsum dolor sit amet, consectetur adipiscing elit
