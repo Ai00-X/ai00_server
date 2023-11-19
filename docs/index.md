@@ -23,7 +23,7 @@ hero:
     src: /logo.gif
     alt: AI00 Server
 features:
-  - title: 开源
+  - title: 开源  
     details: 
   - title: Feature B
     details: Lorem ipsum dolor sit amet, consectetur adipiscing elit
