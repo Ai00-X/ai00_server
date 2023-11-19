@@ -1,27 +1,35 @@
-# 💯AI00 RWKV Server
+# 💯AI00 Server
 <p align='center'>
 <image src="docs/ai00.gif" />
 </p>
  
-<!-- ALL-CONTRIBUTORS-BADGE:START - Do not remove or modify this section --> 
-[![All Contributors](https://img.shields.io/badge/all_contributors-4-orange.svg?style=flat-square)](#contributors-) 
+<div align="center"> 
+    
+![license](https://shields.io/badge/license-MIT%2FApache--2.0-blue)
+[![Rust Version](https://img.shields.io/badge/Rust-1.65.0+-blue)](https://releases.rs/docs/1.65.0)
+![PRs welcome](https://img.shields.io/badge/PRs-Welcome-brightgreen)     
+<!-- ALL-CONTRIBUTORS-BADGE:START - Do not remove or modify this section -->
+[![All Contributors](https://img.shields.io/badge/all_contributors-5-orange.svg?style=flat-square)](#contributors-)
 <!-- ALL-CONTRIBUTORS-BADGE:END -->
+
+
+
+[English](README.md) | [中文](README_zh.md) 
+
+<div align="left"> 
  
- [English](README.md) | [中文](README_zh.md) 
-
-
 ---
-`AI00 RWKV Server`是一个基于[`RWKV`模型](https://github.com/BlinkDL/ChatRWKV)的推理API服务器。
+`AI00 Server`是一个基于[`RWKV`模型](https://github.com/BlinkDL/ChatRWKV)的推理API服务器。
 
-支持`VULKAN`推理加速，可以在所有支持`VULKAN`的GPU上运行。不用N卡！！！A卡甚至集成显卡都可加速！！！
+`AI00 Server`基于 [`WEB-RWKV`推理引擎](https://github.com/cryscan/web-rwkv)进行开发。
 
-无需臃肿的`pytorch`、`CUDA`等运行环境，小巧身材，开箱即用！
+支持Vulkan/Dx12/OpenGL作为推理后端，无需臃肿的`pytorch`、`CUDA`等运行环境，小巧身材，开箱即用！
 
 兼容OpenAI的ChatGPT API接口。
 
 100% 开源可商用，采用MIT协议。
 
-如果您正在寻找一个快速、高效、易于使用的LLM API服务器，那么`AI00 RWKV Server`是您的最佳选择。它可以用于各种任务，包括聊天机器人、文本生成、翻译和问答。
+如果你是想要在自己的应用程序中内嵌一个LLM，且对用户的机器要求不那么苛刻（6GB以上GRAM的显卡）, `AI00 Server`无疑是一个很好的选择。
 
 立即加入`AI00 RWKV Server`社区，体验AI的魅力！
 
@@ -31,25 +39,13 @@
 - [为什么只支持RWKV](docs/rwkv.md)
 
 
-### 💥特色
+### ⭕模型下载和转换
 
-- 基于`RWKV`模型，具有高性能和准确性
-- 支持`VULKAN`并行、并发推理，不用该死的`CUDA`也能享受GPU加速！支持A卡、集成显卡等一切支持`VULKAN`的GPU
-- 无需臃肿的`pytorch`、`CUDA`等运行环境，小巧身材，开箱即用！
-- 兼容OpenAI的ChatGPT API接口
+You must [download the model](https://huggingface.co/BlinkDL) and put in assets/models before running if you are building from source. 
+You may download the official RWKV World series models from HuggingFace, and convert them via the provided `convert_safetensors.py`.
 
-### ⭕用途
+你可以在这里下载已经转换好的V4 模型： [模型下载](https://huggingface.co/cgisky/RWKV-safetensors-fp16)
 
-- 聊天机器人
-- 文本生成
-- 翻译
-- 问答
-- 其他所有你能想到的LLM能干的事
-
-### 👻其他
-
-- 基于 [web-rwkv](https://github.com/cryscan/web-rwkv) 项目
-- [模型下载](https://huggingface.co/cgisky/RWKV-safetensors-fp16)
 
 ## 安装、编译和使用
 
@@ -59,12 +55,12 @@
 
 2. [下载模型](https://huggingface.co/cgisky/RWKV-safetensors-fp16)后把模型放在`assets/models/`路径，例如`assets/models/RWKV-4-World-0.4B-v1-20230529-ctx4096.st`
 
-3. 你可以修改 [`assets/Config.toml`](./assets/Config.toml) 里面的模型配置，包括模型路径、量化层数等
+3. 你可以修改 [`assets/configs/Config.toml`](./assets/configs/Config.toml) 里面的模型配置，包括模型路径、量化层数等
 
 4. 在命令行运行
 
     ```bash     
-    $ ./ai00_rwkv_server
+    ./ai00_rwkv_server
     ```
 5. 打开浏览器，访问WebUI
    [`http://127.0.0.1:65530`](http://127.0.0.1:65530)
@@ -76,8 +72,8 @@
 2. 克隆本仓库
 
     ```bash
-    $ git clone https://github.com/cgisky1980/ai00_rwkv_server.git
-    $ cd ai00_rwkv_server
+    git clone https://github.com/cgisky1980/ai00_rwkv_server.git
+    cd ai00_rwkv_server
     ```
     
 
@@ -87,20 +83,36 @@
 4. 编译
 
     ```bash
-    $ cargo build --release
+    cargo build --release
     ```
      
 
 5. 编译完成后运行
    
     ```bash     
-    $ cargo run --release
+    cargo run --release
     ```
    
 6. 打开浏览器，访问WebUI
    [`http://127.0.0.1:65530`](http://127.0.0.1:65530)
 
-    
+### 📒模型转换
+
+本项目目前仅支持`.st`后缀的 Safetensors 模型，通过`torch`保存的`.pth`后缀模型需要在使用前进行转换。
+
+1. [下载pth模型](https://huggingface.co/BlinkDL)
+
+2. 克隆或下载本仓库下[convert_safetensors.py](./convert_safetensors.py)程序，并安装相应的依赖库
+
+3. 运行上述程序，并指定输入输出路径
+
+    ```bash
+    $ python convert_safetensors.py --input ./filename.pth --output ./filename.st
+    ```
+
+4. 根据上文步骤，将转换所得的`.st`模型文件放在`assets/models/`路径下，并修改  [`assets/Config.toml`](./assets/Config.toml) 中的模型路径
+
+
 ## 📝支持的启动参数
 - `--config`: 模型配置文件路径（默认`assets/Config.toml`）
 - `--ip`: 服务器绑定的IP地址
@@ -122,9 +134,7 @@ API 服务开启于 65530 端口, 数据输入已经输出格式遵循Openai API
 
 ## 📙WebUI 截图
 
-![image](https://github.com/cgisky1980/ai00_rwkv_server/assets/82481660/33e8da0b-5d3f-4dfc-bf35-4a8147d099bc)
 
-![image](https://github.com/cgisky1980/ai00_rwkv_server/assets/82481660/a24d6c72-31a0-4ff7-8a61-6eb98aae46e8)
 
 
 ## 📝TODO List
@@ -135,8 +145,8 @@ API 服务开启于 65530 端口, 数据输入已经输出格式遵循Openai API
 - [x] 集成基本的调用前端
 - [x] `Batch serve`并行推理
 - [x] `int8`量化支持
-- [ ] `int4`量化支持
-- [ ] `LoRA`模型支持
+- [x] `nf4`量化支持
+- [x] `LoRA`模型支持
 - [ ] `LoRA`模型热加载、切换
 
 ## 👥Join Us
