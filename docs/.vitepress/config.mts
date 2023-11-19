@@ -7,45 +7,56 @@ export default defineConfig({
   base: '/ai00_rwkv_server/',
   lastUpdated: true,
   cleanUrls: true,
-
+  appearance:'dark',
   markdown: {
     math: true
   },
-  
+ 
   themeConfig: {
     // https://vitepress.dev/reference/default-theme-config
-    darkMode: true,
-
-    nav: [
-      { text: 'Home', link: '/' },
-      { text: 'Examples', link: '/markdown-examples' }
-    ],
-
-    sidebar: [
-      {
-        text: 'Examples',
-        items: [
-          { text: 'Markdown Examples', link: '/markdown-examples' },
-          { text: 'Runtime API Examples', link: '/api-examples' }
-        ]
-      },
-      {
-        text: 'Examples',
-        items: [
-          { text: 'Markdown Examples', link: '/markdown-examples' },
-          { text: 'Runtime API Examples', link: '/api-examples' }
-        ]
-      }
-    ],
-
-    socialLinks: [
+    
+   socialLinks: [
       { icon: 'github', link: 'https://github.com/cgisky1980/ai00_rwkv_server' }
-    ]
+    ],
+
+
+
+ 
+ 
+
   },
   locales: {
     root: {
       label: '简体中文',
       lang: 'zh-CN', // optional, will be added  as `lang` attribute on `html` tag
+      themeConfig: {
+        nav: [
+          { text: '首页', link: '/' },
+          { text: '指南', link: '/markdown-examples' }
+        ],
+        lastUpdated: {
+          text: '最后更新于',
+          formatOptions: {
+            dateStyle: 'full',
+            timeStyle: 'medium'
+          }
+        },
+        editLink: {
+          pattern: 'https://github.com/cgisky1980/ai00_rwkv_server/edit/main/docs/:path',
+          text: '在GITHUB编辑此页面'
+        },
+        sidebar: [
+          {
+            text: '例子',
+            items: [
+              { text: 'Markdown Examples', link: '/markdown-examples' },
+              { text: 'Runtime API Examples', link: '/api-examples' }
+            ]
+          } 
+        ],
+
+      },
+
     },
     en: {
       label: 'English',
@@ -55,6 +66,6 @@ export default defineConfig({
       // other locale specific properties...
     }
   }
-
+ 
 
 })
