@@ -4,7 +4,7 @@ import { defineConfig } from 'vitepress'
 export default defineConfig({
   title: "Ai00 server",
   description: "Awesome AI",
-
+  base: '/ai00_rwkv_server/',
   lastUpdated: true,
   cleanUrls: true,
 

@@ -1,5 +1,5 @@
 {
-  "name": "ai00_rwkv_server",
+  "name": "ai00_rwkv_server_docs",
   "version": "1.0.0",
   "description": "",
   "main": "index.js",
@@ -11,7 +11,7 @@
   },
   "keywords": [],
   "author": "",
-  "license": "ISC",
+  "license": "MIT",
   "devDependencies": {
     "markdown-it-mathjax3": "^4.3.2",
     "vitepress": "1.0.0-rc.28"
