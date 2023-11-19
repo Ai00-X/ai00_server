@@ -155,6 +155,8 @@ pub struct ReloadRequest {
     pub lora: Vec<config::Lora>,
     /// Specify layers that needs to be quantized.
     pub quant: usize,
+    /// Quantization type (Int8 or NF4).
+    pub quant_type: Quant,
     /// Whether to use alternative GEMM kernel to speed-up long prompts.
     pub turbo: bool,
     /// Maximum tokens to be processed in parallel at once.
@@ -231,13 +233,14 @@ where
 {
     let ReloadRequest {
         quant,
+        quant_type,
         lora,
         token_chunk_size,
         head_chunk_size,
         turbo,
         ..
     } = request;
-    let quant = (0..quant).map(|layer| (layer, Quant::Int8)).collect();
+    let quant = (0..quant).map(|layer| (layer, quant_type)).collect();
 
     let lora: Vec<Lora> = lora
         .into_iter()
