@@ -1,6 +1,7 @@
 use std::path::PathBuf;
 
 use serde::{Deserialize, Serialize};
+use web_rwkv::model::Quant;
 
 use crate::ReloadRequest;
 
@@ -20,6 +21,7 @@ impl From<Config> for ReloadRequest {
                 Model {
                     path: model_path,
                     quant,
+                    quant_type,
                     turbo,
                     token_chunk_size,
                     head_chunk_size,
@@ -37,6 +39,7 @@ impl From<Config> for ReloadRequest {
             model_path,
             lora,
             quant,
+            quant_type,
             turbo,
             token_chunk_size,
             head_chunk_size,
@@ -56,6 +59,8 @@ pub struct Model {
     pub path: PathBuf,
     /// Specify layers that needs to be quantized.
     pub quant: usize,
+    /// Quantization type (Int8 or NF4).
+    pub quant_type: Quant,
     /// Whether to use alternative GEMM kernel to speed-up long prompts.
     pub turbo: bool,
     /// Maximum tokens to be processed in parallel at once.
@@ -75,6 +80,7 @@ impl Default for Model {
         Self {
             path: Default::default(),
             quant: Default::default(),
+            quant_type: Quant::Int8,
             turbo: true,
             token_chunk_size: 32,
             head_chunk_size: 8192,
