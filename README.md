@@ -1,6 +1,6 @@
 # 💯AI00 RWKV Server
 <p align='center'>
-<image src="docs/ai00.gif" />
+<image src="img/ai00.gif" />
     
 </p>
 
