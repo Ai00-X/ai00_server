@@ -610,8 +610,8 @@ where
                             }
                         })
                         .min_by(|x, y| match (x.1, y.1) {
-                            (true, false) => Ordering::Greater,
-                            (false, true) => Ordering::Less,
+                            (true, false) => Ordering::Less,
+                            (false, true) => Ordering::Greater,
                             _ => x.0.cmp(&y.0),
                         })
                         .unwrap_or((context.output_buffer.len(), false));
