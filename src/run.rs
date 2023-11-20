@@ -547,12 +547,12 @@ where
                     context.output_buffer.append(&mut word);
                     context.model_tokens.push(token);
 
-                    if let Ok(word) = String::from_utf8(context.output_buffer.clone()) {
-                        let _ = context.sender.send(Token::Token(word));
-                        context.output_buffer.clear();
-                    }
+                    // if let Ok(word) = String::from_utf8(context.output_buffer.clone()) {
+                    //     let _ = context.sender.send(Token::Token(word));
+                    //     context.output_buffer.clear();
+                    // }
 
-                    let model_text = String::from_utf8_lossy(&context.model_text);
+                    // let model_text = String::from_utf8_lossy(&context.model_text);
                     let count_tokens = || {
                         let prompt_tokens = context.prompt_tokens.len();
                         let completion_tokens = context.model_tokens.len();
@@ -569,17 +569,65 @@ where
                         done = true;
                     };
 
-                    if context.sender.is_disconnected() {
-                        done = true;
-                    } else if context
+                    // let max_stop_len = context
+                    //     .request
+                    //     .stop
+                    //     .iter()
+                    //     .map(|stop| stop.len())
+                    //     .max()
+                    //     .unwrap_or_default()
+                    //     .next_power_of_two();
+
+                    let (output_pointer, stop_matched) = context
                         .request
                         .stop
                         .iter()
-                        .any(|stop| model_text.contains(stop))
-                    {
-                        finish(FinishReason::Stop);
+                        .map(|stop| {
+                            let stop = stop.as_bytes();
+                            let mut pointer_safe = 0;
+                            let mut pointer_unsafe = 0;
+                            while pointer_unsafe < context.output_buffer.len() {
+                                // the maximum match of the current stop string
+                                let pointer_stop = pointer_unsafe - pointer_safe;
+                                if pointer_stop >= stop.len() {
+                                    // we have a total match
+                                    return (pointer_safe, true);
+                                }
+
+                                let output = context.output_buffer[pointer_unsafe];
+                                let stop = stop[pointer_stop];
+
+                                pointer_unsafe += 1;
+                                if output != stop {
+                                    pointer_safe = pointer_unsafe;
+                                }
+                            }
+                            // end check
+                            if pointer_unsafe - pointer_safe >= stop.len() {
+                                (pointer_safe, true)
+                            } else {
+                                (pointer_safe, false)
+                            }
+                        })
+                        .min_by(|x, y| match (x.1, y.1) {
+                            (true, false) => Ordering::Greater,
+                            (false, true) => Ordering::Less,
+                            _ => x.0.cmp(&y.0),
+                        })
+                        .unwrap_or((context.output_buffer.len(), false));
+                    let output = context.output_buffer[..output_pointer].to_vec();
+
+                    if context.sender.is_disconnected() {
+                        done = true;
+                    } else if stop_matched {
+                        let output = String::from_utf8_lossy(&output);
+                        let _ = context.sender.send(Token::Token(output.into()));
+                        finish(FinishReason::Stop)
                     } else if context.model_tokens.len() >= context.request.max_tokens {
                         finish(FinishReason::Length);
+                    } else if let Ok(word) = String::from_utf8(output) {
+                        let _ = context.sender.send(Token::Token(word));
+                        context.output_buffer = context.output_buffer[output_pointer..].to_vec();
                     }
                 }
             }
