@@ -1,6 +1,6 @@
 [package]
 name = "ai00_server"
-version = "0.2.6"
+version = "0.2.7"
 edition = "2021"
 authors = ["Gu ZhenNiu <448885@qq.com>", "Zhang Zhenyuan <cryscan@umich.edu>"]
 license = "MIT OR Apache-2.0"
