@@ -142,11 +142,16 @@ The API service starts at port 65530, and the data input and output format follo
 
 ## 📙WebUI Screenshots
 
-- Chat Feature  
+### Chat Feature  
+
 <image src="img/chat_en.gif" />
-- Continuation Feature
+
+### Continuation Feature
+
 <image src="img/continuation_en.gif" />
-- Paper Writing Feature
+
+### Paper Writing Feature
+
 <image src="img/paper_en.gif" />
 
 ## 📝TODO List
