@@ -142,9 +142,12 @@ The API service starts at port 65530, and the data input and output format follo
 
 ## 📙WebUI Screenshots
 
-![image](https://github.com/cgisky1980/ai00_rwkv_server/assets/82481660/33e8da0b-5d3f-4dfc-bf35-4a8147d099bc)
-
-![image](https://github.com/cgisky1980/ai00_rwkv_server/assets/82481660/a24d6c72-31a0-4ff7-8a61-6eb98aae46e8)
+- Conversation Feature  
+![image](https://github.com/cgisky1980/ai00_rwkv_server/img/chat_en.gif)  
+- Continuation Feature  
+![image](https://github.com/cgisky1980/ai00_rwkv_server/img/continuation_en.gif)  
+- Paper Writing Feature  
+![image](https://github.com/cgisky1980/ai00_rwkv_server/img/paper_en.gif)  
 
 ## 📝TODO List
 
