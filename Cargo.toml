@@ -1,6 +1,6 @@
 [package]
 name = "ai00_server"
-version = "0.2.7"
+version = "0.2.8"
 edition = "2021"
 authors = ["Gu ZhenNiu <448885@qq.com>", "Zhang Zhenyuan <cryscan@umich.edu>"]
 license = "MIT OR Apache-2.0"
@@ -19,7 +19,7 @@ tower = { version = "0.4", features = ["util"] }
 tower-http = { version = "0.4", features = ["full"] }
 tokio = { version = "1", features = ["full"] }
 pollster = "0.3"
-web-rwkv = "0.3.14"
+web-rwkv = "0.3.15"
 # web-rwkv = { git = "https://github.com/cryscan/web-rwkv", branch = "main" }
 memmap = "0.7"
 bytemuck = "1"
