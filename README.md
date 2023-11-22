@@ -154,8 +154,8 @@ The API service starts at port 65530, and the data input and output format follo
 *   [x] Integrate basic front-end
 *   [x] Parallel inference via `batch serve`
 *   [x] Support for `int8` quantization
-*   [ ] Support for `int4` quantization
-*   [ ] Support for `LoRA` model
+*   [x] Support for `NF4` quantization
+*   [x] Support for `LoRA` model
 *   [ ] Hot loading and switching of `LoRA` model
 
 ## 👥Join Us
