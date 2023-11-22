@@ -65,6 +65,16 @@
       "contributions": [
         "bug"
       ]
+    },
+    {
+      "login": "yuunnn-w",
+      "name": "yuunnn_w",
+      "avatar_url": "https://avatars.githubusercontent.com/u/91336323?v=4",
+      "profile": "https://github.com/yuunnn-w",
+      "contributions": [
+        "doc",
+        "test"
+      ]
     }
   ],
   "contributorsPerLine": 7,
