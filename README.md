@@ -142,12 +142,12 @@ The API service starts at port 65530, and the data input and output format follo
 
 ## 📙WebUI Screenshots
 
-- Conversation Feature  
-![image](https://github.com/cgisky1980/ai00_rwkv_server/img/chat_en.gif)  
-- Continuation Feature  
-![image](https://github.com/cgisky1980/ai00_rwkv_server/img/continuation_en.gif)  
-- Paper Writing Feature  
-![image](https://github.com/cgisky1980/ai00_rwkv_server/img/paper_en.gif)  
+- Chat Feature  
+<image src="img/chat_en.gif" />
+- Continuation Feature
+<image src="img/continuation_en.gif" />
+- Paper Writing Feature
+<image src="img/paper_en.gif" />
 
 ## 📝TODO List
 
