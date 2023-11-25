@@ -5,7 +5,7 @@ use std::{
     io::{BufReader, Cursor, Read},
     net::{Ipv4Addr, SocketAddr},
     path::{Path, PathBuf},
-    sync::{Arc, Mutex, RwLock},
+    sync::Arc,
     time::Duration,
 };
 
@@ -19,9 +19,9 @@ use config::{AdapterOption, Config};
 use flume::{Receiver, Sender};
 use itertools::Itertools;
 use memmap::Mmap;
-use rayon::{ThreadPool, ThreadPoolBuilder};
 use run::RuntimeUntyped;
 use serde::{Deserialize, Serialize};
+use tokio::sync::RwLock;
 use tower_http::{cors::CorsLayer, services::ServeDir};
 use web_rwkv::{
     context::{Context, ContextBuilder, Instance},
@@ -297,22 +297,25 @@ fn load_config(path: impl AsRef<Path>) -> Result<Config> {
     Ok(toml::from_str(&contents)?)
 }
 
-fn model_route(receiver: Receiver<ThreadRequest>, pool: ThreadPool) -> Result<()> {
+#[tokio::main]
+async fn model_route(receiver: Receiver<ThreadRequest>) -> Result<()> {
     let env: Arc<RwLock<Environment>> = Default::default();
-    let reload_lock: Arc<Mutex<()>> = Default::default();
-
     let mut queue = Vec::new();
 
     let sender = {
         let (sender, receiver) = flume::unbounded();
         let env = env.clone();
-        pool.spawn(move || run::run(receiver, env));
+        std::thread::spawn(move || run::run(receiver, env));
         sender
     };
 
-    let enqueue =
-        |queue: &mut Vec<GenerateContext>, context: GenerateContext| match &*env.read().unwrap() {
-            Environment::Loaded { runtime, .. } => match runtime.queue(context) {
+    async fn enqueue(
+        env: &Arc<RwLock<Environment<'_>>>,
+        queue: &mut Vec<GenerateContext>,
+        context: GenerateContext,
+    ) {
+        match &*env.read().await {
+            Environment::Loaded { runtime, .. } => match runtime.queue(context).await {
                 SlotResult::Success(batch) => log::info!("queued task at slot {batch}"),
                 SlotResult::Fault(batch) => log::info!("swapped task at slot {batch}"),
                 SlotResult::Failure(context) => queue.push(*context),
@@ -320,77 +323,21 @@ fn model_route(receiver: Receiver<ThreadRequest>, pool: ThreadPool) -> Result<()
             },
             Environment::None => queue.push(context),
         };
+    }
 
     loop {
-        let unload = {
-            let env = env.clone();
-            move || {
-                let mut env = env.write().unwrap();
-                *env = Environment::None;
-            }
+        let unload = async {
+            let mut env = env.write().await;
+            *env = Environment::None;
         };
 
-        let reload = {
-            let env = env.clone();
-            let reload_lock = reload_lock.clone();
-            let sender = sender.clone();
-            let unload = unload.clone();
-
-            move |request: ReloadRequest| -> Result<()> {
-                let _lock = reload_lock.lock().unwrap();
-                unload();
-
-                let max_runtime_batch = request.max_runtime_batch;
-                let embed_layer = request.embed_layer;
-
-                let context = pollster::block_on(create_context(request.adapter))?;
-                let tokenizer = load_tokenizer(&request.tokenizer_path)?;
-                log::info!("{:#?}", context.adapter.get_info());
-
-                let file = File::open(&request.model_path)?;
-                let data = unsafe { Mmap::map(&file)? };
-                let info = Loader::info(&data)?;
-                log::info!("{:#?}", info);
-
-                let runtime = match info.version {
-                    ModelVersion::V4 => {
-                        let (model, state) = load_model(&context, request.clone(), &data)?;
-                        RuntimeUntyped::V4(Runtime::new(
-                            tokenizer,
-                            model,
-                            state,
-                            max_runtime_batch,
-                            embed_layer,
-                        ))
-                    }
-                    ModelVersion::V5 => {
-                        let (model, state) = load_model(&context, request.clone(), &data)?;
-                        RuntimeUntyped::V5(Runtime::new(
-                            tokenizer,
-                            model,
-                            state,
-                            max_runtime_batch,
-                            embed_layer,
-                        ))
-                    }
-                };
-
-                let mut env = env.write().unwrap();
-                let reload = request;
-                *env = Environment::Loaded { runtime, reload };
-
-                let _ = sender.send(());
-                Ok(())
-            }
-        };
-
-        let listen = || -> Result<()> {
-            match receiver.recv()? {
+        let listen = async {
+            match receiver.recv_async().await? {
                 ThreadRequest::Adapter(sender) => {
                     let _ = sender.send(list_adapters());
                 }
                 ThreadRequest::Info(sender) => {
-                    if let Environment::Loaded { runtime, reload } = &*env.read().unwrap() {
+                    if let Environment::Loaded { runtime, reload } = &*env.read().await {
                         let reload = reload.clone();
                         let model = runtime.info().clone();
                         let tokenizer = runtime.tokenizer();
@@ -401,28 +348,71 @@ fn model_route(receiver: Receiver<ThreadRequest>, pool: ThreadPool) -> Result<()
                         });
                     }
                 }
-                ThreadRequest::Reload { request, sender } => {
+                ThreadRequest::Reload {
+                    request,
+                    sender: reload_sender,
+                } => {
                     let send_result = move |result: bool| {
-                        if let Some(sender) = sender {
+                        if let Some(sender) = reload_sender {
                             let _ = sender.send(result);
                         }
                     };
-                    let reload = move || {
-                        log::info!("{:#?}", request);
-                        match reload(request) {
-                            Ok(_) => send_result(true),
-                            Err(err) => {
-                                send_result(false);
-                                log::error!("reload model failed: {}", err);
+                    let reload = async {
+                        let sender = sender.clone();
+                        let max_runtime_batch = request.max_runtime_batch;
+                        let embed_layer = request.embed_layer;
+
+                        let context = create_context(request.adapter).await?;
+                        let tokenizer = load_tokenizer(&request.tokenizer_path)?;
+                        log::info!("{:#?}", context.adapter.get_info());
+
+                        let file = File::open(&request.model_path)?;
+                        let data = unsafe { Mmap::map(&file)? };
+                        let info = Loader::info(&data)?;
+                        log::info!("{:#?}", info);
+
+                        let runtime = match info.version {
+                            ModelVersion::V4 => {
+                                let (model, state) = load_model(&context, request.clone(), &data)?;
+                                RuntimeUntyped::V4(Runtime::new(
+                                    tokenizer,
+                                    model,
+                                    state,
+                                    max_runtime_batch,
+                                    embed_layer,
+                                ))
                             }
-                        }
+                            ModelVersion::V5 => {
+                                let (model, state) = load_model(&context, request.clone(), &data)?;
+                                RuntimeUntyped::V5(Runtime::new(
+                                    tokenizer,
+                                    model,
+                                    state,
+                                    max_runtime_batch,
+                                    embed_layer,
+                                ))
+                            }
+                        };
+
+                        let mut env = env.write().await;
+                        let reload = request;
+                        *env = Environment::Loaded { runtime, reload };
+
+                        let _ = sender.send(());
+                        anyhow::Ok(())
                     };
 
-                    unload();
-                    pool.spawn(reload);
+                    unload.await;
+                    match reload.await {
+                        Ok(_) => send_result(true),
+                        Err(err) => {
+                            send_result(false);
+                            log::error!("reload model failed: {}", err);
+                        }
+                    }
                 }
                 ThreadRequest::Unload => {
-                    unload();
+                    unload.await;
                     log::info!("model unloaded");
                 }
                 ThreadRequest::Generate {
@@ -453,21 +443,21 @@ fn model_route(receiver: Receiver<ThreadRequest>, pool: ThreadPool) -> Result<()
                         request,
                         sender: token_sender,
                     };
-                    enqueue(&mut queue, context);
+                    enqueue(&env, &mut queue, context).await;
                     let _ = sender.send(());
                 }
             };
-            Ok(())
+            anyhow::Ok(())
         };
 
-        if let Err(err) = listen() {
+        if let Err(err) = listen.await {
             log::error!("{err}");
         }
 
         while !queue.is_empty() {
             let mut temp = Vec::new();
             for context in queue.drain(..) {
-                enqueue(&mut temp, context);
+                enqueue(&env, &mut temp, context).await;
                 let _ = sender.send(());
             }
             std::mem::swap(&mut queue, &mut temp);
@@ -516,8 +506,6 @@ struct Args {
     ip: Option<Ipv4Addr>,
     #[arg(long, short, default_value_t = 65530)]
     port: u16,
-    #[arg(long, short, default_value_t = 0)]
-    threads: usize,
 }
 
 #[tokio::main]
@@ -610,10 +598,6 @@ async fn main() {
     let listener = tokio::net::TcpListener::bind(addr).await.unwrap();
     log::info!("server started at http://{addr}");
 
-    let pool = ThreadPoolBuilder::new()
-        .num_threads(args.threads)
-        .build()
-        .unwrap();
-    std::thread::spawn(move || model_route(receiver, pool));
+    std::thread::spawn(move || model_route(receiver));
     axum::serve(listener, app).await.unwrap();
 }
