@@ -1,6 +1,6 @@
 # 💯AI00 Server
 <p align='center'>
-<image src="docs/ai00.gif" />
+<image src="img/ai00.gif" />
 </p>
  
 <div align="center"> 
@@ -134,12 +134,17 @@ API 服务开启于 65530 端口, 数据输入已经输出格式遵循Openai API
 
 ## 📙WebUI 截图
 
-- 对话功能  
-![image](https://github.com/cgisky1980/ai00_rwkv_server/img/chat.gif)  
-- 续写功能  
-![image](https://github.com/cgisky1980/ai00_rwkv_server/img/continuation.gif)  
-- 写论文功能  
-![image](https://github.com/cgisky1980/ai00_rwkv_server/img/paper.gif)  
+### 对话功能
+
+<image src="img/chat.gif" />
+
+### 续写功能  
+
+<image src="img/continuation.gif" />
+
+### 写论文功能  
+
+<image src="img/paper.gif" />
 
 ## 📝TODO List
 
