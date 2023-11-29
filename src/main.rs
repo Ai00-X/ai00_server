@@ -392,6 +392,16 @@ async fn model_route(receiver: Receiver<ThreadRequest>) -> Result<()> {
                                     embed_layer,
                                 ))
                             }
+                            ModelVersion::V6 => {
+                                let (model, state) = load_model(&context, request.clone(), &data)?;
+                                RuntimeUntyped::V6(Runtime::new(
+                                    tokenizer,
+                                    model,
+                                    state,
+                                    max_runtime_batch,
+                                    embed_layer,
+                                ))
+                            }
                         };
 
                         let mut env = env.write().await;

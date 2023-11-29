@@ -16,7 +16,7 @@ use rayon::prelude::{
 };
 use tokio::sync::{Mutex, RwLock};
 use web_rwkv::{
-    model::{v4, v5, BackedState, FromBuilder, Model, ModelInfo, ModelState, StateBuilder},
+    model::{v4, v5, v6, BackedState, FromBuilder, Model, ModelInfo, ModelState, StateBuilder},
     tokenizer::Tokenizer,
 };
 
@@ -642,6 +642,7 @@ where
 pub enum RuntimeUntyped<'a> {
     V4(Runtime<v4::Model<'a>, v4::ModelState, v4::BackedState>),
     V5(Runtime<v5::Model<'a>, v5::ModelState, v5::BackedState>),
+    V6(Runtime<v6::Model<'a>, v6::ModelState, v6::BackedState>),
 }
 
 macro_rules! impl_runtime_untyped {
@@ -678,7 +679,7 @@ macro_rules! impl_runtime_untyped {
     };
 }
 
-impl_runtime_untyped!(V4, V5);
+impl_runtime_untyped!(V4, V5, V6);
 
 #[tokio::main]
 pub async fn run(receiver: Receiver<()>, env: Arc<RwLock<Environment<'_>>>) {
