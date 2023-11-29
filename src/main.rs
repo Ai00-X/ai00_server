@@ -471,7 +471,7 @@ async fn model_route(receiver: Receiver<ThreadRequest>) -> Result<()> {
                 let _ = sender.send(());
             }
             std::mem::swap(&mut queue, &mut temp);
-            std::thread::sleep(Duration::from_secs(1));
+            tokio::time::sleep(Duration::from_secs(1)).await;
         }
     }
 }
