@@ -21,7 +21,7 @@ use itertools::Itertools;
 use memmap::Mmap;
 use run::RuntimeUntyped;
 use serde::{Deserialize, Serialize};
-use tokio::sync::RwLock;
+use tokio::sync::{Mutex, RwLock};
 use tower_http::{cors::CorsLayer, services::ServeDir};
 use web_rwkv::{
     context::{Context, ContextBuilder, Instance},
@@ -116,6 +116,25 @@ pub enum Environment<'a> {
     },
     #[default]
     None,
+}
+
+impl Environment<'_> {
+    pub async fn enqueue(&self, context: GenerateContext) -> Vec<GenerateContext> {
+        let mut queue = vec![];
+        match self {
+            Environment::Loaded { runtime, .. } => match runtime.queue(context).await {
+                SlotResult::Success(batch) => log::info!("queued task at slot {batch}"),
+                SlotResult::Fault(batch) => log::info!("swapped task at slot {batch}"),
+                SlotResult::Failure(context) => {
+                    log::info!("failed to queue task");
+                    queue.push(*context);
+                }
+                SlotResult::Error => log::error!("empty task is not queued"),
+            },
+            Environment::None => queue.push(context),
+        };
+        queue
+    }
 }
 
 #[derive(Debug, Clone)]
@@ -300,30 +319,36 @@ fn load_config(path: impl AsRef<Path>) -> Result<Config> {
 #[tokio::main]
 async fn model_route(receiver: Receiver<ThreadRequest>) -> Result<()> {
     let env: Arc<RwLock<Environment>> = Default::default();
-    let mut queue = Vec::new();
+    let queue: Arc<Mutex<Vec<GenerateContext>>> = Default::default();
 
     let sender = {
         let (sender, receiver) = flume::unbounded();
         let env = env.clone();
-        std::thread::spawn(move || run::run(receiver, env));
+        tokio::task::spawn_blocking(move || run::run(receiver, env));
         sender
     };
 
-    async fn enqueue(
-        env: &Arc<RwLock<Environment<'_>>>,
-        queue: &mut Vec<GenerateContext>,
-        context: GenerateContext,
-    ) {
-        match &*env.read().await {
-            Environment::Loaded { runtime, .. } => match runtime.queue(context).await {
-                SlotResult::Success(batch) => log::info!("queued task at slot {batch}"),
-                SlotResult::Fault(batch) => log::info!("swapped task at slot {batch}"),
-                SlotResult::Failure(context) => queue.push(*context),
-                SlotResult::Error => log::error!("empty task is not queued"),
-            },
-            Environment::None => queue.push(context),
-        };
-    }
+    let dequeue = {
+        let env = env.clone();
+        let queue = queue.clone();
+        let sender = sender.clone();
+
+        async move {
+            loop {
+                {
+                    let mut queue = queue.lock().await;
+                    let mut temp = vec![];
+                    for context in queue.drain(..) {
+                        temp.append(&mut env.read().await.enqueue(context).await);
+                        let _ = sender.send(());
+                    }
+                    std::mem::swap(&mut *queue, &mut temp);
+                }
+                tokio::time::sleep(Duration::from_secs(1)).await;
+            }
+        }
+    };
+    tokio::spawn(dequeue);
 
     loop {
         let unload = async {
@@ -453,8 +478,15 @@ async fn model_route(receiver: Receiver<ThreadRequest>) -> Result<()> {
                         request,
                         sender: token_sender,
                     };
-                    enqueue(&env, &mut queue, context).await;
-                    let _ = sender.send(());
+
+                    let env = env.clone();
+                    let queue = queue.clone();
+                    let sender = sender.clone();
+                    tokio::spawn(async move {
+                        let mut queue = queue.lock().await;
+                        queue.append(&mut env.read().await.enqueue(context).await);
+                        let _ = sender.send(());
+                    });
                 }
             };
             anyhow::Ok(())
@@ -462,16 +494,6 @@ async fn model_route(receiver: Receiver<ThreadRequest>) -> Result<()> {
 
         if let Err(err) = listen.await {
             log::error!("{err}");
-        }
-
-        while !queue.is_empty() {
-            let mut temp = Vec::new();
-            for context in queue.drain(..) {
-                enqueue(&env, &mut temp, context).await;
-                let _ = sender.send(());
-            }
-            std::mem::swap(&mut queue, &mut temp);
-            tokio::time::sleep(Duration::from_secs(1)).await;
         }
     }
 }
@@ -608,6 +630,6 @@ async fn main() {
     let listener = tokio::net::TcpListener::bind(addr).await.unwrap();
     log::info!("server started at http://{addr}");
 
-    std::thread::spawn(move || model_route(receiver));
+    tokio::task::spawn_blocking(move || model_route(receiver));
     axum::serve(listener, app).await.unwrap();
 }

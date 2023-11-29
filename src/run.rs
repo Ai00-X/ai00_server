@@ -209,6 +209,7 @@ pub struct GenerateContext {
     pub sender: Sender<Token>,
 }
 
+#[derive(Debug, Clone)]
 pub struct Runtime<M, S, B>
 where
     B: BackedState,
@@ -216,10 +217,10 @@ where
     M: Model<ModelState = S>,
 {
     tokenizer: Arc<Tokenizer>,
-    model: M,
-    state: S,
-    slots: Mutex<Vec<SlotState>>,
-    backed: Mutex<Trie<Tokens, B>>,
+    model: Arc<M>,
+    state: Arc<S>,
+    slots: Arc<Mutex<Vec<SlotState>>>,
+    backed: Arc<Mutex<Trie<Tokens, B>>>,
     max_runtime_batch: usize,
     embed_layer: usize,
     penalty_free_tokens: HashSet<u16>,
@@ -239,6 +240,9 @@ where
         embed_layer: usize,
     ) -> Self {
         let tokenizer = Arc::new(tokenizer);
+        let model = Arc::new(model);
+        let state = Arc::new(state);
+
         let slots = (0..state.max_batch())
             .map(|_| SlotState::default())
             .collect();
@@ -254,8 +258,8 @@ where
             tokenizer,
             model,
             state,
-            slots: Mutex::new(slots),
-            backed: Mutex::new(Trie::new()),
+            slots: Arc::new(Mutex::new(slots)),
+            backed: Arc::new(Mutex::new(Trie::new())),
             max_runtime_batch,
             embed_layer,
             penalty_free_tokens,
@@ -400,6 +404,12 @@ where
             let mut cache = self.backed.lock().await;
 
             payloads.resize_with(self.state.max_batch(), Default::default);
+            // sync payloads and slots: kill dead payloads
+            for (slot, payload) in slots.iter().zip_eq(payloads.iter_mut()) {
+                if !payload.is_empty() && !matches!(slot, SlotState::Busy) {
+                    *payload = Payload::Empty;
+                }
+            }
 
             // reset all finished slots to idle
             for (batch, payload) in payloads.iter_mut().enumerate() {
@@ -683,9 +693,8 @@ impl_runtime_untyped!(V4, V5, V6);
 
 #[tokio::main]
 pub async fn run(receiver: Receiver<()>, env: Arc<RwLock<Environment<'_>>>) {
-    let mut payloads = Vec::new();
-
     while let Ok(()) = receiver.recv_async().await {
+        let mut payloads = vec![];
         'run: loop {
             if let Environment::Loaded { runtime, .. } = &*env.read().await {
                 if let Err(err) = runtime.process(&mut payloads).await {
