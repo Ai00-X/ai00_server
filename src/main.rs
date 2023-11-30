@@ -335,15 +335,15 @@ async fn model_route(receiver: Receiver<ThreadRequest>) -> Result<()> {
 
         async move {
             loop {
-                {
-                    let mut queue = queue.lock().await;
-                    let mut temp = vec![];
-                    for context in queue.drain(..) {
-                        temp.append(&mut env.read().await.enqueue(context).await);
-                        let _ = sender.send(());
-                    }
-                    std::mem::swap(&mut *queue, &mut temp);
+                let mut queue = queue.lock().await;
+                let mut temp = vec![];
+                for context in queue.drain(..) {
+                    temp.append(&mut env.read().await.enqueue(context).await);
+                    let _ = sender.send(());
                 }
+                std::mem::swap(&mut *queue, &mut temp);
+                drop(queue);
+
                 tokio::time::sleep(Duration::from_secs(1)).await;
             }
         }
@@ -351,41 +351,46 @@ async fn model_route(receiver: Receiver<ThreadRequest>) -> Result<()> {
     tokio::spawn(dequeue);
 
     loop {
-        let unload = async {
-            let mut env = env.write().await;
-            *env = Environment::None;
-        };
-
         let listen = async {
             match receiver.recv_async().await? {
                 ThreadRequest::Adapter(sender) => {
                     let _ = sender.send(list_adapters());
                 }
                 ThreadRequest::Info(sender) => {
-                    if let Environment::Loaded { runtime, reload } = &*env.read().await {
-                        let reload = reload.clone();
-                        let model = runtime.info().clone();
-                        let tokenizer = runtime.tokenizer();
-                        let _ = sender.send(RuntimeInfo {
-                            reload,
-                            model,
-                            tokenizer,
-                        });
-                    }
+                    let env = env.clone();
+                    let task = async move {
+                        let env = &(*env.read().await);
+                        if let Environment::Loaded { runtime, reload } = env {
+                            let reload = reload.clone();
+                            let model = runtime.info().clone();
+                            let tokenizer = runtime.tokenizer();
+                            let _ = sender.send(RuntimeInfo {
+                                reload,
+                                model,
+                                tokenizer,
+                            });
+                        }
+                    };
+                    tokio::spawn(task);
                 }
                 ThreadRequest::Reload {
                     request,
                     sender: reload_sender,
                 } => {
-                    let send_result = move |result: bool| {
+                    let notify = move |result: bool| {
                         if let Some(sender) = reload_sender {
                             let _ = sender.send(result);
                         }
                     };
-                    let reload = async {
+                    let sender = sender.clone();
+                    let env = env.clone();
+                    let reload = async move {
                         let sender = sender.clone();
                         let max_runtime_batch = request.max_runtime_batch;
                         let embed_layer = request.embed_layer;
+
+                        let mut env = env.write().await;
+                        *env = Environment::None;
 
                         let context = create_context(request.adapter).await?;
                         let tokenizer = load_tokenizer(&request.tokenizer_path)?;
@@ -428,8 +433,6 @@ async fn model_route(receiver: Receiver<ThreadRequest>) -> Result<()> {
                                 ))
                             }
                         };
-
-                        let mut env = env.write().await;
                         let reload = request;
                         *env = Environment::Loaded { runtime, reload };
 
@@ -437,18 +440,28 @@ async fn model_route(receiver: Receiver<ThreadRequest>) -> Result<()> {
                         anyhow::Ok(())
                     };
 
-                    unload.await;
-                    match reload.await {
-                        Ok(_) => send_result(true),
-                        Err(err) => {
-                            send_result(false);
-                            log::error!("reload model failed: {}", err);
+                    let reload = async move {
+                        match reload.await {
+                            Ok(_) => {
+                                notify(true);
+                                log::info!("model reloaded")
+                            }
+                            Err(err) => {
+                                notify(false);
+                                log::error!("reload model failed: {}", err);
+                            }
                         }
-                    }
+                    };
+                    tokio::spawn(reload);
                 }
                 ThreadRequest::Unload => {
-                    unload.await;
-                    log::info!("model unloaded");
+                    let env = env.clone();
+                    let unload = async move {
+                        let mut env = env.write().await;
+                        *env = Environment::None;
+                        log::info!("model unloaded");
+                    };
+                    tokio::spawn(unload);
                 }
                 ThreadRequest::Generate {
                     request,
@@ -482,11 +495,12 @@ async fn model_route(receiver: Receiver<ThreadRequest>) -> Result<()> {
                     let env = env.clone();
                     let queue = queue.clone();
                     let sender = sender.clone();
-                    tokio::spawn(async move {
+                    let task = async move {
                         let mut queue = queue.lock().await;
                         queue.append(&mut env.read().await.enqueue(context).await);
                         let _ = sender.send(());
-                    });
+                    };
+                    tokio::spawn(task);
                 }
             };
             anyhow::Ok(())
