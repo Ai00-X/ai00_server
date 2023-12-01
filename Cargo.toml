@@ -1,6 +1,6 @@
 [package]
 name = "ai00_server"
-version = "0.3.0"
+version = "0.3.1"
 edition = "2021"
 authors = ["Gu ZhenNiu <448885@qq.com>", "Zhang Zhenyuan <cryscan@umich.edu>"]
 license = "MIT OR Apache-2.0"
@@ -14,9 +14,8 @@ exclude = ["assets"]
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
-axum = { git = "https://github.com/cryscan/axum", branch = "sse-leading-space" }
-tower = { version = "0.4", features = ["util"] }
-tower-http = { version = "0.4", features = ["full"] }
+tower = { version = "0.4.13", features = ["full"] }
+tower-http = { version = "0.5.0", features = ["full"] }
 tokio = { version = "1", features = ["full"] }
 web-rwkv = "0.4.1"
 # web-rwkv = { git = "https://github.com/cryscan/web-rwkv", branch = "main" }
@@ -39,6 +38,20 @@ zip-extract = "0.1"
 tempfile = "3.6"
 toml = "0.8.6"
 sha2 = "0.10.8"
+
+[dependencies.axum]
+version = "0.7.1"
+default-features = false
+features = [
+    "form",
+    "http2",
+    "json",
+    "matched-path",
+    "original-uri",
+    "query",
+    "tokio",
+    "tower-log",
+]
 
 [profile.release]
 lto = true
