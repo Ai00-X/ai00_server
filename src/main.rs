@@ -484,7 +484,7 @@ async fn model_route(receiver: Receiver<ThreadRequest>) -> Result<()> {
                         prompt_tokens: tokens.to_vec(),
                         prefix: Default::default(),
                         suffix: tokens,
-                        penalties: Default::default(),
+                        penalties,
                         model_text: Default::default(),
                         output_buffer: Default::default(),
                         model_tokens: Default::default(),
