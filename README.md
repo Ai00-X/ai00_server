@@ -117,7 +117,13 @@ It only supports Safetensors models with the `.st` extension now. Models saved w
     $ python convert_safetensors.py --input ./filename.pth --output ./filename.st
     ```
 
-4. Just like the steps mentioned above, place the model in the `.st` model in the `assets/models/` path and modify the model path in [`assets/Config.toml`](./assets/Config.toml)
+4. If you don't want to have python or torch installed, you can go to [`web-rwkv`](https://github.com/cryscan/web-rwkv/releases) and download the dependency-less converter `web-rwkv-converter`.
+
+    ```bash
+    $ ./web-rwkv-converter --input /path/to/model.pth
+    ```
+
+5. Just like the steps mentioned above, place the model in the `.st` model in the `assets/models/` path and modify the model path in [`assets/Config.toml`](./assets/Config.toml)
     
 
 ## 📝Supported Arguments

@@ -41,8 +41,9 @@
 
 ### ⭕模型下载和转换
 
-You must [download the model](https://huggingface.co/BlinkDL) and put in assets/models before running if you are building from source. 
-You may download the official RWKV World series models from HuggingFace, and convert them via the provided `convert_safetensors.py`.
+你必须（在构建时）[下载模型](https://huggingface.co/BlinkDL)并将其放置在`assets/models`中，如果你从源代码构建。
+你可以从 HuggingFace 下载官方 RWKV World 系列模型，并使用提供的`convert_safetensors.py`进行转换。
+如果你不想安装 Python，也可以前往[`web-rwkv`](https://github.com/cryscan/web-rwkv/releases)下载无依赖的转换器。
 
 你可以在这里下载已经转换好的V4 模型： [模型下载](https://huggingface.co/cgisky/RWKV-safetensors-fp16)
 
@@ -110,7 +111,13 @@ You may download the official RWKV World series models from HuggingFace, and con
     $ python convert_safetensors.py --input ./filename.pth --output ./filename.st
     ```
 
-4. 根据上文步骤，将转换所得的`.st`模型文件放在`assets/models/`路径下，并修改  [`assets/Config.toml`](./assets/Config.toml) 中的模型路径
+4. 如果你不想安装 Python 或 Torch，可以前往[`web-rwkv`](https://github.com/cryscan/web-rwkv/releases)并下载不依赖于 Python 或 Torch 的转换器`web-rwkv-converter`
+
+    ```bash
+    $ ./web-rwkv-converter --input /path/to/model.pth
+    ```
+
+5. 根据上文步骤，将转换所得的`.st`模型文件放在`assets/models/`路径下，并修改  [`assets/Config.toml`](./assets/Config.toml) 中的模型路径
 
 
 ## 📝支持的启动参数
