@@ -52,7 +52,7 @@ dependencies = [
 
 [[package]]
 name = "ai00_server"
-version = "0.3.1"
+version = "0.3.2"
 dependencies = [
  "anyhow",
  "axum",
@@ -626,9 +626,9 @@ dependencies = [
 
 [[package]]
 name = "deranged"
-version = "0.3.9"
+version = "0.3.10"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "0f32d04922c60427da6f9fef14d042d9edddef64cb9d4ce0d64d0685fbeb1fd3"
+checksum = "8eb30d70a07a3b04884d2677f06bec33509dc67ca60d92949e5535352d3191dc"
 dependencies = [
  "powerfmt",
 ]
@@ -2351,9 +2351,8 @@ checksum = "7ab9b36309365056cd639da3134bf87fa8f3d86008abf99e612384a6eecd459f"
 
 [[package]]
 name = "web-rwkv"
-version = "0.4.1"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "51eec7bd5f99dd9f305c53a6b61d05e37945635ec1a01143e4f642170a5a0bf8"
+version = "0.4.2"
+source = "git+https://github.com/cryscan/web-rwkv?tag=v0.4.2#8022b97c703eb2867b62c47371a16782ce1a4d53"
 dependencies = [
  "ahash",
  "anyhow",
@@ -2378,8 +2377,7 @@ dependencies = [
 [[package]]
 name = "web-rwkv-derive"
 version = "0.2.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "7853e68f05577afc0c66b73191fb2f11c5177d273e0017270ffb3df1f135325f"
+source = "git+https://github.com/cryscan/web-rwkv?tag=v0.4.2#8022b97c703eb2867b62c47371a16782ce1a4d53"
 dependencies = [
  "quote",
  "syn 2.0.39",
