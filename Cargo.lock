@@ -52,7 +52,7 @@ dependencies = [
 
 [[package]]
 name = "ai00_server"
-version = "0.3.2"
+version = "0.3.3"
 dependencies = [
  "anyhow",
  "axum",

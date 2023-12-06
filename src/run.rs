@@ -22,6 +22,8 @@ use web_rwkv::{
 
 use crate::{Environment, FinishReason, GenerateRequest, Token, TokenCounter, STATE_CHUNK_SIZE};
 
+const PENALTY_FREE_LIST: [&str; 5] = ["\n", ",", ".", "\u{002c}", "\u{002f}"];
+
 #[derive(Debug)]
 pub enum SlotResult {
     /// There is an idle slot ready to be picked up.
@@ -247,10 +249,10 @@ where
             .map(|_| SlotState::default())
             .collect();
         let penalty_free_tokens = (0..u16::MAX)
-            .filter(|token| {
-                let word = tokenizer.decode(&[*token]).unwrap_or_default();
-                let word = String::from_utf8(word).unwrap_or_default();
-                word.contains('\n')
+            .filter(|&token| {
+                let word = tokenizer.decode(&[token]).unwrap_or_default();
+                let word = String::from_utf8_lossy(&word).into_owned();
+                PENALTY_FREE_LIST.iter().any(|x| word.contains(x))
             })
             .collect();
 
