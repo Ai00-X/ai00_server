@@ -377,7 +377,7 @@ async fn model_route(receiver: Receiver<ThreadRequest>) -> Result<()> {
                     request,
                     sender: reload_sender,
                 } => {
-                    let notify = move |result: bool| {
+                    let callback = move |result: bool| {
                         if let Some(sender) = reload_sender {
                             let _ = sender.send(result);
                         }
@@ -443,11 +443,11 @@ async fn model_route(receiver: Receiver<ThreadRequest>) -> Result<()> {
                     let reload = async move {
                         match reload.await {
                             Ok(_) => {
-                                notify(true);
+                                callback(true);
                                 log::info!("model reloaded")
                             }
                             Err(err) => {
-                                notify(false);
+                                callback(false);
                                 log::error!("reload model failed: {}", err);
                             }
                         }
