@@ -1,6 +1,5 @@
 use std::{
     collections::HashMap,
-    convert::Infallible,
     fs::{self, File},
     io::{BufReader, Cursor, Read},
     net::{Ipv4Addr, SocketAddr},
@@ -26,8 +25,8 @@ use tower_http::{cors::CorsLayer, services::ServeDir};
 use web_rwkv::{
     context::{Context, ContextBuilder, Instance},
     model::{
-        loader::Loader, FromBuilder, Lora, LoraBlend, Model, ModelBuilder, ModelInfo, ModelState,
-        ModelVersion, Quant, StateBuilder,
+        loader::Loader, Lora, LoraBlend, Model, ModelBuilder, ModelInfo, ModelState, ModelVersion,
+        Quant, StateBuilder,
     },
     tokenizer::Tokenizer,
     wgpu::{Backends, PowerPreference},
@@ -247,8 +246,8 @@ fn load_tokenizer(path: impl AsRef<Path>) -> Result<Tokenizer> {
 
 fn load_model<'a, M, S>(context: &Context, request: ReloadRequest, data: &'a [u8]) -> Result<(M, S)>
 where
-    S: ModelState + FromBuilder<Builder<'a> = StateBuilder, Error = Infallible>,
-    M: Model<ModelState = S> + FromBuilder<Builder<'a> = ModelBuilder<'a>, Error = anyhow::Error>,
+    S: ModelState,
+    M: Model<ModelState = S>,
 {
     let ReloadRequest {
         quant,

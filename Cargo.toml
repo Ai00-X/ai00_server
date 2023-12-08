@@ -1,6 +1,6 @@
 [package]
 name = "ai00_server"
-version = "0.3.3"
+version = "0.3.4"
 edition = "2021"
 authors = ["Gu ZhenNiu <448885@qq.com>", "Zhang Zhenyuan <cryscan@umich.edu>"]
 license = "MIT OR Apache-2.0"
@@ -18,7 +18,7 @@ tower = { version = "0.4.13", features = ["full"] }
 tower-http = { version = "0.5.0", features = ["full"] }
 tokio = { version = "1", features = ["full"] }
 # web-rwkv = "0.4.3"
-web-rwkv = { git = "https://github.com/cryscan/web-rwkv", tag = "v0.4.3" }
+web-rwkv = { git = "https://github.com/cryscan/web-rwkv", tag = "v0.4.4" }
 memmap = "0.7"
 bytemuck = "1"
 regex = "1.8"
