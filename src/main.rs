@@ -244,7 +244,7 @@ fn load_tokenizer(path: impl AsRef<Path>) -> Result<Tokenizer> {
     Ok(Tokenizer::new(&contents)?)
 }
 
-fn load_model<'a, M, S>(context: &Context, request: ReloadRequest, data: &'a [u8]) -> Result<(M, S)>
+fn load_model<M, S>(context: &Context, request: ReloadRequest, data: &[u8]) -> Result<(M, S)>
 where
     S: ModelState,
     M: Model<ModelState = S>,
