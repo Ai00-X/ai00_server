@@ -59,7 +59,7 @@ def convert_file(pt_filename: str, sf_filename: str, rename={}, transpose_names=
 
 
 if __name__ == "__main__":
-    convert_file(args.input, args.output, ["lora_A"],
+    convert_file(args.input, args.output,
                  rename={"time_faaaa": "time_first", "time_maa": "time_mix",
                          "lora_A": "lora.0", "lora_B": "lora.1"},
                  transpose_names=["time_mix_w1", "time_mix_w2", "time_decay_w1", "time_decay_w2"])
