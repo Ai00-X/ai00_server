@@ -3,7 +3,7 @@ use std::{fs::File, path::PathBuf};
 use anyhow::Result;
 use clap::Parser;
 use memmap2::Mmap;
-use web_rwkv::converter::{convert_safetensors, RENAME, TRANSPOSE};
+use web_rwkv_converter::{convert_safetensors, RENAME, TRANSPOSE};
 
 #[derive(Parser, Debug)]
 #[command(author, version, about, long_about = None)]
