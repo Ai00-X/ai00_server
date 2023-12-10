@@ -10,7 +10,7 @@ use futures_util::{Stream, StreamExt};
 use serde::{Deserialize, Serialize};
 
 use crate::{
-    request_info, sampler::Sampler, Array, FinishReason, GenerateRequest, ThreadRequest,
+    sampler::Sampler, utils::request_info, Array, FinishReason, GenerateRequest, ThreadRequest,
     ThreadState, Token, TokenCounter,
 };
 

@@ -42,6 +42,7 @@ mod config;
 mod oai;
 mod run;
 mod sampler;
+mod utils;
 
 pub const MAX_TOKENS: usize = 4096;
 pub const STATE_CHUNK_SIZE: usize = 4;
@@ -563,6 +564,7 @@ async fn main() {
 
     let args = Args::parse();
     let (sender, receiver) = flume::unbounded::<ThreadRequest>();
+    tokio::task::spawn_blocking(move || model_route(receiver));
 
     {
         let path = args
@@ -641,8 +643,6 @@ async fn main() {
 
     let addr = SocketAddr::from((args.ip.unwrap_or(Ipv4Addr::new(0, 0, 0, 0)), args.port));
     let listener = tokio::net::TcpListener::bind(addr).await.unwrap();
-    log::info!("server started at http://{addr}");
-
-    tokio::task::spawn_blocking(move || model_route(receiver));
+    log::info!("server started at http://127.0.0.1:{}", args.port);
     axum::serve(listener, app).await.unwrap();
 }

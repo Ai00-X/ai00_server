@@ -11,8 +11,8 @@ use serde::Serialize;
 use web_rwkv::model::ModelInfo;
 
 use crate::{
-    request_info, request_info_stream, try_request_info, ReloadRequest, RuntimeInfo, ThreadRequest,
-    ThreadState,
+    utils::{request_info, request_info_stream, try_request_info},
+    ReloadRequest, RuntimeInfo, ThreadRequest, ThreadState,
 };
 
 #[derive(Debug, Clone, Serialize)]
