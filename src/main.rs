@@ -643,6 +643,6 @@ async fn main() {
 
     let addr = SocketAddr::from((args.ip.unwrap_or(Ipv4Addr::new(0, 0, 0, 0)), args.port));
     let listener = tokio::net::TcpListener::bind(addr).await.unwrap();
-    log::info!("server started at http://127.0.0.1:{}", args.port);
+    log::info!("server started at {addr}");
     axum::serve(listener, app).await.unwrap();
 }
