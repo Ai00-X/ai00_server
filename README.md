@@ -109,21 +109,19 @@ It only supports Safetensors models with the `.st` extension now. Models saved w
 
 1. [Download the `.pth` model](https://huggingface.co/BlinkDL)
 
-2. Clone or download the [convert_safetensors.py](./convert_safetensors.py) from this repository and install the corresponding dependencies.
+2. In the [Release](https://github.com/cgisky1980/ai00_rwkv_server/releases) you could find an executable called `converter`. Run
+  
+  ```bash
+  $ ./converter --input /path/to/model.pth
+  ```
+  
+3. If you are building from source, run
+  
+  ```bash
+  $ cargo run --release --bin converter -- --input /path/to/model.pth
+  ```
 
-3. Run the above program, specifying the input and output paths.
-
-    ```bash
-    $ python convert_safetensors.py --input ./filename.pth --output ./filename.st
-    ```
-
-4. If you don't want to have python or torch installed, you can go to [`web-rwkv`](https://github.com/cryscan/web-rwkv/releases) and download the dependency-less converter `web-rwkv-converter`.
-
-    ```bash
-    $ ./web-rwkv-converter --input /path/to/model.pth
-    ```
-
-5. Just like the steps mentioned above, place the model in the `.st` model in the `assets/models/` path and modify the model path in [`assets/Config.toml`](./assets/Config.toml)
+4. Just like the steps mentioned above, place the model in the `.st` model in the `assets/models/` path and modify the model path in [`assets/Config.toml`](./assets/Config.toml)
     
 
 ## 📝Supported Arguments

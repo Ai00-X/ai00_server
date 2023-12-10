@@ -13,13 +13,14 @@ exclude = ["assets"]
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
+[[bin]]
+name = "converter"
+
 [dependencies]
 tower = { version = "0.4.13", features = ["full"] }
 tower-http = { version = "0.5.0", features = ["full"] }
 tokio = { version = "1", features = ["full"] }
-# web-rwkv = "0.4.3"
-web-rwkv = { git = "https://github.com/cryscan/web-rwkv", tag = "v0.4.4" }
-memmap = "0.7"
+memmap2 = "0.7"
 bytemuck = "1"
 regex = "1.8"
 clap = { version = "4.3", features = ["derive"] }
@@ -38,6 +39,11 @@ zip-extract = "0.1"
 tempfile = "3.6"
 toml = "0.8.6"
 sha2 = "0.10.8"
+
+[dependencies.web-rwkv]
+git = "https://github.com/cryscan/web-rwkv"
+tag = "v0.4.5"
+features = ["converter"]
 
 [dependencies.axum]
 version = "0.7.1"

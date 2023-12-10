@@ -14,6 +14,7 @@ env:
   LINUX_TARGET: x86_64-unknown-linux-gnu
 
   # Space separated paths to include in the archive.
+  RELEASE_BINS: ai00_server converter
   RELEASE_ADDS: README.md README_zh.md LICENSE assets
 
 jobs:
@@ -82,20 +83,29 @@ jobs:
       - name: Create tarball (Linux)
         if: matrix.build == 'linux'
         run: |
-          mv ./target/${{ env.LINUX_TARGET }}/release/${{ env.RELEASE_BIN }} ./dist/${{ env.RELEASE_BIN }}
+          for bin in ${{ env.RELEASE_BINS }}
+          do
+            mv ./target/${{ env.LINUX_TARGET }}/release/${bin} ./dist/${bin}
+          done
           mv ${{ env.RELEASE_ADDS }} ./dist
           7z a -tzip ./${{ env.RELEASE_DIR }}/${{ env.RELEASE_BIN }}-${{ steps.get_version.outputs.VERSION }}-${{ env.LINUX_TARGET }}.zip ./dist
       - name: Create tarball (Windows)
         if: matrix.build == 'windows'
         shell: bash
         run: |
-          mv ./target/release/${{ env.RELEASE_BIN }}.exe ./dist/${{ env.RELEASE_BIN }}.exe
+          for bin in ${{ env.RELEASE_BINS }}
+          do
+            mv ./target/release/${bin}.exe ./dist/${bin}.exe
+          done
           mv ${{ env.RELEASE_ADDS }} ./dist
           7z a -tzip ./${{ env.RELEASE_DIR }}/${{ env.RELEASE_BIN }}-${{ steps.get_version.outputs.VERSION }}-${{ env.WINDOWS_TARGET }}.zip ./dist
       - name: Create tarball (MacOS)
         if: matrix.build == 'macos'
         run: |
-          mv ./target/release/${{ env.RELEASE_BIN }} ./dist/${{ env.RELEASE_BIN }}
+          for bin in ${{ env.RELEASE_BINS }}
+          do
+            mv ./target/release/${bin} ./dist/${bin}
+          done
           mv ${{ env.RELEASE_ADDS }} ./dist
           7z a -tzip ./${{ env.RELEASE_DIR }}/${{ env.RELEASE_BIN }}-${{ steps.get_version.outputs.VERSION }}-${{ env.MACOS_TARGET }}.zip ./dist
       - name: Upload Zip

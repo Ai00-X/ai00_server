@@ -6,7 +6,7 @@ use std::{
 
 use anyhow::Result;
 use axum::{extract::State, Json};
-use memmap::Mmap;
+use memmap2::Mmap;
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
 

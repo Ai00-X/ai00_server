@@ -17,7 +17,7 @@ use clap::Parser;
 use config::{AdapterOption, Config};
 use flume::{Receiver, Sender};
 use itertools::Itertools;
-use memmap::Mmap;
+use memmap2::Mmap;
 use run::RuntimeUntyped;
 use serde::{Deserialize, Serialize};
 use tokio::sync::{Mutex, RwLock};
