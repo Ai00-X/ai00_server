@@ -22,4 +22,5 @@ run.bat
 node_modules/
 docs/.vitepress/dist
 docs/.vitepress/cache
+nohup.out
 .vscode/
