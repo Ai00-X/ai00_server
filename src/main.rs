@@ -389,9 +389,6 @@ async fn model_route(receiver: Receiver<ThreadRequest>) -> Result<()> {
                         let max_runtime_batch = request.max_runtime_batch;
                         let embed_layer = request.embed_layer;
 
-                        let mut env = env.write().await;
-                        *env = Environment::None;
-
                         let context = create_context(request.adapter).await?;
                         let tokenizer = load_tokenizer(&request.tokenizer_path)?;
                         log::info!("{:#?}", context.adapter.get_info());
@@ -400,6 +397,9 @@ async fn model_route(receiver: Receiver<ThreadRequest>) -> Result<()> {
                         let data = unsafe { Mmap::map(&file)? };
                         let info = Loader::info(&data)?;
                         log::info!("{:#?}", info);
+
+                        let mut env = env.write().await;
+                        *env = Environment::None;
 
                         let runtime = match info.version {
                             ModelVersion::V4 => {
