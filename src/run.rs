@@ -61,6 +61,7 @@ enum SlotChoice {
 
 impl std::cmp::Ord for SlotChoice {
     fn cmp(&self, other: &Self) -> Ordering {
+        // priority: continue > empty > back
         use SlotChoice::{Back, Continue, Empty};
         match (self, other) {
             (Continue(_, x), Continue(_, y)) => x.cmp(y),
@@ -110,6 +111,14 @@ impl Payload {
 
     pub fn is_empty(&self) -> bool {
         matches!(self, Self::Empty)
+    }
+
+    pub fn is_busy(&self) -> bool {
+        matches!(self, Self::Busy(_))
+    }
+
+    pub fn is_done(&self) -> bool {
+        matches!(self, Self::Done(_))
     }
 }
 
@@ -287,6 +296,10 @@ where
             None => return SlotResult::Error,
         };
 
+        // find the best idle slot by:
+        // 1. find the slot that matches the context (continue)
+        // 2. find an empty slot
+        // 3. find the oldest non-empty slot
         let choice = slots
             .iter()
             .enumerate()
@@ -303,6 +316,8 @@ where
             })
             .max_by(|lhs, rhs| lhs.0.cmp(&rhs.0).then(lhs.1.cmp(&rhs.1)));
 
+        // here we try to search for the longest common prefix in the memory cache and checkout the state from that point
+        // should there be a cache miss, an initial state is returned
         let mut checkout = |batch: usize| -> (Vec<u16>, B) {
             let prefix = cache.longest_common_prefix(tokens.as_token_slice());
             let len = (1..=prefix.len())
@@ -330,6 +345,8 @@ where
         };
 
         match choice {
+            // we cannot find a slot because all slots are occupied
+            // in this case, we hand the request back to the caller
             None => SlotResult::Failure(
                 GenerateContext {
                     prefix: Default::default(),
@@ -338,6 +355,7 @@ where
                 }
                 .into(),
             ),
+            // back a non-relative and non-empty slot and use it for our new context
             Some((SlotChoice::Back(batch), _)) => {
                 log::info!("start at non-empty slot {}", batch);
                 let (prefix, reload) = checkout(batch);
@@ -364,6 +382,7 @@ where
                     _ => unreachable!(),
                 }
             }
+            // directly occupy an empty slot so no need backing
             Some((SlotChoice::Empty(batch), _)) => {
                 log::info!("start at empty slot {}", batch);
                 let (prefix, reload) = checkout(batch);
@@ -383,6 +402,7 @@ where
                 self.state.load_batch(&reload, batch).expect("load state");
                 SlotResult::Fault(batch)
             }
+            // continue from an existing slot. No need backing as well
             Some((SlotChoice::Continue(batch, len), _)) => {
                 log::info!("continue at slot {}", batch);
                 let tokens = [tokens, vec![last]].concat();
@@ -463,6 +483,19 @@ where
             }
         };
 
+        // shorter tasks first
+        // let redirect = {
+        //     let sorted = std::mem::take(payloads);
+        //     let mut sorted = sorted.into_iter().enumerate().collect_vec();
+        //     sorted.sort_unstable_by_key(|(_, payload)| match payload {
+        //         Payload::Busy(context) => context.suffix.0.len(),
+        //         _ => usize::MAX,
+        //     });
+        //     let (redirect, mut sorted): (Vec<_>, Vec<_>) = sorted.into_iter().unzip();
+        //     std::mem::swap(payloads, &mut sorted);
+        //     redirect
+        // };
+
         let mut input_tokens = payloads
             .iter()
             .map(|payload| match payload {
@@ -472,10 +505,7 @@ where
             .collect_vec();
 
         // run the model until there is at least one slot finished
-        let occupancy = payloads
-            .iter()
-            .filter(|x| matches!(x, Payload::Busy(_)))
-            .count();
+        let occupancy = payloads.iter().filter(|x| x.is_busy()).count();
         let logits = match occupancy {
             0 => vec![None; payloads.len()],
             _ => loop {
@@ -646,6 +676,13 @@ where
                 payload.finalize();
             }
         }
+
+        // recover payload orders
+        // let mut recovers = std::mem::take(payloads);
+        // payloads.resize_with(payloads.len(), || Payload::Empty);
+        // for index in 0..payloads.len() {
+        //     std::mem::swap(&mut recovers[index], &mut payloads[redirect[index]]);
+        // }
 
         Ok(())
     }
