@@ -194,7 +194,7 @@ async fn chat_completions_one(
         choices: vec![ChatChoice {
             message: ChatRecord {
                 role: Role::Assistant,
-                content: text,
+                content: text.trim().into(),
             },
             index: 0,
             finish_reason,
@@ -242,16 +242,24 @@ async fn chat_completions_stream(
         sender: token_sender,
     });
 
+    let mut start_token = true;
     let stream = token_receiver.into_stream().map(move |token| {
         let choice = match token {
             Token::Start => PartialChatChoice {
                 delta: PartialChatRecord::Role(Role::Assistant),
                 ..Default::default()
             },
-            Token::Token(token) => PartialChatChoice {
-                delta: PartialChatRecord::Content(token),
-                ..Default::default()
-            },
+            Token::Token(token) => {
+                let token = match start_token {
+                    true => token.trim_start().into(),
+                    false => token,
+                };
+                start_token = false;
+                PartialChatChoice {
+                    delta: PartialChatRecord::Content(token),
+                    ..Default::default()
+                }
+            }
             Token::Stop(finish_reason, _) => PartialChatChoice {
                 finish_reason,
                 ..Default::default()
