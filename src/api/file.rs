@@ -4,13 +4,32 @@ use std::{
     path::{Path, PathBuf},
 };
 
-use anyhow::Result;
-use axum::{extract::State, Json};
+use anyhow::{bail, Result};
+use axum::{extract::State, http::StatusCode, Json};
 use memmap2::Mmap;
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
 
 use crate::{config::Config, ThreadState};
+
+const PERMITTED_DIRS: [&str; 4] = [
+    "assets/models",
+    "assets/tokenizer",
+    "assets/configs",
+    "assets/www",
+];
+
+fn check_path(path: impl AsRef<Path>) -> Result<()> {
+    let current_path = std::env::current_dir()?;
+    for sub in PERMITTED_DIRS {
+        let permitted_path = std::fs::canonicalize(current_path.join(sub))?;
+        let path = std::fs::canonicalize(path.as_ref())?;
+        if path.starts_with(permitted_path) {
+            return Ok(());
+        }
+    }
+    bail!("path not valid");
+}
 
 fn compute_sha(path: impl AsRef<Path>, meta: &Metadata) -> Result<String> {
     let file = File::open(path.as_ref())?;
@@ -50,19 +69,15 @@ pub struct FileInfo {
     sha: String,
 }
 
-#[derive(Debug, Clone, Serialize)]
-#[serde(rename_all = "UPPERCASE")]
-pub enum FileInfoResponse {
-    Err,
-    #[serde(untagged)]
-    Ok(Vec<FileInfo>),
-}
-
 /// `/api/files/dir`, `/api/files/ls`.
 pub async fn dir(
     State(ThreadState(_)): State<ThreadState>,
     Json(request): Json<FileInfoRequest>,
-) -> Json<FileInfoResponse> {
+) -> Result<Json<Vec<FileInfo>>, StatusCode> {
+    if let Err(err) = check_path(&request.path) {
+        log::error!("check path failed: {}", err);
+        return Err(StatusCode::FORBIDDEN);
+    }
     match std::fs::read_dir(request.path) {
         Ok(dir) => {
             let files = dir
@@ -86,63 +101,60 @@ pub async fn dir(
                     })
                 })
                 .collect();
-            Json(FileInfoResponse::Ok(files))
+            Ok(Json(files))
         }
         Err(err) => {
             log::error!("failed to read directory: {}", err);
-            Json(FileInfoResponse::Err)
+            Err(StatusCode::NOT_FOUND)
         }
     }
 }
 
 /// `/api/models/list`.
-pub async fn models(state: State<ThreadState>) -> Json<FileInfoResponse> {
-    dir(
-        state,
-        Json(FileInfoRequest {
-            path: "assets/models".into(),
-            is_sha: true,
-        }),
-    )
-    .await
-}
-
-#[derive(Debug, Clone, Serialize)]
-#[serde(rename_all = "UPPERCASE")]
-pub enum FileOpResponse {
-    Ok,
-    Err,
+pub async fn models(state: State<ThreadState>) -> Result<Json<Vec<FileInfo>>, StatusCode> {
+    let request = FileInfoRequest {
+        path: "assets/models".into(),
+        is_sha: true,
+    };
+    dir(state, Json(request)).await
 }
 
 #[derive(Debug, Clone, Deserialize)]
 pub struct UnzipRequest {
-    zip_path: PathBuf,
-    target_dir: PathBuf,
+    #[serde(alias = "zip_path")]
+    path: PathBuf,
+    #[serde(alias = "target_dir")]
+    output: PathBuf,
 }
 
 /// `/api/files/unzip`.
 pub async fn unzip(
     State(ThreadState(_)): State<ThreadState>,
     Json(request): Json<UnzipRequest>,
-) -> Json<FileOpResponse> {
-    let unzip = move || -> Result<()> {
-        if Path::new(&request.target_dir).exists() {
-            std::fs::remove_dir_all(&request.target_dir)?;
-        }
-        std::fs::create_dir_all(&request.target_dir)?;
+) -> StatusCode {
+    if let Err(err) = check_path(&request.path) {
+        log::error!("check path failed: {}", err);
+        return StatusCode::FORBIDDEN;
+    }
 
-        let file = File::open(&request.zip_path)?;
+    let unzip = move || -> Result<()> {
+        if Path::new(&request.output).exists() {
+            std::fs::remove_dir_all(&request.output)?;
+        }
+        std::fs::create_dir_all(&request.output)?;
+
+        let file = File::open(&request.path)?;
         let map = unsafe { Mmap::map(&file)? };
-        zip_extract::extract(Cursor::new(&map), &request.target_dir, false)?;
+        zip_extract::extract(Cursor::new(&map), &request.output, false)?;
 
         Ok(())
     };
 
     match unzip() {
-        Ok(_) => Json(FileOpResponse::Ok),
+        Ok(_) => StatusCode::OK,
         Err(err) => {
             log::error!("failed to unzip: {}", err);
-            Json(FileOpResponse::Err)
+            StatusCode::NOT_FOUND
         }
     }
 }
@@ -152,24 +164,20 @@ pub struct LoadRequest {
     path: PathBuf,
 }
 
-#[derive(Debug, Clone, Serialize)]
-#[serde(rename_all = "UPPERCASE")]
-pub enum LoadResponse {
-    Err,
-    #[serde(untagged)]
-    Ok(Config),
-}
-
 /// `/api/files/config/load`.
 pub async fn load_config(
     State(ThreadState(_)): State<ThreadState>,
     Json(request): Json<LoadRequest>,
-) -> Json<LoadResponse> {
+) -> Result<Json<Config>, StatusCode> {
+    if let Err(err) = check_path(&request.path) {
+        log::error!("check path failed: {}", err);
+        return Err(StatusCode::FORBIDDEN);
+    }
     match crate::load_config(request.path) {
-        Ok(config) => Json(LoadResponse::Ok(config)),
+        Ok(config) => Ok(Json(config)),
         Err(err) => {
             log::error!("failed to load config: {}", err);
-            Json(LoadResponse::Err)
+            Err(StatusCode::NOT_FOUND)
         }
     }
 }
@@ -184,7 +192,12 @@ pub struct SaveRequest {
 pub async fn save_config(
     State(ThreadState(_)): State<ThreadState>,
     Json(request): Json<SaveRequest>,
-) -> Json<FileOpResponse> {
+) -> StatusCode {
+    if let Err(err) = check_path(&request.path) {
+        log::error!("check path failed: {}", err);
+        return StatusCode::FORBIDDEN;
+    }
+
     let write = || -> Result<()> {
         let mut file = File::create(&request.path)?;
         let buf = toml::to_string(&request.config)?.into_bytes();
@@ -194,10 +207,10 @@ pub async fn save_config(
 
     match request.path.extension() {
         Some(ext) if ext == "toml" => match write() {
-            Ok(_) => Json(FileOpResponse::Ok),
+            Ok(_) => StatusCode::OK,
             Err(err) => {
                 log::error!("failed to save config: {err}");
-                Json(FileOpResponse::Err)
+                StatusCode::INTERNAL_SERVER_ERROR
             }
         },
         _ => {
@@ -205,7 +218,7 @@ pub async fn save_config(
                 "failed to save config: file path {} is not toml",
                 request.path.to_string_lossy()
             );
-            Json(FileOpResponse::Err)
+            StatusCode::FORBIDDEN
         }
     }
 }

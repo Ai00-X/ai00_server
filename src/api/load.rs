@@ -3,6 +3,7 @@ use std::time::Duration;
 use anyhow::Result;
 use axum::{
     extract::State,
+    http::StatusCode,
     response::{sse::Event, Sse},
     Json,
 };
@@ -43,38 +44,25 @@ pub async fn state(
     Sse::new(stream)
 }
 
-#[derive(Debug, Clone, Copy, Serialize)]
-#[serde(rename_all = "UPPERCASE")]
-pub enum LoadResponse {
-    Ok,
-    Err,
-}
-
 /// `/api/models/load`.
 pub async fn load(
     State(ThreadState(sender)): State<ThreadState>,
     Json(request): Json<ReloadRequest>,
-) -> Json<LoadResponse> {
+) -> StatusCode {
     let (result_sender, result_receiver) = flume::unbounded();
     let _ = sender.send(ThreadRequest::Reload {
         request,
         sender: Some(result_sender),
     });
     match result_receiver.recv_async().await.unwrap() {
-        true => Json(LoadResponse::Ok),
-        false => Json(LoadResponse::Err),
+        true => StatusCode::OK,
+        false => StatusCode::BAD_REQUEST,
     }
 }
 
-#[derive(Debug, Clone, Copy, Serialize)]
-#[serde(rename_all = "UPPERCASE")]
-pub enum UnloadResponse {
-    Ok,
-}
-
 /// `/api/models/unload`.
-pub async fn unload(State(ThreadState(sender)): State<ThreadState>) -> Json<UnloadResponse> {
+pub async fn unload(State(ThreadState(sender)): State<ThreadState>) -> StatusCode {
     let _ = sender.send(ThreadRequest::Unload);
     while try_request_info(sender.clone()).await.is_ok() {}
-    Json(UnloadResponse::Ok)
+    StatusCode::OK
 }
