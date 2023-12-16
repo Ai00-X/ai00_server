@@ -56,7 +56,7 @@ pub async fn load(
     });
     match result_receiver.recv_async().await.unwrap() {
         true => StatusCode::OK,
-        false => StatusCode::BAD_REQUEST,
+        false => StatusCode::INTERNAL_SERVER_ERROR,
     }
 }
 
