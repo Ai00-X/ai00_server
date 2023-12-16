@@ -12,23 +12,28 @@ use sha2::{Digest, Sha256};
 
 use crate::{config::Config, ThreadState};
 
-const PERMITTED_DIRS: [&str; 4] = [
+const PERMITTED_PATHS: [&str; 4] = [
     "assets/models",
     "assets/tokenizer",
     "assets/configs",
     "assets/www",
 ];
+const UNZIP_PATHS: [&str; 2] = ["assets/unzip", "assets/temp"];
 
-fn check_path(path: impl AsRef<Path>) -> Result<()> {
+fn check_path_permitted(path: impl AsRef<Path>, permitted: &[&str]) -> Result<()> {
     let current_path = std::env::current_dir()?;
-    for sub in PERMITTED_DIRS {
-        let permitted_path = std::fs::canonicalize(current_path.join(sub))?;
+    for sub in permitted {
+        let permitted = std::fs::canonicalize(current_path.join(sub))?;
         let path = std::fs::canonicalize(path.as_ref())?;
-        if path.starts_with(permitted_path) {
+        if path.starts_with(permitted) {
             return Ok(());
         }
     }
     bail!("path not valid");
+}
+
+fn check_path(path: impl AsRef<Path>) -> Result<()> {
+    check_path_permitted(path, &PERMITTED_PATHS)
 }
 
 fn compute_sha(path: impl AsRef<Path>, meta: &Metadata) -> Result<String> {
@@ -133,6 +138,10 @@ pub async fn unzip(
     Json(request): Json<UnzipRequest>,
 ) -> StatusCode {
     if let Err(err) = check_path(&request.path) {
+        log::error!("check path failed: {}", err);
+        return StatusCode::FORBIDDEN;
+    }
+    if let Err(err) = check_path_permitted(&request.output, &UNZIP_PATHS) {
         log::error!("check path failed: {}", err);
         return StatusCode::FORBIDDEN;
     }
