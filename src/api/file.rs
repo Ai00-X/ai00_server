@@ -5,7 +5,8 @@ use std::{
 };
 
 use anyhow::{bail, Result};
-use axum::{extract::State, http::StatusCode, Json};
+use axum::{extract::State, http::StatusCode, response::IntoResponse, Json};
+use itertools::Itertools;
 use memmap2::Mmap;
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
@@ -78,7 +79,7 @@ pub struct FileInfo {
 pub async fn dir(
     State(ThreadState(_)): State<ThreadState>,
     Json(request): Json<FileInfoRequest>,
-) -> Result<Json<Vec<FileInfo>>, StatusCode> {
+) -> impl IntoResponse {
     if let Err(err) = check_path(&request.path) {
         log::error!("check path failed: {}", err);
         return Err(StatusCode::FORBIDDEN);
@@ -105,8 +106,8 @@ pub async fn dir(
                         sha,
                     })
                 })
-                .collect();
-            Ok(Json(files))
+                .collect_vec();
+            Ok((StatusCode::OK, Json(files)))
         }
         Err(err) => {
             log::error!("failed to read directory: {}", err);
@@ -116,7 +117,7 @@ pub async fn dir(
 }
 
 /// `/api/models/list`.
-pub async fn models(state: State<ThreadState>) -> Result<Json<Vec<FileInfo>>, StatusCode> {
+pub async fn models(state: State<ThreadState>) -> impl IntoResponse {
     let request = FileInfoRequest {
         path: "assets/models".into(),
         is_sha: true,
@@ -177,13 +178,13 @@ pub struct LoadRequest {
 pub async fn load_config(
     State(ThreadState(_)): State<ThreadState>,
     Json(request): Json<LoadRequest>,
-) -> Result<Json<Config>, StatusCode> {
+) -> impl IntoResponse {
     if let Err(err) = check_path(&request.path) {
         log::error!("check path failed: {}", err);
         return Err(StatusCode::FORBIDDEN);
     }
     match crate::load_config(request.path) {
-        Ok(config) => Ok(Json(config)),
+        Ok(config) => Ok((StatusCode::OK, Json(config))),
         Err(err) => {
             log::error!("failed to load config: {}", err);
             Err(StatusCode::NOT_FOUND)
