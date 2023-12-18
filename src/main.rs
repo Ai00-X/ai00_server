@@ -221,7 +221,7 @@ fn list_adapters() -> AdapterList {
     AdapterList(list)
 }
 
-async fn create_context(adapter: AdapterOption) -> Result<Context> {
+async fn create_context(adapter: AdapterOption, info: &ModelInfo) -> Result<Context> {
     let backends = Backends::all();
     let instance = Instance::new();
     let adapter = match adapter {
@@ -230,8 +230,13 @@ async fn create_context(adapter: AdapterOption) -> Result<Context> {
         AdapterOption::Manual(selection) => instance.select_adapter(backends, selection),
     }?;
 
+    let limits = web_rwkv::wgpu::Limits {
+        max_storage_buffer_binding_size: info.max_buffer_size() as u32,
+        ..Default::default()
+    };
     let context = ContextBuilder::new(adapter)
         .with_default_pipelines()
+        .with_limits(limits)
         .build()
         .await?;
     Ok(context)
@@ -255,7 +260,6 @@ where
         quant_type,
         lora,
         token_chunk_size,
-        head_chunk_size,
         turbo,
         ..
     } = request;
@@ -274,8 +278,7 @@ where
     let model = ModelBuilder::new(context, data)
         .with_quant(quant)
         .with_turbo(turbo)
-        .with_token_chunk_size(token_chunk_size)
-        .with_head_chunk_size(head_chunk_size);
+        .with_token_chunk_size(token_chunk_size);
     let model: M = lora
         .into_iter()
         .fold(model, |acc, x| acc.add_lora(x))
@@ -389,14 +392,14 @@ async fn model_route(receiver: Receiver<ThreadRequest>) -> Result<()> {
                         let max_runtime_batch = request.max_runtime_batch;
                         let embed_layer = request.embed_layer;
 
-                        let context = create_context(request.adapter).await?;
-                        let tokenizer = load_tokenizer(&request.tokenizer_path)?;
-                        log::info!("{:#?}", context.adapter.get_info());
-
                         let file = File::open(&request.model_path)?;
                         let data = unsafe { Mmap::map(&file)? };
                         let info = Loader::info(&data)?;
                         log::info!("{:#?}", info);
+
+                        let context = create_context(request.adapter, &info).await?;
+                        let tokenizer = load_tokenizer(&request.tokenizer_path)?;
+                        log::info!("{:#?}", context.adapter.get_info());
 
                         let mut env = env.write().await;
                         *env = Environment::None;
