@@ -25,8 +25,8 @@ use tower_http::{cors::CorsLayer, services::ServeDir};
 use web_rwkv::{
     context::{Context, ContextBuilder, Instance},
     model::{
-        loader::Loader, Lora, LoraBlend, Model, ModelBuilder, ModelInfo, ModelState, ModelVersion,
-        Quant, StateBuilder,
+        loader::Loader, EmbedDevice, Lora, LoraBlend, Model, ModelBuilder, ModelInfo, ModelState,
+        ModelVersion, Quant, StateBuilder,
     },
     tokenizer::Tokenizer,
     wgpu::{Backends, PowerPreference},
@@ -186,8 +186,10 @@ pub struct ReloadRequest {
     pub max_runtime_batch: usize,
     /// Number of states that are cached on GPU.
     pub max_batch: usize,
-    /// the (reversed) number of layer at which the output is as embedding.
+    /// The (reversed) number of layer at which the output is as embedding.
     pub embed_layer: usize,
+    /// Device to put the embed tensor.
+    pub embed_device: EmbedDevice,
     /// Path to the tokenizer.
     pub tokenizer_path: PathBuf,
     /// Adapter selection.
@@ -229,14 +231,9 @@ async fn create_context(adapter: AdapterOption, info: &ModelInfo) -> Result<Cont
         AdapterOption::Economical => instance.adapter(PowerPreference::LowPower).await,
         AdapterOption::Manual(selection) => instance.select_adapter(backends, selection),
     }?;
-
-    let limits = web_rwkv::wgpu::Limits {
-        max_storage_buffer_binding_size: info.max_buffer_size() as u32,
-        ..Default::default()
-    };
     let context = ContextBuilder::new(adapter)
         .with_default_pipelines()
-        .with_limits(limits)
+        .with_auto_limits(info)
         .build()
         .await?;
     Ok(context)
@@ -261,6 +258,7 @@ where
         lora,
         token_chunk_size,
         turbo,
+        embed_device,
         ..
     } = request;
     let quant = (0..quant).map(|layer| (layer, quant_type)).collect();
@@ -278,6 +276,7 @@ where
     let model = ModelBuilder::new(context, data)
         .with_quant(quant)
         .with_turbo(turbo)
+        .with_embed_device(embed_device)
         .with_token_chunk_size(token_chunk_size);
     let model: M = lora
         .into_iter()

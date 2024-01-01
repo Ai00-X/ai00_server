@@ -52,7 +52,7 @@ dependencies = [
 
 [[package]]
 name = "ai00_server"
-version = "0.3.9"
+version = "0.3.10"
 dependencies = [
  "anyhow",
  "axum",
@@ -2362,12 +2362,11 @@ checksum = "7ab9b36309365056cd639da3134bf87fa8f3d86008abf99e612384a6eecd459f"
 
 [[package]]
 name = "web-rwkv"
-version = "0.4.9"
-source = "git+https://github.com/cryscan/web-rwkv?tag=v0.4.9#4a597277354bdf9455de0482a02e8f4098f8d39b"
+version = "0.4.10"
+source = "git+https://github.com/cryscan/web-rwkv?tag=v0.4.10#026b5839e54228fd3c02f15460090beee5fc26e3"
 dependencies = [
  "ahash",
  "anyhow",
- "async-trait",
  "bitflags 2.4.1",
  "bytemuck",
  "derive-getters",
@@ -2400,7 +2399,7 @@ dependencies = [
 [[package]]
 name = "web-rwkv-derive"
 version = "0.2.0"
-source = "git+https://github.com/cryscan/web-rwkv?tag=v0.4.9#4a597277354bdf9455de0482a02e8f4098f8d39b"
+source = "git+https://github.com/cryscan/web-rwkv?tag=v0.4.10#026b5839e54228fd3c02f15460090beee5fc26e3"
 dependencies = [
  "quote",
  "syn 2.0.43",
