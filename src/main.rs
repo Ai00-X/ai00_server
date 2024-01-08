@@ -2,7 +2,7 @@ use std::{
     collections::HashMap,
     fs::{self, File},
     io::{BufReader, Cursor, Read},
-    net::{Ipv4Addr, SocketAddr},
+    net::{IpAddr, Ipv4Addr, SocketAddr},
     path::{Path, PathBuf},
     sync::Arc,
     time::Duration,
@@ -354,7 +354,7 @@ async fn model_route(receiver: Receiver<ThreadRequest>) -> Result<()> {
 
     loop {
         let listen = async {
-            match receiver.recv_async().await? {
+            match receiver.recv_async().await.unwrap() {
                 ThreadRequest::Adapter(sender) => {
                     let _ = sender.send(list_adapters());
                 }
@@ -551,7 +551,7 @@ struct Args {
     #[arg(long, short, value_name = "FILE")]
     config: Option<PathBuf>,
     #[arg(long, short)]
-    ip: Option<Ipv4Addr>,
+    ip: Option<IpAddr>,
     #[arg(long, short, default_value_t = 65530)]
     port: u16,
 }
@@ -642,8 +642,10 @@ async fn main() {
         .fallback_service(ServeDir::new(serve_path))
         .layer(CorsLayer::permissive())
         .with_state(ThreadState(sender));
-
-    let addr = SocketAddr::from((args.ip.unwrap_or(Ipv4Addr::new(0, 0, 0, 0)), args.port));
+    let addr = SocketAddr::new(
+        args.ip.unwrap_or(IpAddr::from(Ipv4Addr::UNSPECIFIED)),
+        args.port,
+    );
     let listener = tokio::net::TcpListener::bind(addr).await.unwrap();
     log::info!("server started at {addr}");
     axum::serve(listener, app).await.unwrap();
