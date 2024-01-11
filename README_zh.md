@@ -1,6 +1,6 @@
 # 💯AI00 Server
 <p align='center'>
-<image src="img/ai00.gif" />
+<image src="docs/public/logo.gif" />
 </p>
  
 <div align="center"> 
