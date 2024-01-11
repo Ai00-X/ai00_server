@@ -11,6 +11,7 @@ keywords = ["deep-learning", "LLM", "model", "rwkv"]
 categories = ["science"]
 exclude = ["assets"]
 default-run = "ai00_server"
+rust-version = "1.75"
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
