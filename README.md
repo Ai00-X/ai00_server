@@ -1,13 +1,13 @@
 # 💯AI00 RWKV Server
 <p align='center'>
-<image src="img/ai00.gif" />
+<image src="docs/public/logo.gif" />
     
 </p>
 
 <div align="center"> 
     
 ![license](https://shields.io/badge/license-MIT%2FApache--2.0-blue)
-[![Rust Version](https://img.shields.io/badge/Rust-1.65.0+-blue)](https://releases.rs/docs/1.65.0)
+[![Rust Version](https://img.shields.io/badge/Rust-1.75.0+-blue)](https://releases.rs/docs/1.75.0)
 ![PRs welcome](https://img.shields.io/badge/PRs-Welcome-brightgreen)     
 <!-- ALL-CONTRIBUTORS-BADGE:START - Do not remove or modify this section -->
 [![All Contributors](https://img.shields.io/badge/all_contributors-6-orange.svg?style=flat-square)](#contributors-)
