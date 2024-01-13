@@ -232,7 +232,6 @@ async fn create_context(adapter: AdapterOption, info: &ModelInfo) -> Result<Cont
         AdapterOption::Manual(selection) => instance.select_adapter(backends, selection),
     }?;
     let context = ContextBuilder::new(adapter)
-        .with_default_pipelines()
         .with_auto_limits(info)
         .build()
         .await?;
@@ -250,7 +249,7 @@ fn load_tokenizer(path: impl AsRef<Path>) -> Result<Tokenizer> {
 fn load_model<M, S>(context: &Context, request: ReloadRequest, data: &[u8]) -> Result<(M, S)>
 where
     S: ModelState,
-    M: Model<ModelState = S>,
+    M: Model<State = S>,
 {
     let ReloadRequest {
         quant,

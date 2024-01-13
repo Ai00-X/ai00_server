@@ -225,7 +225,7 @@ pub struct Runtime<M, S, B>
 where
     B: BackedState,
     S: ModelState<BackedState = B>,
-    M: Model<ModelState = S>,
+    M: Model<State = S>,
 {
     tokenizer: Arc<Tokenizer>,
     model: Arc<M>,
@@ -241,7 +241,7 @@ impl<M, S, B> Runtime<M, S, B>
 where
     for<'a> B: BackedState + Clone + FromBuilder<Builder<'a> = StateBuilder, Error = Infallible>,
     S: ModelState<BackedState = B>,
-    M: Model<ModelState = S>,
+    M: Model<State = S>,
 {
     pub fn new(
         tokenizer: Tokenizer,
