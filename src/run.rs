@@ -662,14 +662,14 @@ where
                     } else if stop_matched {
                         let output = String::from_utf8_lossy(&output);
                         let _ = context.sender.send(Token::Token(output.into()));
-                        finish(FinishReason::Stop)
+                        finish(FinishReason::Stop);
                     } else if context.model_tokens.len() >= context.request.max_tokens {
                         finish(FinishReason::Length);
                     } else if let Ok(word) = String::from_utf8(output) {
                         let _ = context.sender.send(Token::Token(word));
                         context.output_buffer = context.output_buffer[output_pointer..].to_vec();
                     } else if token == 0 {
-                        finish(FinishReason::Stop)
+                        finish(FinishReason::Stop);
                     }
                 }
             }
