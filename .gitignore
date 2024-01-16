@@ -18,6 +18,7 @@ assets/unzip/
 assets/temp/
 
 *.st
+*.pth
 *.exe
 qdrant/
 .qdrant-initialized

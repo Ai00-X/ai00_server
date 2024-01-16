@@ -668,6 +668,8 @@ where
                     } else if let Ok(word) = String::from_utf8(output) {
                         let _ = context.sender.send(Token::Token(word));
                         context.output_buffer = context.output_buffer[output_pointer..].to_vec();
+                    } else if token == 0 {
+                        finish(FinishReason::Stop)
                     }
                 }
             }
