@@ -73,7 +73,7 @@ QQ Group for communication: 30920262
     $ ./ai00_rwkv_server
     ```
     
-5.  Open the browser and visit the WebUI [`http://127.0.0.1:65530`](http://127.0.0.1:65530)
+5.  Open the browser and visit the WebUI [`http://localhost:65530`](http://localhost:65530)
     
 
 ### 📜Compile from Source Code
@@ -101,7 +101,7 @@ QQ Group for communication: 30920262
     $ cargo run --release
     ```
     
-6.  Open the browser and visit the WebUI [`http://127.0.0.1:65530`](http://127.0.0.1:65530)
+6.  Open the browser and visit the WebUI [`http://localhost:65530`](http://localhost:65530)
 
 ### 📒Convert the Model
 

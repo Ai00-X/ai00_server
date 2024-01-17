@@ -20,7 +20,10 @@ use web_rwkv::{
     tokenizer::Tokenizer,
 };
 
-use crate::{Environment, FinishReason, GenerateRequest, Token, TokenCounter, STATE_CHUNK_SIZE};
+use crate::{
+    config::Setting, Environment, FinishReason, GenerateRequest, Token, TokenCounter,
+    STATE_CHUNK_SIZE,
+};
 
 const PENALTY_FREE_LIST: [&str; 5] = ["\n", ",", ".", "\u{002c}", "\u{002f}"];
 
@@ -420,7 +423,7 @@ where
         }
     }
 
-    pub async fn process(&self, payloads: &mut Vec<Payload>) -> Result<()> {
+    pub async fn process(&self, payloads: &mut Vec<Payload>, setting: &Setting) -> Result<()> {
         {
             let mut slots = self.slots.lock().await;
             let mut cache = self.backed.lock().await;
@@ -435,23 +438,25 @@ where
 
             // reset all finished slots to idle
             for (batch, payload) in payloads.iter_mut().enumerate() {
-                if let Some(context) = payload.take() {
-                    assert!(matches!(slots[batch], SlotState::Busy));
-                    slots[batch] = SlotState::Idle(context.prefix, Instant::now());
+                let Some(context) = payload.take() else {
+                    continue;
+                };
 
-                    if let Some(backed) = match &slots[batch] {
-                        SlotState::Idle(content, _) => {
-                            log::info!("backed slot {}", batch);
-                            let backed = self.state.back_batch(batch).await.expect("back state");
-                            cache.insert(content.clone(), backed.clone());
-                            Some(backed)
-                        }
-                        _ => None,
-                    } {
-                        if context.request.embed {
-                            let embed = backed.embed(0, self.embed_layer);
-                            let _ = context.sender.send(Token::Embed(embed));
-                        }
+                assert!(matches!(slots[batch], SlotState::Busy));
+                slots[batch] = SlotState::Idle(context.prefix, Instant::now());
+
+                if let Some(backed) = match &slots[batch] {
+                    SlotState::Idle(content, _) => {
+                        log::info!("backed slot {}", batch);
+                        let backed = self.state.back_batch(batch).await.expect("back state");
+                        cache.insert(content.clone(), backed.clone());
+                        Some(backed)
+                    }
+                    _ => None,
+                } {
+                    if context.request.embed {
+                        let embed = backed.embed(0, self.embed_layer);
+                        let _ = context.sender.send(Token::Embed(embed));
                     }
                 }
             }
@@ -483,19 +488,6 @@ where
             }
         };
 
-        // shorter tasks first
-        // let redirect = {
-        //     let sorted = std::mem::take(payloads);
-        //     let mut sorted = sorted.into_iter().enumerate().collect_vec();
-        //     sorted.sort_unstable_by_key(|(_, payload)| match payload {
-        //         Payload::Busy(context) => context.suffix.0.len(),
-        //         _ => usize::MAX,
-        //     });
-        //     let (redirect, mut sorted): (Vec<_>, Vec<_>) = sorted.into_iter().unzip();
-        //     std::mem::swap(payloads, &mut sorted);
-        //     redirect
-        // };
-
         let mut input_tokens = payloads
             .iter()
             .map(|payload| match payload {
@@ -516,7 +508,7 @@ where
             },
         };
         let penalty_free_tokens = &self.penalty_free_tokens;
-        let logits = payloads
+        let logits: Vec<_> = payloads
             .par_iter()
             .zip_eq(logits.into_par_iter())
             .map(|(payload, logits)| match payload {
@@ -535,156 +527,141 @@ where
                 }),
                 _ => None,
             })
-            .collect::<Vec<_>>();
+            .collect();
 
         let probs = match occupancy {
             0 => vec![None; payloads.len()],
             _ => self.model.softmax(logits).await?,
         };
-        let output_tokens = payloads
+        let output_tokens: Vec<_> = payloads
             .par_iter()
             .zip_eq(probs.into_par_iter())
             .map(|(payload, probs)| match payload {
                 Payload::Busy(context) => probs.map(|probs| context.request.sampler.sample(probs)),
                 _ => None,
             })
-            .collect::<Vec<_>>();
+            .collect();
 
         for (payload, token, tokens) in itertools::multizip((
             payloads.iter_mut(),
             output_tokens.into_iter(),
             input_tokens.into_iter(),
         )) {
-            let mut done = false;
+            let Payload::Busy(context) = payload else {
+                continue;
+            };
 
-            if let Payload::Busy(context) = payload {
-                let prefix = std::mem::take(&mut context.prefix);
-                let suffix = std::mem::take(&mut context.suffix);
-                let model_tokens = [prefix.0, suffix.0].concat();
+            let prefix = std::mem::take(&mut context.prefix);
+            let suffix = std::mem::take(&mut context.suffix);
+            let model_tokens = [prefix.0, suffix.0].concat();
 
-                // compute new prefix and suffix using the current remaining tokens
-                assert!(model_tokens.len() >= tokens.len());
-                let len = model_tokens.len() - tokens.len();
-                context.prefix = Tokens(model_tokens[..len].to_vec());
-                context.suffix = Tokens(model_tokens[len..].to_vec());
-                context
-                    .penalties
-                    .iter_mut()
-                    .for_each(|(_, penalty)| *penalty *= context.request.sampler.penalty_decay);
+            // compute new prefix and suffix using the current remaining tokens
+            assert!(model_tokens.len() >= tokens.len());
+            let len = model_tokens.len() - tokens.len();
+            context.prefix = Tokens(model_tokens[..len].to_vec());
+            context.suffix = Tokens(model_tokens[len..].to_vec());
+            context
+                .penalties
+                .iter_mut()
+                .for_each(|(_, penalty)| *penalty *= context.request.sampler.penalty_decay);
 
-                if let Some(token) = token {
-                    assert_eq!(context.suffix.len(), 0);
-                    context.suffix.0.push(token);
+            let Some(token) = token else {
+                continue;
+            };
 
-                    let penalty = match context.penalties.get(&token) {
-                        Some(penalty) => penalty + context.request.sampler.frequency_penalty,
-                        None => context.request.sampler.presence_penalty,
-                    };
-                    context.penalties.insert(token, penalty);
+            assert_eq!(context.suffix.len(), 0);
+            context.suffix.0.push(token);
 
-                    let mut word = self.tokenizer.decode(&[token])?;
-                    context.model_text.append(&mut word.clone());
-                    context.output_buffer.append(&mut word);
-                    context.model_tokens.push(token);
+            let penalty = match context.penalties.get(&token) {
+                Some(penalty) => penalty + context.request.sampler.frequency_penalty,
+                None => context.request.sampler.presence_penalty,
+            };
+            context.penalties.insert(token, penalty);
 
-                    // if let Ok(word) = String::from_utf8(context.output_buffer.clone()) {
-                    //     let _ = context.sender.send(Token::Token(word));
-                    //     context.output_buffer.clear();
-                    // }
+            let mut word = self.tokenizer.decode(&[token])?;
+            context.model_text.append(&mut word.clone());
+            context.output_buffer.append(&mut word);
+            context.model_tokens.push(token);
 
-                    // let model_text = String::from_utf8_lossy(&context.model_text);
-                    let count_tokens = || {
-                        let prompt_tokens = context.prompt_tokens.len();
-                        let completion_tokens = context.model_tokens.len();
-                        let total_tokens = prompt_tokens + completion_tokens;
-                        TokenCounter {
-                            prompt_tokens,
-                            completion_tokens,
-                            total_tokens,
-                        }
-                    };
-                    let mut finish = |reason| {
-                        let _ = context.sender.send(Token::Stop(reason, count_tokens()));
-                        let _ = context.sender.send(Token::Done);
-                        done = true;
-                    };
+            // if let Ok(word) = String::from_utf8(context.output_buffer.clone()) {
+            //     let _ = context.sender.send(Token::Token(word));
+            //     context.output_buffer.clear();
+            // }
 
-                    // let max_stop_len = context
-                    //     .request
-                    //     .stop
-                    //     .iter()
-                    //     .map(|stop| stop.len())
-                    //     .max()
-                    //     .unwrap_or_default()
-                    //     .next_power_of_two();
-
-                    let (output_pointer, stop_matched) = context
-                        .request
-                        .stop
-                        .iter()
-                        .map(|stop| {
-                            let stop = stop.as_bytes();
-                            let mut pointer_safe = 0;
-                            let mut pointer_unsafe = 0;
-                            while pointer_unsafe < context.output_buffer.len() {
-                                // the maximum match of the current stop string
-                                let pointer_stop = pointer_unsafe - pointer_safe;
-                                if pointer_stop >= stop.len() {
-                                    // we have a total match
-                                    return (pointer_safe, true);
-                                }
-
-                                let output = context.output_buffer[pointer_unsafe];
-                                let stop = stop[pointer_stop];
-
-                                pointer_unsafe += 1;
-                                if output != stop {
-                                    pointer_safe = pointer_unsafe;
-                                }
-                            }
-                            // end check
-                            if pointer_unsafe - pointer_safe >= stop.len() {
-                                (pointer_safe, true)
-                            } else {
-                                (pointer_safe, false)
-                            }
-                        })
-                        .min_by(|x, y| match (x.1, y.1) {
-                            (true, false) => Ordering::Less,
-                            (false, true) => Ordering::Greater,
-                            _ => x.0.cmp(&y.0),
-                        })
-                        .unwrap_or((context.output_buffer.len(), false));
-                    let output = context.output_buffer[..output_pointer].to_vec();
-
-                    if context.sender.is_disconnected() {
-                        done = true;
-                    } else if stop_matched {
-                        let output = String::from_utf8_lossy(&output);
-                        let _ = context.sender.send(Token::Token(output.into()));
-                        finish(FinishReason::Stop);
-                    } else if context.model_tokens.len() >= context.request.max_tokens {
-                        finish(FinishReason::Length);
-                    } else if let Ok(word) = String::from_utf8(output) {
-                        let _ = context.sender.send(Token::Token(word));
-                        context.output_buffer = context.output_buffer[output_pointer..].to_vec();
-                    } else if token == 0 {
-                        finish(FinishReason::Stop);
-                    }
+            // let model_text = String::from_utf8_lossy(&context.model_text);
+            let count_tokens = || {
+                let prompt_tokens = context.prompt_tokens.len();
+                let completion_tokens = context.model_tokens.len();
+                let total_tokens = prompt_tokens + completion_tokens;
+                TokenCounter {
+                    prompt_tokens,
+                    completion_tokens,
+                    total_tokens,
                 }
+            };
+
+            let mut done = false;
+            let mut finish = |reason| {
+                let _ = context.sender.send(Token::Stop(reason, count_tokens()));
+                let _ = context.sender.send(Token::Done);
+                done = true;
+            };
+
+            let (output_pointer, stop_matched) = context
+                .request
+                .stop
+                .iter()
+                .chain(setting.stop.iter())
+                .map(|stop| {
+                    let stop = stop.as_bytes();
+                    let mut pointer_safe = 0;
+                    let mut pointer_unsafe = 0;
+                    while pointer_unsafe < context.output_buffer.len() {
+                        // the maximum match of the current stop string
+                        let pointer_stop = pointer_unsafe - pointer_safe;
+                        if pointer_stop >= stop.len() {
+                            // we have a total match
+                            return (pointer_safe, true);
+                        }
+
+                        let output = context.output_buffer[pointer_unsafe];
+                        let stop = stop[pointer_stop];
+
+                        pointer_unsafe += 1;
+                        if output != stop {
+                            pointer_safe = pointer_unsafe;
+                        }
+                    }
+                    // end check
+                    if pointer_unsafe - pointer_safe >= stop.len() {
+                        (pointer_safe, true)
+                    } else {
+                        (pointer_safe, false)
+                    }
+                })
+                .min_by(|x, y| match (x.1, y.1) {
+                    (true, false) => Ordering::Less,
+                    (false, true) => Ordering::Greater,
+                    _ => x.0.cmp(&y.0),
+                })
+                .unwrap_or((context.output_buffer.len(), false));
+            let output = context.output_buffer[..output_pointer].to_vec();
+
+            if context.sender.is_disconnected() {
+                done = true;
+            } else if stop_matched {
+                let output = String::from_utf8_lossy(&output);
+                let _ = context.sender.send(Token::Token(output.into()));
+                finish(FinishReason::Stop);
+            } else if context.model_tokens.len() >= context.request.max_tokens {
+                finish(FinishReason::Length);
+            } else if let Ok(word) = String::from_utf8(output) {
+                let _ = context.sender.send(Token::Token(word));
+                context.output_buffer = context.output_buffer[output_pointer..].to_vec();
             }
 
-            if done {
-                payload.finalize();
-            }
+            done.then(|| payload.finalize());
         }
-
-        // recover payload orders
-        // let mut recovers = std::mem::take(payloads);
-        // payloads.resize_with(payloads.len(), || Payload::Empty);
-        // for index in 0..payloads.len() {
-        //     std::mem::swap(&mut recovers[index], &mut payloads[redirect[index]]);
-        // }
 
         Ok(())
     }
@@ -721,9 +698,9 @@ macro_rules! impl_runtime_untyped {
             }
 
             #[inline]
-            pub async fn process(&self, payloads: &mut Vec<Payload>) -> Result<()> {
+            pub async fn process(&self, payloads: &mut Vec<Payload>, setting: &Setting) -> Result<()> {
                 match self {
-                    $(RuntimeUntyped::$variant(runtime) => runtime.process(payloads).await,)*
+                    $(RuntimeUntyped::$variant(runtime) => runtime.process(payloads, setting).await,)*
                 }
             }
         }
@@ -733,12 +710,12 @@ macro_rules! impl_runtime_untyped {
 impl_runtime_untyped!(V4, V5, V6);
 
 #[tokio::main]
-pub async fn run(receiver: Receiver<()>, env: Arc<RwLock<Environment<'_>>>) {
+pub async fn run(receiver: Receiver<()>, env: Arc<RwLock<Environment<'_>>>, setting: Setting) {
     while let Ok(()) = receiver.recv_async().await {
         let mut payloads = vec![];
         'run: loop {
             if let Environment::Loaded { runtime, .. } = &*env.read().await {
-                if let Err(err) = runtime.process(&mut payloads).await {
+                if let Err(err) = runtime.process(&mut payloads, &setting).await {
                     log::error!("{}", err);
                 }
             }

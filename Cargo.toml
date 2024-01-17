@@ -64,4 +64,4 @@ features = [
 ]
 
 [profile.release]
-lto = true
+lto = false

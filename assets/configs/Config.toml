@@ -15,3 +15,6 @@ path = "assets/tokenizer/rwkv_vocab_v20230424.json" # Path to the tokenizer.
 
 [adapter]
 Auto = {}
+
+[setting]
+stop = ["\n\n"] # Additional stop words in generation.

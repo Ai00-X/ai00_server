@@ -12,6 +12,7 @@ pub struct Config {
     pub lora: Vec<Lora>,
     pub tokenizer: Tokenizer,
     pub adapter: AdapterOption,
+    pub setting: Setting,
 }
 
 impl From<Config> for ReloadRequest {
@@ -35,6 +36,7 @@ impl From<Config> for ReloadRequest {
                 path: tokenizer_path,
             },
             adapter,
+            ..
         } = value;
         Self {
             model_path,
@@ -126,4 +128,11 @@ pub enum AdapterOption {
     Auto,
     Economical,
     Manual(usize),
+}
+
+/// More inference configurations.
+#[derive(Debug, Default, Clone, Serialize, Deserialize)]
+pub struct Setting {
+    /// Additional stop words.
+    pub stop: Vec<String>,
 }

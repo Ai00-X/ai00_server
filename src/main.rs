@@ -14,7 +14,7 @@ use axum::{
     Router,
 };
 use clap::Parser;
-use config::{AdapterOption, Config};
+use config::{AdapterOption, Config, Setting};
 use flume::{Receiver, Sender};
 use itertools::Itertools;
 use memmap2::Mmap;
@@ -318,14 +318,14 @@ fn load_config(path: impl AsRef<Path>) -> Result<Config> {
 }
 
 #[tokio::main]
-async fn model_route(receiver: Receiver<ThreadRequest>) -> Result<()> {
+async fn model_route(receiver: Receiver<ThreadRequest>, setting: Setting) -> Result<()> {
     let env: Arc<RwLock<Environment>> = Default::default();
     let queue: Arc<Mutex<Vec<GenerateContext>>> = Default::default();
 
     let sender = {
         let (sender, receiver) = flume::unbounded();
         let env = env.clone();
-        tokio::task::spawn_blocking(move || run::run(receiver, env));
+        tokio::task::spawn_blocking(move || run::run(receiver, env, setting));
         sender
     };
 
@@ -355,7 +355,10 @@ async fn model_route(receiver: Receiver<ThreadRequest>) -> Result<()> {
         let listen = async {
             match receiver.recv_async().await.unwrap() {
                 ThreadRequest::Adapter(sender) => {
-                    let _ = sender.send(list_adapters());
+                    let task = async move {
+                        let _ = sender.send(list_adapters());
+                    };
+                    tokio::spawn(task);
                 }
                 ThreadRequest::Info(sender) => {
                     let env = env.clone();
@@ -565,21 +568,25 @@ async fn main() {
 
     let args = Args::parse();
     let (sender, receiver) = flume::unbounded::<ThreadRequest>();
-    tokio::task::spawn_blocking(move || model_route(receiver));
 
-    {
+    let (setting, request) = {
         let path = args
             .config
             .clone()
             .unwrap_or("assets/configs/Config.toml".into());
         log::info!("reading config {}...", path.to_string_lossy());
+        let config = load_config(path).expect("load config failed");
 
-        let request = load_config(path).expect("load config failed").into();
-        let _ = sender.send(ThreadRequest::Reload {
-            request,
-            sender: None,
-        });
-    }
+        let setting = config.setting.clone();
+        let request = config.into();
+        (setting, request)
+    };
+
+    tokio::task::spawn_blocking(move || model_route(receiver, setting));
+    let _ = sender.send(ThreadRequest::Reload {
+        request,
+        sender: None,
+    });
 
     let serve_path = {
         let path = tempfile::tempdir()
