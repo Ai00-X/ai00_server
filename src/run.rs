@@ -508,9 +508,9 @@ where
         let outputs = match occupancy {
             0 => vec![ModelOutput::None; payloads.len()],
             _ => loop {
-                let logits = self.model.run(&mut inputs, &self.state).await?;
-                if logits.iter().any(|x| matches!(x, ModelOutput::Last(_))) {
-                    break logits;
+                let output = self.model.run(&mut inputs, &self.state).await?;
+                if output.iter().any(|x| matches!(x, ModelOutput::Last(_))) {
+                    break output;
                 }
             },
         };
