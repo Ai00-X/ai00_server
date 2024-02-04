@@ -509,7 +509,7 @@ where
             0 => vec![ModelOutput::None; payloads.len()],
             _ => loop {
                 let output = self.model.run(&mut inputs, &self.state).await?;
-                if output.iter().any(|x| matches!(x, ModelOutput::Last(_))) {
+                if output.iter().any(ModelOutput::is_some) {
                     break output;
                 }
             },
