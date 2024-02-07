@@ -52,7 +52,7 @@ dependencies = [
 
 [[package]]
 name = "ai00_server"
-version = "0.3.13"
+version = "0.3.14"
 dependencies = [
  "anyhow",
  "axum",
@@ -2368,9 +2368,9 @@ checksum = "4d91413b1c31d7539ba5ef2451af3f0b833a005eb27a631cec32bc0635a8602b"
 
 [[package]]
 name = "web-rwkv"
-version = "0.6.3"
+version = "0.6.4"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "62fe246483edf9aabd7c7ed0c198130b99d5c1019dca4be7bf3ea618c72a25fc"
+checksum = "fd862ed3c75118f4c4455db2676ebfbd66c9fb90758369e956b221f0e7faedad"
 dependencies = [
  "ahash",
  "anyhow",
