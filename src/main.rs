@@ -262,15 +262,21 @@ where
     } = request;
     let quant = (0..quant).map(|layer| (layer, quant_type)).collect();
 
-    let lora: Vec<Lora> = lora
+    let lora: Vec<_> = lora
         .into_iter()
-        .map(|lora| -> Result<Lora> {
+        .map(|lora| -> Result<_> {
             let file = File::open(&lora.path)?;
-            let data = unsafe { Mmap::map(&file) }?.to_vec();
-            let blend = LoraBlend::full(lora.alpha);
-            Ok(Lora { data, blend })
+            let map = unsafe { Mmap::map(&file) }?;
+            Ok((map, lora.alpha))
         })
         .try_collect()?;
+    let lora = lora
+        .iter()
+        .map(|(data, alpha)| {
+            let blend = LoraBlend::full(*alpha);
+            Lora { data, blend }
+        })
+        .collect_vec();
 
     let model = ModelBuilder::new(context, data)
         .with_quant(quant)

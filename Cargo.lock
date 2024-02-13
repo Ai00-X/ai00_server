@@ -2367,9 +2367,9 @@ checksum = "4f186bd2dcf04330886ce82d6f33dd75a7bfcf69ecf5763b89fcde53b6ac9838"
 
 [[package]]
 name = "web-rwkv"
-version = "0.6.6"
+version = "0.6.7"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "fc3916ec2bcd2d7ac055b40820dff4c03b319e5dce6059bdde9edb89d679953e"
+checksum = "cccd359ac25b26178b2b5546588c05b6d5be5b20b29876d646b29176d364ca1e"
 dependencies = [
  "ahash",
  "anyhow",
@@ -2387,6 +2387,7 @@ dependencies = [
  "serde",
  "serde_json",
  "uid",
+ "wasm-bindgen",
  "web-rwkv-derive",
  "wgpu",
 ]

@@ -260,7 +260,7 @@ where
         let model = Arc::new(model);
         let state = Arc::new(state);
 
-        let slots = (0..state.max_batch())
+        let slots = (0..state.num_batch())
             .map(|_| SlotState::default())
             .collect();
         let penalty_free_tokens = (0..u16::MAX)
@@ -431,7 +431,7 @@ where
             let mut slots = self.slots.lock().await;
             let mut cache = self.backed.lock().await;
 
-            payloads.resize_with(self.state.max_batch(), Default::default);
+            payloads.resize_with(self.state.num_batch(), Default::default);
             // sync payloads and slots: kill dead payloads
             for (slot, payload) in slots.iter().zip_eq(payloads.iter_mut()) {
                 if !payload.is_empty() && !matches!(slot, SlotState::Busy) {
