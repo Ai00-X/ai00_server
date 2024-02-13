@@ -289,7 +289,7 @@ where
         .build()?;
 
     let state: S = StateBuilder::new(context, model.info())
-        .with_max_batch(request.max_batch)
+        .with_num_batch(request.max_batch)
         .with_chunk_size(STATE_CHUNK_SIZE)
         .build();
     Ok((model, state))

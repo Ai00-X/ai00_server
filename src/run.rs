@@ -339,7 +339,7 @@ where
                     let context = self.model.context();
                     let info = self.model.info();
                     StateBuilder::new(context, info)
-                        .with_max_batch(1)
+                        .with_num_batch(1)
                         .with_chunk_size(STATE_CHUNK_SIZE)
                         .build_backed()
                 });
