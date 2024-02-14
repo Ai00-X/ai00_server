@@ -45,7 +45,6 @@ mod sampler;
 mod utils;
 
 pub const MAX_TOKENS: usize = 4096;
-pub const STATE_CHUNK_SIZE: usize = 4;
 
 #[derive(Debug)]
 pub enum Token {
@@ -182,6 +181,8 @@ pub struct ReloadRequest {
     pub token_chunk_size: usize,
     /// The chunk size for each split of the head matrix.
     pub head_chunk_size: usize,
+    /// The chunk size of layers in model state.
+    pub state_chunk_size: usize,
     /// Maximum number of batches that are active at once.
     pub max_runtime_batch: usize,
     /// Number of states that are cached on GPU.
@@ -290,7 +291,7 @@ where
 
     let state: S = StateBuilder::new(context, model.info())
         .with_num_batch(request.max_batch)
-        .with_chunk_size(STATE_CHUNK_SIZE)
+        .with_chunk_size(request.state_chunk_size)
         .build();
     Ok((model, state))
 }
@@ -397,6 +398,7 @@ async fn model_route(receiver: Receiver<ThreadRequest>) -> Result<()> {
                     let reload = async move {
                         let sender = sender.clone();
                         let max_runtime_batch = request.max_runtime_batch;
+                        let state_chunk_size = request.state_chunk_size;
                         let embed_layer = request.embed_layer;
 
                         let file = File::open(&request.model_path)?;
@@ -419,6 +421,7 @@ async fn model_route(receiver: Receiver<ThreadRequest>) -> Result<()> {
                                     model,
                                     state,
                                     max_runtime_batch,
+                                    state_chunk_size,
                                     embed_layer,
                                 ))
                             }
@@ -429,6 +432,7 @@ async fn model_route(receiver: Receiver<ThreadRequest>) -> Result<()> {
                                     model,
                                     state,
                                     max_runtime_batch,
+                                    state_chunk_size,
                                     embed_layer,
                                 ))
                             }
@@ -439,6 +443,7 @@ async fn model_route(receiver: Receiver<ThreadRequest>) -> Result<()> {
                                     model,
                                     state,
                                     max_runtime_batch,
+                                    state_chunk_size,
                                     embed_layer,
                                 ))
                             }
@@ -492,6 +497,7 @@ async fn model_route(receiver: Receiver<ThreadRequest>) -> Result<()> {
 
                     let context = GenerateContext {
                         prompt_tokens: tokens.to_vec(),
+                        prompt_cached: false,
                         prefix: Default::default(),
                         suffix: tokens,
                         penalties,

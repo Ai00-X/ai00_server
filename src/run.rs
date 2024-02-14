@@ -23,9 +23,10 @@ use web_rwkv::{
     tokenizer::Tokenizer,
 };
 
-use crate::{Environment, FinishReason, GenerateRequest, Token, TokenCounter, STATE_CHUNK_SIZE};
+use crate::{Environment, FinishReason, GenerateRequest, Token, TokenCounter};
 
 const PENALTY_FREE_LIST: [&str; 5] = ["\n", ",", ".", "\u{002c}", "\u{002f}"];
+pub const PROMPT_CACHE_TOKENS: usize = 32;
 
 #[derive(Debug)]
 pub enum SlotResult {
@@ -205,6 +206,8 @@ impl AsTokenSlice for [u16] {
 pub struct GenerateContext {
     /// Tokens that are provided at first.
     pub prompt_tokens: Vec<u16>,
+    /// Whether the prompt has already been processed and cached.
+    pub prompt_cached: bool,
     /// Tokens that have been computed and cached.
     pub prefix: Tokens,
     /// Tokens to be computed.
@@ -234,15 +237,16 @@ where
     model: Arc<M>,
     state: Arc<S>,
     slots: Arc<Mutex<Vec<SlotState>>>,
-    backed: Arc<Mutex<Trie<Tokens, B>>>,
+    backed: Arc<Mutex<Trie<Tokens, Arc<B>>>>,
     max_runtime_batch: usize,
+    state_chunk_size: usize,
     embed_layer: usize,
     penalty_free_tokens: HashSet<u16>,
 }
 
 impl<M, S, B> Runtime<M, S, B>
 where
-    for<'a> B: BackedState + Clone + FromBuilder<Builder<'a> = StateBuilder, Error = Infallible>,
+    for<'a> B: BackedState + FromBuilder<Builder<'a> = StateBuilder, Error = Infallible>,
     S: ModelState<BackedState = B>,
     M: Model<State = S>,
 {
@@ -251,6 +255,7 @@ where
         model: M,
         state: S,
         max_runtime_batch: usize,
+        state_chunk_size: usize,
         embed_layer: usize,
     ) -> Self {
         let tokenizer = Arc::new(tokenizer);
@@ -275,6 +280,7 @@ where
             slots: Arc::new(Mutex::new(slots)),
             backed: Arc::new(Mutex::new(Trie::new())),
             max_runtime_batch,
+            state_chunk_size,
             embed_layer,
             penalty_free_tokens,
         }
@@ -325,7 +331,7 @@ where
 
         // here we try to search for the longest common prefix in the memory cache and checkout the state from that point
         // should there be a cache miss, an initial state is returned
-        let mut checkout = |batch: usize| -> (Vec<u16>, B) {
+        let mut checkout = |batch: usize| -> (Vec<u16>, Arc<B>) {
             let prefix = cache.longest_common_prefix(tokens.as_token_slice());
             let len = (1..=prefix.len())
                 .rev()
@@ -339,9 +345,10 @@ where
                 .unwrap_or_else(|| {
                     let context = self.model.context();
                     let info = self.model.info();
-                    StateBuilder::new(context, info)
-                        .with_chunk_size(STATE_CHUNK_SIZE)
-                        .build_backed()
+                    let backed = StateBuilder::new(context, info)
+                        .with_chunk_size(self.state_chunk_size)
+                        .build_backed();
+                    Arc::new(backed)
                 });
             if len > 0 {
                 let key = Tokens(prefix.clone());
@@ -379,10 +386,10 @@ where
 
                 std::mem::swap(&mut state, &mut slots[batch]);
                 match state {
-                    SlotState::Idle(content, _) => {
-                        let backed = self.state.back_batch(batch).await.expect("back state");
-                        cache.insert(content, backed);
-                        self.state.load_batch(&reload, batch).expect("load state");
+                    SlotState::Idle(_, _) => {
+                        // let backed = self.state.back_batch(batch).await.unwarp();
+                        // cache.insert(content, backed.into());
+                        self.state.load_batch(&reload, batch).unwrap();
                         SlotResult::Fault(batch)
                     }
                     _ => unreachable!(),
@@ -426,70 +433,68 @@ where
         }
     }
 
+    /// This critical section synchronizes `slots` and fills `payloads`.
+    async fn prepare(&self, payloads: &mut [Payload]) {
+        let mut slots = self.slots.lock().await;
+        let mut cache = self.backed.lock().await;
+
+        // sync payloads and slots: kill dead payloads
+        for (slot, payload) in slots.iter().zip_eq(payloads.iter_mut()) {
+            if !(payload.is_empty() || matches!(slot, SlotState::Busy)) {
+                log::warn!("payload should either be empty or slot should be busy");
+                *payload = Payload::Empty;
+            }
+        }
+
+        // reset all finished slots to idle
+        for (batch, payload) in payloads.iter_mut().enumerate() {
+            let Some(context) = payload.take() else {
+                continue;
+            };
+
+            let backed = self.state.back_batch(batch).await.unwrap();
+
+            if context.request.embed {
+                let embed = backed.embed(0, self.embed_layer);
+                let _ = context.sender.send(Token::Embed(embed));
+            }
+
+            cache.insert(context.prefix.clone(), backed.into());
+            log::info!("backed slot {} of length {}", batch, context.prefix.len());
+
+            assert!(matches!(slots[batch], SlotState::Busy));
+            slots[batch] = SlotState::Idle(context.prefix, Instant::now());
+        }
+
+        // take data from some waiting slots
+        let occupancy = payloads
+            .iter()
+            .filter(|x| matches!(x, Payload::Busy(_)))
+            .count();
+        let remain = self.max_runtime_batch - self.max_runtime_batch.min(occupancy);
+        let batches = slots
+            .iter()
+            .enumerate()
+            .filter(|(_, slot)| matches!(slot, SlotState::Wait(_)))
+            .take(remain)
+            .map(|(batch, _)| batch)
+            .collect_vec();
+        for batch in batches {
+            let mut slot = SlotState::Busy;
+            std::mem::swap(&mut slots[batch], &mut slot);
+            match slot {
+                SlotState::Wait(context) => {
+                    let _ = context.sender.send(Token::Start);
+                    assert!(matches!(payloads[batch], Payload::Empty));
+                    payloads[batch] = Payload::Busy(*context);
+                }
+                _ => unreachable!(),
+            };
+        }
+    }
+
     pub async fn process(&self, payloads: &mut [Payload]) -> Result<()> {
-        {
-            let mut slots = self.slots.lock().await;
-            let mut cache = self.backed.lock().await;
-
-            // payloads.resize_with(self.state.num_batch(), Default::default);
-            // sync payloads and slots: kill dead payloads
-            for (slot, payload) in slots.iter().zip_eq(payloads.iter_mut()) {
-                if !payload.is_empty() && !matches!(slot, SlotState::Busy) {
-                    *payload = Payload::Empty;
-                }
-            }
-
-            // reset all finished slots to idle
-            for (batch, payload) in payloads.iter_mut().enumerate() {
-                let Some(context) = payload.take() else {
-                    continue;
-                };
-
-                assert!(matches!(slots[batch], SlotState::Busy));
-                slots[batch] = SlotState::Idle(context.prefix, Instant::now());
-
-                if let Some(backed) = match &slots[batch] {
-                    SlotState::Idle(content, _) => {
-                        log::info!("backed slot {}", batch);
-                        let backed = self.state.back_batch(batch).await.expect("back state");
-                        cache.insert(content.clone(), backed.clone());
-                        Some(backed)
-                    }
-                    _ => None,
-                } {
-                    if context.request.embed {
-                        let embed = backed.embed(0, self.embed_layer);
-                        let _ = context.sender.send(Token::Embed(embed));
-                    }
-                }
-            }
-
-            // take data from some waiting slots
-            let occupancy = payloads
-                .iter()
-                .filter(|x| matches!(x, Payload::Busy(_)))
-                .count();
-            let remain = self.max_runtime_batch - self.max_runtime_batch.min(occupancy);
-            let batches = slots
-                .iter()
-                .enumerate()
-                .filter(|(_, slot)| matches!(slot, SlotState::Wait(_)))
-                .take(remain)
-                .map(|(batch, _)| batch)
-                .collect_vec();
-            for batch in batches {
-                let mut slot = SlotState::Busy;
-                std::mem::swap(&mut slots[batch], &mut slot);
-                match slot {
-                    SlotState::Wait(context) => {
-                        let _ = context.sender.send(Token::Start);
-                        assert!(matches!(payloads[batch], Payload::Empty));
-                        payloads[batch] = Payload::Busy(*context);
-                    }
-                    _ => unreachable!(),
-                };
-            }
-        };
+        self.prepare(payloads).await;
 
         let mut inputs = payloads
             .iter()
@@ -545,15 +550,18 @@ where
             })
             .collect();
 
-        let probs = match occupancy {
+        // compute probabilities
+        let outputs = match occupancy {
             0 => vec![ModelOutput::None; payloads.len()],
             _ => self.model.softmax(outputs).await?,
         };
-        let output_tokens: Vec<_> = payloads
+
+        // sample tokens
+        let outputs: Vec<_> = payloads
             .par_iter()
-            .zip_eq(probs.into_par_iter())
-            .map(|(payload, probs)| match payload {
-                Payload::Busy(context) => match probs {
+            .zip_eq(outputs.into_par_iter())
+            .map(|(payload, outputs)| match payload {
+                Payload::Busy(context) => match outputs {
                     ModelOutput::None => None,
                     ModelOutput::Last(data) => Some(context.request.sampler.sample(data)),
                     ModelOutput::Full(_) => unreachable!(),
@@ -562,11 +570,12 @@ where
             })
             .collect();
 
-        for (payload, token, input) in itertools::multizip((
-            payloads.iter_mut(),
-            output_tokens.into_iter(),
-            inputs.into_iter(),
-        )) {
+        for (batch, payload, token, input) in payloads
+            .iter_mut()
+            .zip_eq(outputs.into_iter().zip_eq(inputs.into_iter()))
+            .enumerate()
+            .map(|(i, (x, (y, z)))| (i, x, y, z))
+        {
             let Payload::Busy(context) = payload else {
                 continue;
             };
@@ -589,6 +598,21 @@ where
                 continue;
             };
 
+            // cache the prompt if it is too long.
+            if !context.prompt_cached && context.prompt_tokens.len() > PROMPT_CACHE_TOKENS {
+                let mut cache = self.backed.lock().await;
+                let backed = self.state.back_batch(batch).await.unwrap();
+
+                cache.insert(context.prefix.clone(), backed.into());
+                context.prompt_cached = true;
+
+                log::info!(
+                    "backed prompt of slot {} of length {}",
+                    batch,
+                    context.prefix.len()
+                );
+            }
+
             assert_eq!(context.suffix.len(), 0);
             context.suffix.0.push(token);
 
@@ -603,12 +627,6 @@ where
             context.buffer.append(&mut word);
             context.model_tokens.push(token);
 
-            // if let Ok(word) = String::from_utf8(context.output_buffer.clone()) {
-            //     let _ = context.sender.send(Token::Token(word));
-            //     context.output_buffer.clear();
-            // }
-
-            // let model_text = String::from_utf8_lossy(&context.model_text);
             let count_tokens = || {
                 let prompt_tokens = context.prompt_tokens.len();
                 let completion_tokens = context.model_tokens.len();
@@ -628,53 +646,49 @@ where
             };
 
             // here we detect if there is a stop word in our buffer
-            let (output_mid, stop_matched) = context
+            let ((head, tail), stop_matched) = context
                 .request
                 .stop
                 .iter()
                 .map(|stop| {
                     let stop = stop.as_bytes();
-                    let mut ptr_safe = 0;
-                    let mut ptr_unsafe = 0;
-                    while ptr_unsafe < context.buffer.len() {
+                    let mut index_safe = 0;
+                    let mut index_unsafe = 0;
+                    while index_unsafe < context.buffer.len() {
                         // the maximum match of the current stop string
-                        let ptr_stop = ptr_unsafe - ptr_safe;
-                        if ptr_stop >= stop.len() {
+                        let index_stop = index_unsafe - index_safe;
+                        if index_stop >= stop.len() {
                             // we have a total match
-                            return (ptr_safe, true);
+                            return (index_safe, true);
                         }
 
-                        let output = context.buffer[ptr_unsafe];
-                        let stop = stop[ptr_stop];
+                        let output = context.buffer[index_unsafe];
+                        let stop = stop[index_stop];
 
-                        ptr_unsafe += 1;
+                        index_unsafe += 1;
                         if output != stop {
-                            ptr_safe = ptr_unsafe;
+                            index_safe = index_unsafe;
                         }
                     }
-                    // end check
-                    let ended = ptr_unsafe - ptr_safe >= stop.len();
-                    (ptr_safe, ended)
+                    (index_safe, index_unsafe - index_safe >= stop.len())
                 })
                 .min_by(|x, y| match (x.1, y.1) {
                     (true, false) => Ordering::Less,
                     (false, true) => Ordering::Greater,
                     _ => x.0.cmp(&y.0),
                 })
-                .unwrap_or((context.buffer.len(), false));
-
-            let (head, tail) = context.buffer.split_at(output_mid);
-            let output = head.to_vec();
+                .map(|(mid, matched)| (context.buffer.split_at(mid), matched))
+                .unwrap_or(((&context.buffer[..], &[]), false));
 
             if context.sender.is_disconnected() {
                 done = true;
             } else if stop_matched {
-                let output = String::from_utf8_lossy(&output);
+                let output = String::from_utf8_lossy(head);
                 let _ = context.sender.send(Token::Token(output.into()));
                 finish(FinishReason::Stop);
             } else if context.model_tokens.len() >= context.request.max_tokens {
                 finish(FinishReason::Length);
-            } else if let Ok(word) = String::from_utf8(output) {
+            } else if let Ok(word) = String::from_utf8(head.to_vec()) {
                 let _ = context.sender.send(Token::Token(word));
                 context.buffer = tail.to_vec();
             }

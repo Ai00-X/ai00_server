@@ -25,6 +25,7 @@ impl From<Config> for ReloadRequest {
                     turbo,
                     token_chunk_size,
                     head_chunk_size,
+                    state_chunk_size,
                     max_runtime_batch,
                     max_batch,
                     embed_layer,
@@ -45,6 +46,7 @@ impl From<Config> for ReloadRequest {
             turbo,
             token_chunk_size,
             head_chunk_size,
+            state_chunk_size,
             max_runtime_batch,
             max_batch,
             embed_layer,
@@ -70,6 +72,8 @@ pub struct Model {
     pub token_chunk_size: usize,
     /// The chunk size for each split of the head matrix.
     pub head_chunk_size: usize,
+    /// The chunk size of layers in model state.
+    pub state_chunk_size: usize,
     /// Maximum number of batches that are active at once.
     pub max_runtime_batch: usize,
     /// Number of states that are cached on GPU.
@@ -89,6 +93,7 @@ impl Default for Model {
             turbo: true,
             token_chunk_size: 32,
             head_chunk_size: 8192,
+            state_chunk_size: 4,
             max_runtime_batch: 8,
             max_batch: 16,
             embed_layer: 2,
