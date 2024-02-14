@@ -23,10 +23,7 @@ use web_rwkv::{
     tokenizer::Tokenizer,
 };
 
-use crate::{
-    config::Setting, Environment, FinishReason, GenerateRequest, Token, TokenCounter,
-    STATE_CHUNK_SIZE,
-};
+use crate::{Environment, FinishReason, GenerateRequest, Token, TokenCounter, STATE_CHUNK_SIZE};
 
 const PENALTY_FREE_LIST: [&str; 5] = ["\n", ",", ".", "\u{002c}", "\u{002f}"];
 
@@ -343,7 +340,6 @@ where
                     let context = self.model.context();
                     let info = self.model.info();
                     StateBuilder::new(context, info)
-                        .with_num_batch(1)
                         .with_chunk_size(STATE_CHUNK_SIZE)
                         .build_backed()
                 });
@@ -430,7 +426,7 @@ where
         }
     }
 
-    pub async fn process(&self, payloads: &mut [Payload], setting: &Setting) -> Result<()> {
+    pub async fn process(&self, payloads: &mut [Payload]) -> Result<()> {
         {
             let mut slots = self.slots.lock().await;
             let mut cache = self.backed.lock().await;
@@ -636,7 +632,6 @@ where
                 .request
                 .stop
                 .iter()
-                .chain(setting.stop.iter())
                 .map(|stop| {
                     let stop = stop.as_bytes();
                     let mut ptr_safe = 0;
@@ -729,9 +724,9 @@ macro_rules! impl_runtime_untyped {
             }
 
             #[inline]
-            pub async fn process(&self, payloads: &mut [Payload], setting: &Setting) -> Result<()> {
+            pub async fn process(&self, payloads: &mut [Payload]) -> Result<()> {
                 match self {
-                    $(RuntimeUntyped::$variant(runtime) => runtime.process(payloads, setting).await,)*
+                    $(RuntimeUntyped::$variant(runtime) => runtime.process(payloads).await,)*
                 }
             }
         }
@@ -741,12 +736,12 @@ macro_rules! impl_runtime_untyped {
 impl_runtime_untyped!(V4, V5, V6);
 
 #[tokio::main]
-pub async fn run(receiver: Receiver<()>, env: Arc<RwLock<Environment<'_>>>, setting: Setting) {
+pub async fn run(receiver: Receiver<()>, env: Arc<RwLock<Environment<'_>>>) {
     while let Ok(()) = receiver.recv_async().await {
         if let Environment::Loaded { runtime, .. } = &*env.read().await {
             let mut payloads = vec![Payload::default(); runtime.num_batch()];
             'run: loop {
-                if let Err(err) = runtime.process(&mut payloads, &setting).await {
+                if let Err(err) = runtime.process(&mut payloads).await {
                     log::error!("{}", err);
                     break 'run;
                 }

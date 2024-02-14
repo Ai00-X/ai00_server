@@ -14,7 +14,7 @@ use axum::{
     Router,
 };
 use clap::Parser;
-use config::{AdapterOption, Config, Setting};
+use config::{AdapterOption, Config};
 use flume::{Receiver, Sender};
 use itertools::Itertools;
 use memmap2::Mmap;
@@ -324,14 +324,14 @@ fn load_config(path: impl AsRef<Path>) -> Result<Config> {
 }
 
 #[tokio::main]
-async fn model_route(receiver: Receiver<ThreadRequest>, setting: Setting) -> Result<()> {
+async fn model_route(receiver: Receiver<ThreadRequest>) -> Result<()> {
     let env: Arc<RwLock<Environment>> = Default::default();
     let queue: Arc<Mutex<Vec<GenerateContext>>> = Default::default();
 
     let sender = {
         let (sender, receiver) = flume::unbounded();
         let env = env.clone();
-        tokio::task::spawn_blocking(move || run::run(receiver, env, setting));
+        tokio::task::spawn_blocking(move || run::run(receiver, env));
         sender
     };
 
@@ -575,20 +575,16 @@ async fn main() {
     let args = Args::parse();
     let (sender, receiver) = flume::unbounded::<ThreadRequest>();
 
-    let (setting, request) = {
+    let request = {
         let path = args
             .config
             .clone()
             .unwrap_or("assets/configs/Config.toml".into());
         log::info!("reading config {}...", path.to_string_lossy());
-        let config = load_config(path).expect("load config failed");
-
-        let setting = config.setting.clone();
-        let request = config.into();
-        (setting, request)
+        load_config(path).expect("load config failed").into()
     };
 
-    tokio::task::spawn_blocking(move || model_route(receiver, setting));
+    tokio::task::spawn_blocking(move || model_route(receiver));
     let _ = sender.send(ThreadRequest::Reload {
         request,
         sender: None,
