@@ -129,7 +129,7 @@ impl Environment<'_> {
                     log::info!("failed to queue task");
                     queue.push(*context);
                 }
-                SlotResult::Error => log::error!("empty task is not queued"),
+                SlotResult::Error => log::warn!("empty task is not queued"),
             },
             Environment::None => queue.push(context),
         };
