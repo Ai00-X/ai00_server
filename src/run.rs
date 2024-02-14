@@ -87,17 +87,17 @@ impl std::cmp::PartialOrd for SlotChoice {
     }
 }
 
-#[derive(Debug, Default)]
+#[derive(Debug, Clone, Default)]
 pub enum Payload {
     #[default]
     Empty,
-    Busy(Box<GenerateContext>),
-    Done(Box<GenerateContext>),
+    Busy(GenerateContext),
+    Done(GenerateContext),
 }
 
 impl Payload {
     /// Takes out the value if `self` is [`Payload::Done`], and reset `self` to [`Payload::Empty`].
-    pub fn take(&mut self) -> Option<Box<GenerateContext>> {
+    pub fn take(&mut self) -> Option<GenerateContext> {
         match std::mem::take(self) {
             Payload::Done(context) => Some(context),
             payload => {
@@ -217,7 +217,7 @@ pub struct GenerateContext {
     /// Texts that are output by the model.
     pub model_text: Vec<u8>,
     /// Model may output partial utf-8. This makes sure the output is always valid.
-    pub output_buffer: Vec<u8>,
+    pub buffer: Vec<u8>,
     /// Tokens that are output by the model.
     pub model_tokens: Vec<u16>,
     /// Generate request provided by the caller.
@@ -285,6 +285,10 @@ where
 
     pub fn info(&self) -> &ModelInfo {
         self.model.info()
+    }
+
+    pub fn num_batch(&self) -> usize {
+        self.state.num_batch()
     }
 
     pub fn tokenizer(&self) -> Arc<Tokenizer> {
@@ -426,12 +430,12 @@ where
         }
     }
 
-    pub async fn process(&self, payloads: &mut Vec<Payload>, setting: &Setting) -> Result<()> {
+    pub async fn process(&self, payloads: &mut [Payload], setting: &Setting) -> Result<()> {
         {
             let mut slots = self.slots.lock().await;
             let mut cache = self.backed.lock().await;
 
-            payloads.resize_with(self.state.num_batch(), Default::default);
+            // payloads.resize_with(self.state.num_batch(), Default::default);
             // sync payloads and slots: kill dead payloads
             for (slot, payload) in slots.iter().zip_eq(payloads.iter_mut()) {
                 if !payload.is_empty() && !matches!(slot, SlotState::Busy) {
@@ -484,7 +488,7 @@ where
                     SlotState::Wait(context) => {
                         let _ = context.sender.send(Token::Start);
                         assert!(matches!(payloads[batch], Payload::Empty));
-                        payloads[batch] = Payload::Busy(context);
+                        payloads[batch] = Payload::Busy(*context);
                     }
                     _ => unreachable!(),
                 };
@@ -600,7 +604,7 @@ where
 
             let mut word = self.tokenizer.decode(&[token])?;
             context.model_text.append(&mut word.clone());
-            context.output_buffer.append(&mut word);
+            context.buffer.append(&mut word);
             context.model_tokens.push(token);
 
             // if let Ok(word) = String::from_utf8(context.output_buffer.clone()) {
@@ -627,45 +631,45 @@ where
                 done = true;
             };
 
-            let (output_pointer, stop_matched) = context
+            // here we detect if there is a stop word in our buffer
+            let (output_mid, stop_matched) = context
                 .request
                 .stop
                 .iter()
                 .chain(setting.stop.iter())
                 .map(|stop| {
                     let stop = stop.as_bytes();
-                    let mut pointer_safe = 0;
-                    let mut pointer_unsafe = 0;
-                    while pointer_unsafe < context.output_buffer.len() {
+                    let mut ptr_safe = 0;
+                    let mut ptr_unsafe = 0;
+                    while ptr_unsafe < context.buffer.len() {
                         // the maximum match of the current stop string
-                        let pointer_stop = pointer_unsafe - pointer_safe;
-                        if pointer_stop >= stop.len() {
+                        let ptr_stop = ptr_unsafe - ptr_safe;
+                        if ptr_stop >= stop.len() {
                             // we have a total match
-                            return (pointer_safe, true);
+                            return (ptr_safe, true);
                         }
 
-                        let output = context.output_buffer[pointer_unsafe];
-                        let stop = stop[pointer_stop];
+                        let output = context.buffer[ptr_unsafe];
+                        let stop = stop[ptr_stop];
 
-                        pointer_unsafe += 1;
+                        ptr_unsafe += 1;
                         if output != stop {
-                            pointer_safe = pointer_unsafe;
+                            ptr_safe = ptr_unsafe;
                         }
                     }
                     // end check
-                    if pointer_unsafe - pointer_safe >= stop.len() {
-                        (pointer_safe, true)
-                    } else {
-                        (pointer_safe, false)
-                    }
+                    let ended = ptr_unsafe - ptr_safe >= stop.len();
+                    (ptr_safe, ended)
                 })
                 .min_by(|x, y| match (x.1, y.1) {
                     (true, false) => Ordering::Less,
                     (false, true) => Ordering::Greater,
                     _ => x.0.cmp(&y.0),
                 })
-                .unwrap_or((context.output_buffer.len(), false));
-            let output = context.output_buffer[..output_pointer].to_vec();
+                .unwrap_or((context.buffer.len(), false));
+
+            let (head, tail) = context.buffer.split_at(output_mid);
+            let output = head.to_vec();
 
             if context.sender.is_disconnected() {
                 done = true;
@@ -677,7 +681,7 @@ where
                 finish(FinishReason::Length);
             } else if let Ok(word) = String::from_utf8(output) {
                 let _ = context.sender.send(Token::Token(word));
-                context.output_buffer = context.output_buffer[output_pointer..].to_vec();
+                context.buffer = tail.to_vec();
             }
 
             done.then(|| payload.finalize());
@@ -704,6 +708,13 @@ macro_rules! impl_runtime_untyped {
             }
 
             #[inline]
+            pub fn num_batch(&self) -> usize {
+                match self {
+                    $(RuntimeUntyped::$variant(runtime) => runtime.num_batch(),)*
+                }
+            }
+
+            #[inline]
             pub fn tokenizer(&self) -> Arc<Tokenizer> {
                 match self {
                     $(RuntimeUntyped::$variant(runtime) => runtime.tokenizer(),)*
@@ -718,7 +729,7 @@ macro_rules! impl_runtime_untyped {
             }
 
             #[inline]
-            pub async fn process(&self, payloads: &mut Vec<Payload>, setting: &Setting) -> Result<()> {
+            pub async fn process(&self, payloads: &mut [Payload], setting: &Setting) -> Result<()> {
                 match self {
                     $(RuntimeUntyped::$variant(runtime) => runtime.process(payloads, setting).await,)*
                 }
@@ -732,15 +743,16 @@ impl_runtime_untyped!(V4, V5, V6);
 #[tokio::main]
 pub async fn run(receiver: Receiver<()>, env: Arc<RwLock<Environment<'_>>>, setting: Setting) {
     while let Ok(()) = receiver.recv_async().await {
-        let mut payloads = vec![];
-        'run: loop {
-            if let Environment::Loaded { runtime, .. } = &*env.read().await {
+        if let Environment::Loaded { runtime, .. } = &*env.read().await {
+            let mut payloads = vec![Payload::default(); runtime.num_batch()];
+            'run: loop {
                 if let Err(err) = runtime.process(&mut payloads, &setting).await {
                     log::error!("{}", err);
+                    break 'run;
                 }
-            }
-            if payloads.iter().all(Payload::is_empty) {
-                break 'run;
+                if payloads.iter().all(Payload::is_empty) {
+                    break 'run;
+                }
             }
         }
     }

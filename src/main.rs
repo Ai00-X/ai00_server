@@ -496,7 +496,7 @@ async fn model_route(receiver: Receiver<ThreadRequest>, setting: Setting) -> Res
                         suffix: tokens,
                         penalties,
                         model_text: Default::default(),
-                        output_buffer: Default::default(),
+                        buffer: Default::default(),
                         model_tokens: Default::default(),
                         request,
                         sender: token_sender,
