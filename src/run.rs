@@ -247,7 +247,7 @@ pub trait Runner {
 }
 
 #[derive(Debug)]
-struct RuntimeInternal<M, S, B>
+pub struct Runtime<M, S, B>
 where
     B: BackedState,
     S: ModelState<BackedState = B>,
@@ -264,12 +264,44 @@ where
     penalty_free_tokens: HashSet<u16>,
 }
 
-impl<M, S, B> RuntimeInternal<M, S, B>
+impl<M, S, B> Runtime<M, S, B>
 where
     for<'a> B: BackedState + FromBuilder<Builder<'a> = StateBuilder, Error = Infallible>,
     S: ModelState<BackedState = B>,
     M: Model<State = S>,
 {
+    pub fn new(
+        tokenizer: Tokenizer,
+        model: M,
+        state: S,
+        max_runtime_batch: usize,
+        state_chunk_size: usize,
+        embed_layer: usize,
+    ) -> Self {
+        let slots = (0..state.num_batch())
+            .map(|_| SlotState::default())
+            .collect();
+        let penalty_free_tokens = (0..u16::MAX)
+            .filter(|&token| {
+                let word = tokenizer.decode(&[token]).unwrap_or_default();
+                let word = String::from_utf8_lossy(&word).into_owned();
+                PENALTY_FREE_LIST.iter().any(|x| word.contains(x))
+            })
+            .collect();
+
+        Self {
+            model,
+            state,
+            tokenizer: Arc::new(tokenizer),
+            slots: Arc::new(Mutex::new(slots)),
+            backed: Arc::new(Mutex::new(Trie::new())),
+            max_runtime_batch,
+            state_chunk_size,
+            embed_layer,
+            penalty_free_tokens,
+        }
+    }
+
     /// Queue an inference task.
     async fn queue(&self, context: GenerateContext) -> SlotResult {
         let mut slots = self.slots.lock().await;
@@ -672,52 +704,6 @@ where
     }
 }
 
-#[derive(Debug)]
-pub struct Runtime<M, S, B>(RuntimeInternal<M, S, B>)
-where
-    B: BackedState,
-    S: ModelState<BackedState = B>,
-    M: Model<State = S>;
-
-impl<M, S, B> Runtime<M, S, B>
-where
-    B: BackedState,
-    S: ModelState<BackedState = B>,
-    M: Model<State = S>,
-{
-    pub fn new(
-        tokenizer: Tokenizer,
-        model: M,
-        state: S,
-        max_runtime_batch: usize,
-        state_chunk_size: usize,
-        embed_layer: usize,
-    ) -> Self {
-        let slots = (0..state.num_batch())
-            .map(|_| SlotState::default())
-            .collect();
-        let penalty_free_tokens = (0..u16::MAX)
-            .filter(|&token| {
-                let word = tokenizer.decode(&[token]).unwrap_or_default();
-                let word = String::from_utf8_lossy(&word).into_owned();
-                PENALTY_FREE_LIST.iter().any(|x| word.contains(x))
-            })
-            .collect();
-
-        Self(RuntimeInternal {
-            model,
-            state,
-            tokenizer: Arc::new(tokenizer),
-            slots: Arc::new(Mutex::new(slots)),
-            backed: Arc::new(Mutex::new(Trie::new())),
-            max_runtime_batch,
-            state_chunk_size,
-            embed_layer,
-            penalty_free_tokens,
-        })
-    }
-}
-
 impl<M, S, B> Runner for Runtime<M, S, B>
 where
     B: BackedState + Send + Sync,
@@ -726,17 +712,17 @@ where
 {
     #[inline]
     fn info(&self) -> &ModelInfo {
-        self.0.model.info()
+        self.model.info()
     }
 
     #[inline]
     fn num_batch(&self) -> usize {
-        self.0.state.num_batch()
+        self.state.num_batch()
     }
 
     #[inline]
     fn tokenizer(&self) -> Arc<Tokenizer> {
-        self.0.tokenizer.clone()
+        self.tokenizer.clone()
     }
 
     #[inline]
@@ -744,7 +730,7 @@ where
         &self,
         context: GenerateContext,
     ) -> Pin<Box<dyn Future<Output = SlotResult> + Send + Sync + '_>> {
-        Box::pin(async move { self.0.queue(context).await })
+        Box::pin(async move { self.queue(context).await })
     }
 
     #[inline]
@@ -752,7 +738,7 @@ where
         &'a self,
         payloads: &'a mut [Payload],
     ) -> Pin<Box<dyn Future<Output = Result<()>> + 'a>> {
-        Box::pin(async move { self.0.process(payloads).await })
+        Box::pin(async move { self.process(payloads).await })
     }
 }
 
