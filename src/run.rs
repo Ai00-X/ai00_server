@@ -730,7 +730,7 @@ where
         &self,
         context: GenerateContext,
     ) -> Pin<Box<dyn Future<Output = SlotResult> + Send + Sync + '_>> {
-        Box::pin(async move { self.queue(context).await })
+        Box::pin(self.queue(context))
     }
 
     #[inline]
@@ -738,7 +738,7 @@ where
         &'a self,
         payloads: &'a mut [Payload],
     ) -> Pin<Box<dyn Future<Output = Result<()>> + 'a>> {
-        Box::pin(async move { self.process(payloads).await })
+        Box::pin(self.process(payloads))
     }
 }
 
