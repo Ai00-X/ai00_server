@@ -3,6 +3,8 @@ use std::{
     cmp::Ordering,
     collections::{HashMap, HashSet},
     convert::Infallible,
+    future::Future,
+    pin::Pin,
     sync::Arc,
     time::Instant,
 };
@@ -17,8 +19,8 @@ use rayon::prelude::{
 use tokio::sync::{Mutex, RwLock};
 use web_rwkv::{
     model::{
-        v4, v5, v6, BackedState, FromBuilder, Model, ModelInfo, ModelInput, ModelOutput,
-        ModelState, StateBuilder,
+        BackedState, FromBuilder, Model, ModelInfo, ModelInput, ModelOutput, ModelState,
+        StateBuilder,
     },
     tokenizer::Tokenizer,
 };
@@ -226,16 +228,34 @@ pub struct GenerateContext {
     pub sender: Sender<Token>,
 }
 
-#[derive(Debug, Clone)]
-pub struct Runtime<M, S, B>
+pub trait Runner {
+    fn info(&self) -> &ModelInfo;
+    fn num_batch(&self) -> usize;
+    fn tokenizer(&self) -> Arc<Tokenizer>;
+
+    /// Queue an inference task.
+    fn queue(
+        &self,
+        context: GenerateContext,
+    ) -> Pin<Box<dyn Future<Output = SlotResult> + Send + Sync + '_>>;
+
+    /// Note: only called on the process thread.
+    fn process<'a>(
+        &'a self,
+        payloads: &'a mut [Payload],
+    ) -> Pin<Box<dyn Future<Output = Result<()>> + 'a>>;
+}
+
+#[derive(Debug)]
+struct RuntimeInternal<M, S, B>
 where
     B: BackedState,
     S: ModelState<BackedState = B>,
     M: Model<State = S>,
 {
+    model: M,
+    state: S,
     tokenizer: Arc<Tokenizer>,
-    model: Arc<M>,
-    state: Arc<S>,
     slots: Arc<Mutex<Vec<SlotState>>>,
     backed: Arc<Mutex<Trie<Tokens, Arc<B>>>>,
     max_runtime_batch: usize,
@@ -244,62 +264,14 @@ where
     penalty_free_tokens: HashSet<u16>,
 }
 
-impl<M, S, B> Runtime<M, S, B>
+impl<M, S, B> RuntimeInternal<M, S, B>
 where
     for<'a> B: BackedState + FromBuilder<Builder<'a> = StateBuilder, Error = Infallible>,
     S: ModelState<BackedState = B>,
     M: Model<State = S>,
 {
-    pub fn new(
-        tokenizer: Tokenizer,
-        model: M,
-        state: S,
-        max_runtime_batch: usize,
-        state_chunk_size: usize,
-        embed_layer: usize,
-    ) -> Self {
-        let tokenizer = Arc::new(tokenizer);
-        let model = Arc::new(model);
-        let state = Arc::new(state);
-
-        let slots = (0..state.num_batch())
-            .map(|_| SlotState::default())
-            .collect();
-        let penalty_free_tokens = (0..u16::MAX)
-            .filter(|&token| {
-                let word = tokenizer.decode(&[token]).unwrap_or_default();
-                let word = String::from_utf8_lossy(&word).into_owned();
-                PENALTY_FREE_LIST.iter().any(|x| word.contains(x))
-            })
-            .collect();
-
-        Self {
-            tokenizer,
-            model,
-            state,
-            slots: Arc::new(Mutex::new(slots)),
-            backed: Arc::new(Mutex::new(Trie::new())),
-            max_runtime_batch,
-            state_chunk_size,
-            embed_layer,
-            penalty_free_tokens,
-        }
-    }
-
-    pub fn info(&self) -> &ModelInfo {
-        self.model.info()
-    }
-
-    pub fn num_batch(&self) -> usize {
-        self.state.num_batch()
-    }
-
-    pub fn tokenizer(&self) -> Arc<Tokenizer> {
-        self.tokenizer.clone()
-    }
-
     /// Queue an inference task.
-    pub async fn queue(&self, context: GenerateContext) -> SlotResult {
+    async fn queue(&self, context: GenerateContext) -> SlotResult {
         let mut slots = self.slots.lock().await;
         let mut cache = self.backed.lock().await;
 
@@ -493,7 +465,7 @@ where
         }
     }
 
-    pub async fn process(&self, payloads: &mut [Payload]) -> Result<()> {
+    async fn process(&self, payloads: &mut [Payload]) -> Result<()> {
         self.prepare(payloads).await;
 
         let mut inputs = payloads
@@ -700,57 +672,92 @@ where
     }
 }
 
-pub enum RuntimeUntyped<'a> {
-    V4(Runtime<v4::Model<'a>, v4::ModelState, v4::BackedState>),
-    V5(Runtime<v5::Model<'a>, v5::ModelState, v5::BackedState>),
-    V6(Runtime<v6::Model<'a>, v6::ModelState, v6::BackedState>),
+#[derive(Debug)]
+pub struct Runtime<M, S, B>(RuntimeInternal<M, S, B>)
+where
+    B: BackedState,
+    S: ModelState<BackedState = B>,
+    M: Model<State = S>;
+
+impl<M, S, B> Runtime<M, S, B>
+where
+    B: BackedState,
+    S: ModelState<BackedState = B>,
+    M: Model<State = S>,
+{
+    pub fn new(
+        tokenizer: Tokenizer,
+        model: M,
+        state: S,
+        max_runtime_batch: usize,
+        state_chunk_size: usize,
+        embed_layer: usize,
+    ) -> Self {
+        let slots = (0..state.num_batch())
+            .map(|_| SlotState::default())
+            .collect();
+        let penalty_free_tokens = (0..u16::MAX)
+            .filter(|&token| {
+                let word = tokenizer.decode(&[token]).unwrap_or_default();
+                let word = String::from_utf8_lossy(&word).into_owned();
+                PENALTY_FREE_LIST.iter().any(|x| word.contains(x))
+            })
+            .collect();
+
+        Self(RuntimeInternal {
+            model,
+            state,
+            tokenizer: Arc::new(tokenizer),
+            slots: Arc::new(Mutex::new(slots)),
+            backed: Arc::new(Mutex::new(Trie::new())),
+            max_runtime_batch,
+            state_chunk_size,
+            embed_layer,
+            penalty_free_tokens,
+        })
+    }
 }
 
-macro_rules! impl_runtime_untyped {
-    ($($variant:ident),* $(,)?) => {
-        impl RuntimeUntyped<'_> {
-            #[inline]
-            pub fn info(&self) -> &ModelInfo {
-                match self {
-                    $(RuntimeUntyped::$variant(runtime) => runtime.info(),)*
-                }
-            }
+impl<M, S, B> Runner for Runtime<M, S, B>
+where
+    B: BackedState + Send + Sync,
+    S: ModelState<BackedState = B> + Send + Sync,
+    M: Model<State = S> + Send + Sync,
+{
+    #[inline]
+    fn info(&self) -> &ModelInfo {
+        self.0.model.info()
+    }
 
-            #[inline]
-            pub fn num_batch(&self) -> usize {
-                match self {
-                    $(RuntimeUntyped::$variant(runtime) => runtime.num_batch(),)*
-                }
-            }
+    #[inline]
+    fn num_batch(&self) -> usize {
+        self.0.state.num_batch()
+    }
 
-            #[inline]
-            pub fn tokenizer(&self) -> Arc<Tokenizer> {
-                match self {
-                    $(RuntimeUntyped::$variant(runtime) => runtime.tokenizer(),)*
-                }
-            }
+    #[inline]
+    fn tokenizer(&self) -> Arc<Tokenizer> {
+        self.0.tokenizer.clone()
+    }
 
-            #[inline]
-            pub async fn queue(&self, context: GenerateContext) -> SlotResult {
-                match self {
-                    $(RuntimeUntyped::$variant(runtime) => runtime.queue(context).await,)*
-                }
-            }
+    #[inline]
+    fn queue(
+        &self,
+        context: GenerateContext,
+    ) -> Pin<Box<dyn Future<Output = SlotResult> + Send + Sync + '_>> {
+        Box::pin(async move { self.0.queue(context).await })
+    }
 
-            #[inline]
-            pub async fn process(&self, payloads: &mut [Payload]) -> Result<()> {
-                match self {
-                    $(RuntimeUntyped::$variant(runtime) => runtime.process(payloads).await,)*
-                }
-            }
-        }
-    };
+    #[inline]
+    fn process<'a>(
+        &'a self,
+        payloads: &'a mut [Payload],
+    ) -> Pin<Box<dyn Future<Output = Result<()>> + 'a>> {
+        Box::pin(async move { self.0.process(payloads).await })
+    }
 }
-
-impl_runtime_untyped!(V4, V5, V6);
 
 #[tokio::main]
-pub async fn run(receiver: Receiver<()>, env: Arc<RwLock<Environment<'_>>>) {
+pub async fn run(receiver: Receiver<()>, env: Arc<RwLock<Environment>>) {
     while let Ok(()) = receiver.recv_async().await {
         if let Environment::Loaded { runtime, .. } = &*env.read().await {
             let mut payloads = vec![Payload::default(); runtime.num_batch()];

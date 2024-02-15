@@ -18,22 +18,21 @@ use config::{AdapterOption, Config};
 use flume::{Receiver, Sender};
 use itertools::Itertools;
 use memmap2::Mmap;
-use run::RuntimeUntyped;
 use serde::{Deserialize, Serialize};
 use tokio::sync::{Mutex, RwLock};
 use tower_http::{cors::CorsLayer, services::ServeDir};
 use web_rwkv::{
     context::{Context, ContextBuilder, Instance},
     model::{
-        loader::Loader, EmbedDevice, Lora, LoraBlend, Model, ModelBuilder, ModelInfo, ModelState,
-        ModelVersion, Quant, StateBuilder,
+        loader::Loader, v4, v5, v6, EmbedDevice, Lora, LoraBlend, Model, ModelBuilder, ModelInfo,
+        ModelState, ModelVersion, Quant, StateBuilder,
     },
     tokenizer::Tokenizer,
     wgpu::{Backends, PowerPreference},
 };
 
 use crate::{
-    run::{GenerateContext, Runtime, SlotResult, Tokens},
+    run::{GenerateContext, Runner, Runtime, SlotResult, Tokens},
     sampler::Sampler,
 };
 
@@ -108,16 +107,16 @@ pub enum ThreadRequest {
 }
 
 #[derive(Default)]
-pub enum Environment<'a> {
+pub enum Environment {
     Loaded {
-        runtime: RuntimeUntyped<'a>,
+        runtime: Box<dyn Runner + Send + Sync>,
         reload: ReloadRequest,
     },
     #[default]
     None,
 }
 
-impl Environment<'_> {
+impl Environment {
     pub async fn enqueue(&self, context: GenerateContext) -> Vec<GenerateContext> {
         let mut queue = vec![];
         match self {
@@ -413,10 +412,10 @@ async fn model_route(receiver: Receiver<ThreadRequest>) -> Result<()> {
                         let mut env = env.write().await;
                         *env = Environment::None;
 
-                        let runtime = match info.version {
+                        let runtime: Box<dyn Runner + Send + Sync> = match info.version {
                             ModelVersion::V4 => {
                                 let (model, state) = load_model(&context, request.clone(), &data)?;
-                                RuntimeUntyped::V4(Runtime::new(
+                                Box::new(Runtime::<v4::Model, _, _>::new(
                                     tokenizer,
                                     model,
                                     state,
@@ -427,7 +426,7 @@ async fn model_route(receiver: Receiver<ThreadRequest>) -> Result<()> {
                             }
                             ModelVersion::V5 => {
                                 let (model, state) = load_model(&context, request.clone(), &data)?;
-                                RuntimeUntyped::V5(Runtime::new(
+                                Box::new(Runtime::<v5::Model, _, _>::new(
                                     tokenizer,
                                     model,
                                     state,
@@ -438,7 +437,7 @@ async fn model_route(receiver: Receiver<ThreadRequest>) -> Result<()> {
                             }
                             ModelVersion::V6 => {
                                 let (model, state) = load_model(&context, request.clone(), &data)?;
-                                RuntimeUntyped::V6(Runtime::new(
+                                Box::new(Runtime::<v6::Model, _, _>::new(
                                     tokenizer,
                                     model,
                                     state,
