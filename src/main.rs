@@ -16,6 +16,7 @@ use axum::{
 use clap::Parser;
 use config::{AdapterOption, Config};
 use flume::{Receiver, Sender};
+use half::f16;
 use itertools::Itertools;
 use memmap2::Mmap;
 use serde::{Deserialize, Serialize};
@@ -415,7 +416,7 @@ async fn model_route(receiver: Receiver<ThreadRequest>) -> Result<()> {
                         let runtime: Box<dyn Runner + Send + Sync> = match info.version {
                             ModelVersion::V4 => {
                                 let (model, state) = load_model(&context, request.clone(), &data)?;
-                                Box::new(Runtime::<v4::Model, _, _>::new(
+                                Box::new(Runtime::<v4::Model<f16>, _, _>::new(
                                     tokenizer,
                                     model,
                                     state,
@@ -426,7 +427,7 @@ async fn model_route(receiver: Receiver<ThreadRequest>) -> Result<()> {
                             }
                             ModelVersion::V5 => {
                                 let (model, state) = load_model(&context, request.clone(), &data)?;
-                                Box::new(Runtime::<v5::Model, _, _>::new(
+                                Box::new(Runtime::<v5::Model<f16>, _, _>::new(
                                     tokenizer,
                                     model,
                                     state,
@@ -437,7 +438,7 @@ async fn model_route(receiver: Receiver<ThreadRequest>) -> Result<()> {
                             }
                             ModelVersion::V6 => {
                                 let (model, state) = load_model(&context, request.clone(), &data)?;
-                                Box::new(Runtime::<v6::Model, _, _>::new(
+                                Box::new(Runtime::<v6::Model<f16>, _, _>::new(
                                     tokenizer,
                                     model,
                                     state,

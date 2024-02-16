@@ -61,6 +61,7 @@ dependencies = [
  "fastrand",
  "flume",
  "futures-util",
+ "half",
  "itertools",
  "log",
  "memmap2",
@@ -2345,9 +2346,9 @@ checksum = "4f186bd2dcf04330886ce82d6f33dd75a7bfcf69ecf5763b89fcde53b6ac9838"
 
 [[package]]
 name = "web-rwkv"
-version = "0.6.9"
+version = "0.6.10"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "67d5cc504b098a8424a1399191ec18bec95d0f0fcd343a01d6fe1f0a26455807"
+checksum = "b033bd9fd1da82d1e206e5adedbeec9fcca2fc62ca66f5e3811e8a7816a6fca5"
 dependencies = [
  "ahash",
  "anyhow",
