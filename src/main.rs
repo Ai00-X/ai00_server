@@ -162,6 +162,8 @@ pub struct GenerateRequest {
     pub logit_bias: HashMap<u16, f32>,
     /// Whether this is an embedding request.
     pub embed: bool,
+    /// The (reversed) number of layer at which the output is as embedding.
+    pub embed_layer: usize,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -187,8 +189,6 @@ pub struct ReloadRequest {
     pub max_runtime_batch: usize,
     /// Number of states that are cached on GPU.
     pub max_batch: usize,
-    /// The (reversed) number of layer at which the output is as embedding.
-    pub embed_layer: usize,
     /// Device to put the embed tensor.
     pub embed_device: EmbedDevice,
     /// Path to the tokenizer.
@@ -399,7 +399,6 @@ async fn model_route(receiver: Receiver<ThreadRequest>) -> Result<()> {
                         let sender = sender.clone();
                         let max_runtime_batch = request.max_runtime_batch;
                         let state_chunk_size = request.state_chunk_size;
-                        let embed_layer = request.embed_layer;
 
                         let file = File::open(&request.model_path)?;
                         let data = unsafe { Mmap::map(&file)? };
@@ -422,7 +421,6 @@ async fn model_route(receiver: Receiver<ThreadRequest>) -> Result<()> {
                                     state,
                                     max_runtime_batch,
                                     state_chunk_size,
-                                    embed_layer,
                                 ))
                             }
                             ModelVersion::V5 => {
@@ -433,7 +431,6 @@ async fn model_route(receiver: Receiver<ThreadRequest>) -> Result<()> {
                                     state,
                                     max_runtime_batch,
                                     state_chunk_size,
-                                    embed_layer,
                                 ))
                             }
                             ModelVersion::V6 => {
@@ -444,7 +441,6 @@ async fn model_route(receiver: Receiver<ThreadRequest>) -> Result<()> {
                                     state,
                                     max_runtime_batch,
                                     state_chunk_size,
-                                    embed_layer,
                                 ))
                             }
                         };

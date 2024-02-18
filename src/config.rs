@@ -28,7 +28,6 @@ impl From<Config> for ReloadRequest {
                     state_chunk_size,
                     max_runtime_batch,
                     max_batch,
-                    embed_layer,
                     embed_device,
                 },
             lora,
@@ -49,7 +48,6 @@ impl From<Config> for ReloadRequest {
             state_chunk_size,
             max_runtime_batch,
             max_batch,
-            embed_layer,
             embed_device,
             tokenizer_path,
             adapter,
@@ -78,8 +76,6 @@ pub struct Model {
     pub max_runtime_batch: usize,
     /// Number of states that are cached on GPU.
     pub max_batch: usize,
-    /// The (reversed) number of layer at which the output is as embedding.
-    pub embed_layer: usize,
     /// Device to put the embed tensor.
     pub embed_device: EmbedDevice,
 }
@@ -96,7 +92,6 @@ impl Default for Model {
             state_chunk_size: 4,
             max_runtime_batch: 8,
             max_batch: 16,
-            embed_layer: 2,
             embed_device: Default::default(),
         }
     }

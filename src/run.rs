@@ -260,7 +260,6 @@ where
     backed: Mutex<Trie<Tokens, Arc<B>>>,
     max_runtime_batch: usize,
     state_chunk_size: usize,
-    embed_layer: usize,
     penalty_free_tokens: HashSet<u16>,
 }
 
@@ -276,7 +275,6 @@ where
         state: S,
         max_runtime_batch: usize,
         state_chunk_size: usize,
-        embed_layer: usize,
     ) -> Self {
         let slots = (0..state.num_batch())
             .map(|_| SlotState::default())
@@ -297,7 +295,6 @@ where
             backed: Mutex::new(Trie::new()),
             max_runtime_batch,
             state_chunk_size,
-            embed_layer,
             penalty_free_tokens,
         }
     }
@@ -459,7 +456,7 @@ where
             let backed = self.state.back_batch(batch).await.unwrap();
 
             if context.request.embed {
-                let embed = backed.embed(0, self.embed_layer);
+                let embed = backed.embed(0, context.request.embed_layer);
                 let _ = context.sender.send(Token::Embed(embed));
             }
 
