@@ -19,14 +19,16 @@ use flume::{Receiver, Sender};
 use half::f16;
 use itertools::Itertools;
 use memmap2::Mmap;
+use safetensors::SafeTensors;
 use serde::{Deserialize, Serialize};
 use tokio::sync::{Mutex, RwLock};
 use tower_http::{cors::CorsLayer, services::ServeDir};
 use web_rwkv::{
     context::{Context, ContextBuilder, Instance},
     model::{
-        loader::Loader, v4, v5, v6, EmbedDevice, Lora, LoraBlend, Model, ModelBuilder, ModelInfo,
-        ModelState, ModelVersion, Quant, StateBuilder,
+        loader::{Loader, Lora, LoraBlend},
+        v4, v5, v6, EmbedDevice, Model, ModelBuilder, ModelInfo, ModelState, ModelVersion, Quant,
+        StateBuilder,
     },
     tokenizer::Tokenizer,
     wgpu::{Backends, PowerPreference},
@@ -267,8 +269,15 @@ where
         .into_iter()
         .map(|lora| -> Result<_> {
             let file = File::open(&lora.path)?;
-            let map = unsafe { Mmap::map(&file) }?;
-            Ok((map, lora.alpha))
+            let data = unsafe { Mmap::map(&file) }?;
+            Ok((data, lora.alpha))
+        })
+        .try_collect()?;
+    let lora: Vec<_> = lora
+        .iter()
+        .map(|(data, alpha)| -> Result<_> {
+            let data = SafeTensors::deserialize(data)?;
+            Ok((data, *alpha))
         })
         .try_collect()?;
     let lora = lora
@@ -279,7 +288,8 @@ where
         })
         .collect_vec();
 
-    let model = ModelBuilder::new(context, data)
+    let model = SafeTensors::deserialize(data)?;
+    let model = ModelBuilder::new(context, &model)
         .with_quant(quant)
         .with_turbo(turbo)
         .with_embed_device(embed_device)
@@ -402,7 +412,8 @@ async fn model_route(receiver: Receiver<ThreadRequest>) -> Result<()> {
 
                         let file = File::open(&request.model_path)?;
                         let data = unsafe { Mmap::map(&file)? };
-                        let info = Loader::info(&data)?;
+                        let model = SafeTensors::deserialize(&data)?;
+                        let info = Loader::info(&model)?;
                         log::info!("{:#?}", info);
 
                         let context = create_context(request.adapter, &info).await?;

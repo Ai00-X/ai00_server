@@ -1,6 +1,6 @@
 [package]
 name = "ai00_server"
-version = "0.3.17"
+version = "0.3.18"
 edition = "2021"
 authors = ["Gu ZhenNiu <448885@qq.com>", "Zhang Zhenyuan <cryscan@umich.edu>"]
 license = "MIT OR Apache-2.0"
@@ -19,11 +19,12 @@ rust-version = "1.75"
 name = "converter"
 
 [dependencies]
-web-rwkv = "0.6.11"
+web-rwkv = "0.6.12"
 # web-rwkv = { git = "https://github.com/cryscan/web-rwkv", tag = "v0.6.5" }
 tower = { version = "0.4.13", features = ["full"] }
 tower-http = { version = "0.5.0", features = ["full"] }
 tokio = { version = "1", features = ["full"] }
+safetensors = "0.4.1"
 memmap2 = "0.9"
 bytemuck = "1"
 half = "2"
