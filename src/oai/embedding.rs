@@ -8,20 +8,11 @@ use crate::{
     utils::request_info, Array, GenerateRequest, ThreadRequest, ThreadState, Token, TokenCounter,
 };
 
-#[derive(Debug, Clone, Deserialize)]
+#[derive(Debug, Default, Clone, Deserialize)]
 #[serde(default)]
 pub struct EmbeddingRequest {
     input: Array<String>,
     embed_layer: usize,
-}
-
-impl Default for EmbeddingRequest {
-    fn default() -> Self {
-        Self {
-            input: Default::default(),
-            embed_layer: 2,
-        }
-    }
 }
 
 impl From<EmbeddingRequest> for GenerateRequest {
