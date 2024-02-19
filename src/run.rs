@@ -456,7 +456,11 @@ where
             let backed = self.state.back_batch(batch).await.unwrap();
 
             if context.request.embed {
-                let embed = backed.embed(0, context.request.embed_layer);
+                let embed_layer = context
+                    .request
+                    .embed_layer
+                    .clamp(0, self.model.info().num_layer - 1);
+                let embed = backed.embed(0, embed_layer);
                 let _ = context.sender.send(Token::Embed(embed));
             }
 

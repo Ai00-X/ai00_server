@@ -8,18 +8,30 @@ use crate::{
     utils::request_info, Array, GenerateRequest, ThreadRequest, ThreadState, Token, TokenCounter,
 };
 
-#[derive(Debug, Default, Clone, Deserialize)]
+#[derive(Debug, Clone, Deserialize)]
 #[serde(default)]
 pub struct EmbeddingRequest {
     input: Array<String>,
+    embed_layer: usize,
+}
+
+impl Default for EmbeddingRequest {
+    fn default() -> Self {
+        Self {
+            input: Default::default(),
+            embed_layer: 2,
+        }
+    }
 }
 
 impl From<EmbeddingRequest> for GenerateRequest {
     fn from(value: EmbeddingRequest) -> Self {
+        let EmbeddingRequest { input, embed_layer } = value;
         Self {
-            prompt: Vec::from(value.input).join(""),
+            prompt: Vec::from(input).join(""),
             max_tokens: 1,
             embed: true,
+            embed_layer,
             ..Default::default()
         }
     }
