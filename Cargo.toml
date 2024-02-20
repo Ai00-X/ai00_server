@@ -19,12 +19,12 @@ rust-version = "1.75"
 name = "converter"
 
 [dependencies]
-web-rwkv = "0.6.12"
+web-rwkv = "0.6.13"
 # web-rwkv = { git = "https://github.com/cryscan/web-rwkv", tag = "v0.6.5" }
 tower = { version = "0.4.13", features = ["full"] }
 tower-http = { version = "0.5.0", features = ["full"] }
 tokio = { version = "1", features = ["full"] }
-safetensors = "0.4.1"
+safetensors = "0.4"
 memmap2 = "0.9"
 bytemuck = "1"
 half = "2"
