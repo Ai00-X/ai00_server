@@ -1707,7 +1707,8 @@ checksum = "216080ab382b992234dda86873c18d4c48358f5cfcb70fd693d7f6f2131b628b"
 [[package]]
 name = "repugnant-pickle"
 version = "0.0.1"
-source = "git+https://github.com/KerfuffleV2/repugnant-pickle?tag=v0.0.1#803fb57f25eeceb1e882297d2f479be744f4aa4b"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "d4a4a65fb8b2ce90d27a650246c8e1c0d709c766e8ac963961b7a11f0cbf9a6a"
 dependencies = [
  "anyhow",
  "nom",
@@ -2347,9 +2348,9 @@ checksum = "4f186bd2dcf04330886ce82d6f33dd75a7bfcf69ecf5763b89fcde53b6ac9838"
 
 [[package]]
 name = "web-rwkv"
-version = "0.6.13"
+version = "0.6.14"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "26eba542559ea027591c84703a4372e492a3d4768909b46c5b69742922c1f8c9"
+checksum = "71e6c555b85e16441e164de945f80368819f7e8bc972afa21145cb2d73ddce7f"
 dependencies = [
  "ahash",
  "anyhow",
@@ -2374,7 +2375,8 @@ dependencies = [
 [[package]]
 name = "web-rwkv-converter"
 version = "0.1.1"
-source = "git+https://github.com/cryscan/web-rwkv-converter?tag=v0.1.1#5ba3993eefac8e3cfc9a6127cf8e6ff766060279"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "6c0c9535f16c24d96d8c6d4b3273b593a81d1aa12691fff8b45e2579f6cf39a8"
 dependencies = [
  "anyhow",
  "bytemuck",
