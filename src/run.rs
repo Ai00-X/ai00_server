@@ -237,7 +237,7 @@ pub trait Runner {
     fn queue(
         &self,
         context: GenerateContext,
-    ) -> Pin<Box<dyn Future<Output = SlotResult> + Send + Sync + '_>>;
+    ) -> Pin<Box<dyn Future<Output = SlotResult> + Send + '_>>;
 
     /// Note: only called on the process thread.
     fn process<'a>(
@@ -299,10 +299,39 @@ where
         }
     }
 
+    /// Search for the longest common prefix in the memory cache and checkout the state from that point.
+    /// Should there be a cache miss, an initial state is returned.
+    async fn checkout(&self, tokens: &[u16], batch: usize) -> (Vec<u16>, Arc<B>) {
+        let mut cache = self.backed.lock().await;
+        let prefix = cache.longest_common_prefix(tokens.as_token_slice());
+        let len = (1..=prefix.len())
+            .rev()
+            .find(|len| cache.contains_key(prefix[0..*len].as_token_slice()))
+            .unwrap_or_default();
+        log::info!("slot {} checks out backed cache of length {}", batch, len);
+
+        let prefix = prefix[0..len].to_vec();
+        let reload = match cache.remove(prefix[..].as_token_slice()) {
+            Some(reload) => reload,
+            None => {
+                let context = self.model.context();
+                let info = self.model.info();
+                let backed = StateBuilder::new(context, info)
+                    .with_chunk_size(self.state_chunk_size)
+                    .build_backed();
+                Arc::new(backed)
+            }
+        };
+        if len > 0 {
+            let key = Tokens(prefix.clone());
+            cache.insert(key, reload.clone());
+        }
+        (prefix, reload)
+    }
+
     /// Queue an inference task.
     async fn queue(&self, context: GenerateContext) -> SlotResult {
         let mut slots = self.slots.lock().await;
-        let mut cache = self.backed.lock().await;
 
         // we must ensure that there is at least one token as the suffix, otherwise the whole slot will loop forever as there is no input
         let (last, tokens) = match [context.prefix, context.suffix].concat().split_last() {
@@ -330,34 +359,6 @@ where
             })
             .max_by(|lhs, rhs| lhs.0.cmp(&rhs.0).then(lhs.1.cmp(&rhs.1)));
 
-        // here we try to search for the longest common prefix in the memory cache and checkout the state from that point
-        // should there be a cache miss, an initial state is returned
-        let mut checkout = |batch: usize| -> (Vec<u16>, Arc<B>) {
-            let prefix = cache.longest_common_prefix(tokens.as_token_slice());
-            let len = (1..=prefix.len())
-                .rev()
-                .find(|len| cache.contains_key(prefix[0..*len].as_token_slice()))
-                .unwrap_or_default();
-            log::info!("slot {} checks out backed cache of length {}", batch, len);
-
-            let prefix = prefix[0..len].to_vec();
-            let reload = cache
-                .remove(prefix[..].as_token_slice())
-                .unwrap_or_else(|| {
-                    let context = self.model.context();
-                    let info = self.model.info();
-                    let backed = StateBuilder::new(context, info)
-                        .with_chunk_size(self.state_chunk_size)
-                        .build_backed();
-                    Arc::new(backed)
-                });
-            if len > 0 {
-                let key = Tokens(prefix.clone());
-                cache.insert(key, reload.clone());
-            }
-            (prefix, reload)
-        };
-
         match choice {
             // we cannot find a slot because all slots are occupied
             // in this case, we hand the request back to the caller
@@ -372,7 +373,7 @@ where
             // back a non-relative and non-empty slot and use it for our new context
             Some((SlotChoice::Back(batch), _)) => {
                 log::info!("start at non-empty slot {}", batch);
-                let (prefix, reload) = checkout(batch);
+                let (prefix, reload) = self.checkout(&tokens, batch).await;
 
                 let tokens = [tokens, vec![last]].concat();
                 let len = prefix.len();
@@ -399,7 +400,7 @@ where
             // directly occupy an empty slot so no need backing
             Some((SlotChoice::Empty(batch), _)) => {
                 log::info!("start at empty slot {}", batch);
-                let (prefix, reload) = checkout(batch);
+                let (prefix, reload) = self.checkout(&tokens, batch).await;
 
                 let tokens = [tokens, vec![last]].concat();
                 let len = prefix.len();
@@ -730,7 +731,7 @@ where
     fn queue(
         &self,
         context: GenerateContext,
-    ) -> Pin<Box<dyn Future<Output = SlotResult> + Send + Sync + '_>> {
+    ) -> Pin<Box<dyn Future<Output = SlotResult> + Send + '_>> {
         Box::pin(self.queue(context))
     }
 

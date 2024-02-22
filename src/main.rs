@@ -249,7 +249,7 @@ fn load_tokenizer(path: impl AsRef<Path>) -> Result<Tokenizer> {
     Ok(Tokenizer::new(&contents)?)
 }
 
-fn load_model<M, S>(context: &Context, request: ReloadRequest, data: &[u8]) -> Result<(M, S)>
+async fn load_model<M, S>(context: &Context, request: ReloadRequest, data: &[u8]) -> Result<(M, S)>
 where
     S: ModelState,
     M: Model<State = S>,
@@ -297,7 +297,8 @@ where
     let model: M = lora
         .into_iter()
         .fold(model, |acc, x| acc.add_lora(x))
-        .build()?;
+        .build()
+        .await?;
 
     let state: S = StateBuilder::new(context, model.info())
         .with_num_batch(request.max_batch)
@@ -372,14 +373,13 @@ async fn model_route(receiver: Receiver<ThreadRequest>) -> Result<()> {
         let listen = async {
             match receiver.recv_async().await.unwrap() {
                 ThreadRequest::Adapter(sender) => {
-                    let task = async move {
+                    tokio::spawn(async move {
                         let _ = sender.send(list_adapters());
-                    };
-                    tokio::spawn(task);
+                    });
                 }
                 ThreadRequest::Info(sender) => {
                     let env = env.clone();
-                    let task = async move {
+                    tokio::spawn(async move {
                         let env = &(*env.read().await);
                         if let Environment::Loaded { runtime, reload } = env {
                             let reload = reload.clone();
@@ -391,8 +391,7 @@ async fn model_route(receiver: Receiver<ThreadRequest>) -> Result<()> {
                                 tokenizer,
                             });
                         }
-                    };
-                    tokio::spawn(task);
+                    });
                 }
                 ThreadRequest::Reload {
                     request,
@@ -413,7 +412,7 @@ async fn model_route(receiver: Receiver<ThreadRequest>) -> Result<()> {
                         let file = File::open(&request.model_path)?;
                         let data = unsafe { Mmap::map(&file)? };
                         let model = SafeTensors::deserialize(&data)?;
-                        let info = Loader::info(&model)?;
+                        let info = Loader::info(&model).await?;
                         log::info!("{:#?}", info);
 
                         let context = create_context(request.adapter, &info).await?;
@@ -425,7 +424,8 @@ async fn model_route(receiver: Receiver<ThreadRequest>) -> Result<()> {
 
                         let runtime: Box<dyn Runner + Send + Sync> = match info.version {
                             ModelVersion::V4 => {
-                                let (model, state) = load_model(&context, request.clone(), &data)?;
+                                let (model, state) =
+                                    load_model(&context, request.clone(), &data).await?;
                                 Box::new(Runtime::<v4::Model<f16>, _, _>::new(
                                     tokenizer,
                                     model,
@@ -435,7 +435,8 @@ async fn model_route(receiver: Receiver<ThreadRequest>) -> Result<()> {
                                 ))
                             }
                             ModelVersion::V5 => {
-                                let (model, state) = load_model(&context, request.clone(), &data)?;
+                                let (model, state) =
+                                    load_model(&context, request.clone(), &data).await?;
                                 Box::new(Runtime::<v5::Model<f16>, _, _>::new(
                                     tokenizer,
                                     model,
@@ -445,7 +446,8 @@ async fn model_route(receiver: Receiver<ThreadRequest>) -> Result<()> {
                                 ))
                             }
                             ModelVersion::V6 => {
-                                let (model, state) = load_model(&context, request.clone(), &data)?;
+                                let (model, state) =
+                                    load_model(&context, request.clone(), &data).await?;
                                 Box::new(Runtime::<v6::Model<f16>, _, _>::new(
                                     tokenizer,
                                     model,
@@ -461,29 +463,21 @@ async fn model_route(receiver: Receiver<ThreadRequest>) -> Result<()> {
                         let _ = sender.send(());
                         anyhow::Ok(())
                     };
-
-                    let reload = async move {
-                        match reload.await {
-                            Ok(_) => {
-                                callback(true);
-                                log::info!("model reloaded")
-                            }
-                            Err(err) => {
-                                callback(false);
-                                log::error!("reload model failed: {}", err);
-                            }
+                    match reload.await {
+                        Ok(_) => {
+                            callback(true);
+                            log::info!("model reloaded")
+                        }
+                        Err(err) => {
+                            callback(false);
+                            log::error!("reload model failed: {}", err);
                         }
                     };
-                    tokio::spawn(reload);
                 }
                 ThreadRequest::Unload => {
-                    let env = env.clone();
-                    let unload = async move {
-                        let mut env = env.write().await;
-                        *env = Environment::None;
-                        log::info!("model unloaded");
-                    };
-                    tokio::spawn(unload);
+                    let mut env = env.write().await;
+                    *env = Environment::None;
+                    log::info!("model unloaded");
                 }
                 ThreadRequest::Generate {
                     request,
@@ -518,12 +512,11 @@ async fn model_route(receiver: Receiver<ThreadRequest>) -> Result<()> {
                     let env = env.clone();
                     let queue = queue.clone();
                     let sender = sender.clone();
-                    let task = async move {
+                    tokio::spawn(async move {
                         let mut queue = queue.lock().await;
                         queue.append(&mut env.read().await.enqueue(context).await);
                         let _ = sender.send(());
-                    };
-                    tokio::spawn(task);
+                    });
                 }
             };
             anyhow::Ok(())
