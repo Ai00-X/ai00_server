@@ -19,8 +19,7 @@ use rayon::prelude::{
 use tokio::sync::{Mutex, RwLock};
 use web_rwkv::{
     model::{
-        BackedState, FromBuilder, Model, ModelInfo, ModelInput, ModelOutput, ModelState,
-        StateBuilder,
+        BackedState, Build, Model, ModelInfo, ModelInput, ModelOutput, ModelState, StateBuilder,
     },
     tokenizer::Tokenizer,
 };
@@ -252,6 +251,7 @@ where
     B: BackedState,
     S: ModelState<BackedState = B>,
     M: Model<State = S>,
+    StateBuilder: Build<B, Error = Infallible>,
 {
     model: M,
     state: S,
@@ -265,9 +265,10 @@ where
 
 impl<M, S, B> Runtime<M, S, B>
 where
-    for<'a> B: BackedState + FromBuilder<Builder<'a> = StateBuilder, Error = Infallible>,
+    B: BackedState,
     S: ModelState<BackedState = B>,
     M: Model<State = S>,
+    StateBuilder: Build<B, Error = Infallible>,
 {
     pub fn new(
         tokenizer: Tokenizer,
@@ -318,7 +319,8 @@ where
                 let info = self.model.info();
                 let backed = StateBuilder::new(context, info)
                     .with_chunk_size(self.state_chunk_size)
-                    .build_backed();
+                    .build()
+                    .unwrap();
                 Arc::new(backed)
             }
         };
@@ -711,6 +713,7 @@ where
     B: BackedState + Send + Sync,
     S: ModelState<BackedState = B> + Send + Sync,
     M: Model<State = S> + Send + Sync,
+    StateBuilder: Build<B, Error = Infallible>,
 {
     #[inline]
     fn info(&self) -> &ModelInfo {

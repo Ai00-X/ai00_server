@@ -1,5 +1,6 @@
 use std::{
     collections::HashMap,
+    convert::Infallible,
     fs::{self, File},
     io::{BufReader, Cursor, Read},
     net::{IpAddr, Ipv4Addr, SocketAddr},
@@ -27,8 +28,8 @@ use web_rwkv::{
     context::{Context, ContextBuilder, Instance},
     model::{
         loader::{Loader, Lora, LoraBlend},
-        v4, v5, v6, EmbedDevice, Model, ModelBuilder, ModelInfo, ModelState, ModelVersion, Quant,
-        StateBuilder,
+        v4, v5, v6, Build, BuildFuture, EmbedDevice, Model, ModelBuilder, ModelInfo, ModelState,
+        ModelVersion, Quant, StateBuilder,
     },
     tokenizer::Tokenizer,
     wgpu::{Backends, PowerPreference},
@@ -249,12 +250,15 @@ fn load_tokenizer(path: impl AsRef<Path>) -> Result<Tokenizer> {
     Ok(Tokenizer::new(&contents)?)
 }
 
-async fn load_model<M, S>(context: &Context, request: ReloadRequest, data: &[u8]) -> Result<(M, S)>
+async fn load_model<M, S>(context: &Context, request: ReloadRequest) -> Result<(M, S)>
 where
     S: ModelState,
     M: Model<State = S>,
+    for<'a> ModelBuilder<SafeTensors<'a>>: BuildFuture<M, Error = anyhow::Error>,
+    StateBuilder: Build<S, Error = Infallible>,
 {
     let ReloadRequest {
+        model_path,
         quant,
         quant_type,
         lora,
@@ -270,26 +274,23 @@ where
         .map(|lora| -> Result<_> {
             let file = File::open(&lora.path)?;
             let data = unsafe { Mmap::map(&file) }?;
-            Ok((data, lora.alpha))
+            let blend = LoraBlend::full(lora.alpha);
+            Ok((data, blend))
         })
         .try_collect()?;
     let lora: Vec<_> = lora
         .iter()
-        .map(|(data, alpha)| -> Result<_> {
+        .map(|(data, blend)| -> Result<_> {
             let data = SafeTensors::deserialize(data)?;
-            Ok((data, *alpha))
+            let blend = blend.clone();
+            Ok(Lora { data, blend })
         })
         .try_collect()?;
-    let lora = lora
-        .iter()
-        .map(|(data, alpha)| {
-            let blend = LoraBlend::full(*alpha);
-            Lora { data, blend }
-        })
-        .collect_vec();
 
-    let model = SafeTensors::deserialize(data)?;
-    let model = ModelBuilder::new(context, &model)
+    let file = File::open(&model_path)?;
+    let data = unsafe { Mmap::map(&file) }?;
+    let model = SafeTensors::deserialize(&data)?;
+    let model = ModelBuilder::new(context, model)
         .with_quant(quant)
         .with_turbo(turbo)
         .with_embed_device(embed_device)
@@ -303,7 +304,7 @@ where
     let state: S = StateBuilder::new(context, model.info())
         .with_num_batch(request.max_batch)
         .with_chunk_size(request.state_chunk_size)
-        .build();
+        .build()?;
     Ok((model, state))
 }
 
@@ -424,8 +425,7 @@ async fn model_route(receiver: Receiver<ThreadRequest>) -> Result<()> {
 
                         let runtime: Box<dyn Runner + Send + Sync> = match info.version {
                             ModelVersion::V4 => {
-                                let (model, state) =
-                                    load_model(&context, request.clone(), &data).await?;
+                                let (model, state) = load_model(&context, request.clone()).await?;
                                 Box::new(Runtime::<v4::Model<f16>, _, _>::new(
                                     tokenizer,
                                     model,
@@ -435,8 +435,7 @@ async fn model_route(receiver: Receiver<ThreadRequest>) -> Result<()> {
                                 ))
                             }
                             ModelVersion::V5 => {
-                                let (model, state) =
-                                    load_model(&context, request.clone(), &data).await?;
+                                let (model, state) = load_model(&context, request.clone()).await?;
                                 Box::new(Runtime::<v5::Model<f16>, _, _>::new(
                                     tokenizer,
                                     model,
@@ -446,8 +445,7 @@ async fn model_route(receiver: Receiver<ThreadRequest>) -> Result<()> {
                                 ))
                             }
                             ModelVersion::V6 => {
-                                let (model, state) =
-                                    load_model(&context, request.clone(), &data).await?;
+                                let (model, state) = load_model(&context, request.clone()).await?;
                                 Box::new(Runtime::<v6::Model<f16>, _, _>::new(
                                     tokenizer,
                                     model,
