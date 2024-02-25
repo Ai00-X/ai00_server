@@ -1,17 +1,17 @@
 [package]
-name = "ai00_server"
-version = "0.3.19"
-edition = "2021"
 authors = ["Gu ZhenNiu <448885@qq.com>", "Zhang Zhenyuan <cryscan@umich.edu>"]
-license = "MIT OR Apache-2.0"
-description = "An implementation of the RWKV language model in pure WebGPU."
-homepage = "https://github.com/cgisky1980/ai00_rwkv_server"
-repository = "https://github.com/cgisky1980/ai00_rwkv_server"
-keywords = ["deep-learning", "LLM", "model", "rwkv"]
 categories = ["science"]
-exclude = ["assets"]
 default-run = "ai00_server"
+description = "An implementation of the RWKV language model in pure WebGPU."
+edition = "2021"
+exclude = ["assets"]
+homepage = "https://github.com/cgisky1980/ai00_rwkv_server"
+keywords = ["LLM", "deep-learning", "model", "rwkv"]
+license = "MIT OR Apache-2.0"
+name = "ai00_server"
+repository = "https://github.com/cgisky1980/ai00_rwkv_server"
 rust-version = "1.75"
+version = "0.3.19"
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
@@ -19,36 +19,34 @@ rust-version = "1.75"
 name = "converter"
 
 [dependencies]
-web-rwkv = "0.6.21"
-# web-rwkv = { git = "https://github.com/cryscan/web-rwkv", tag = "v0.6.5" }
-web-rwkv-converter = "0.1.1"
-tower = { version = "0.4.13", features = ["full"] }
-tower-http = { version = "0.5.0", features = ["full"] }
-tokio = { version = "1", features = ["full"] }
-safetensors = "0.4"
-memmap2 = "0.9"
+anyhow = "1"
 bytemuck = "1"
-half = "2"
-regex = "1.8"
 clap = { version = "4.3", features = ["derive"] }
-serde = { version = "1", features = ["derive"] }
-serde_json = "1"
-qp-trie = "0.8"
 fastrand = "2"
-itertools = "0.12"
 flume = "0.11.0"
 futures-util = "0.3"
-rayon = "1.8"
-anyhow = "1"
+half = "2"
+itertools = "0.12"
 log = "0.4"
-simple_logger = { version = "4.2", features = ["stderr"] }
-zip-extract = "0.1"
-tempfile = "3.6"
-toml = "0.8.6"
+memmap2 = "0.9"
+qp-trie = "0.8"
+rayon = "1.8"
+regex = "1.8"
+safetensors = "0.4"
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
 sha2 = "0.10.8"
+simple_logger = { version = "4.2", features = ["stderr"] }
+tempfile = "3.6"
+tokio = { version = "1", features = ["full"] }
+toml = "0.8.6"
+tower = { version = "0.4.13", features = ["full"] }
+tower-http = { version = "0.5.0", features = ["full"] }
+web-rwkv = "0.6.22"
+web-rwkv-converter = "0.1.1"
+zip-extract = "0.1"
 
 [dependencies.axum]
-version = "0.7.1"
 default-features = false
 features = [
     "form",
@@ -61,6 +59,7 @@ features = [
     "tokio",
     "tower-log",
 ]
+version = "0.7.1"
 
 [profile.release]
 lto = false
