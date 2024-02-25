@@ -413,7 +413,7 @@ async fn model_route(receiver: Receiver<ThreadRequest>) -> Result<()> {
                         let file = File::open(&request.model_path)?;
                         let data = unsafe { Mmap::map(&file)? };
                         let model = SafeTensors::deserialize(&data)?;
-                        let info = Loader::info(&model).await?;
+                        let info = Loader::info(&model)?;
                         log::info!("{:#?}", info);
 
                         let context = create_context(request.adapter, &info).await?;
