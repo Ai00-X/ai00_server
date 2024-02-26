@@ -260,7 +260,7 @@ where
     backed: Mutex<Trie<Tokens, Arc<B>>>,
     max_runtime_batch: usize,
     state_chunk_size: usize,
-    penalty_free_tokens: HashSet<u16>,
+    _penalty_free_tokens: HashSet<u16>,
 }
 
 impl<M, S, B> Runtime<M, S, B>
@@ -280,7 +280,7 @@ where
         let slots = (0..state.num_batch())
             .map(|_| SlotState::default())
             .collect();
-        let penalty_free_tokens = (0..u16::MAX)
+        let _penalty_free_tokens = (0..u16::MAX)
             .filter(|&token| {
                 let word = tokenizer.decode(&[token]).unwrap_or_default();
                 let word = String::from_utf8_lossy(&word).into_owned();
@@ -296,7 +296,7 @@ where
             backed: Mutex::new(Trie::new()),
             max_runtime_batch,
             state_chunk_size,
-            penalty_free_tokens,
+            _penalty_free_tokens,
         }
     }
 
@@ -527,7 +527,7 @@ where
                 }
             },
         };
-        let penalty_free_tokens = &self.penalty_free_tokens;
+        // let penalty_free_tokens = &self._penalty_free_tokens;
         let outputs = payloads
             .par_iter()
             .zip_eq(outputs.into_par_iter())
@@ -541,7 +541,7 @@ where
                     context
                         .penalties
                         .iter()
-                        .filter(|(token, _)| !penalty_free_tokens.contains(token))
+                        // .filter(|(token, _)| !penalty_free_tokens.contains(token))
                         .for_each(|(token, penalty)| data[*token as usize] -= penalty);
                     context
                         .request
