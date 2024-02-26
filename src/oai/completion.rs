@@ -1,4 +1,4 @@
-use std::{collections::HashMap, time::Duration};
+use std::{collections::HashMap, sync::Arc, time::Duration};
 
 use anyhow::Result;
 use axum::{
@@ -8,10 +8,12 @@ use axum::{
 };
 use futures_util::{Stream, StreamExt};
 use serde::{Deserialize, Serialize};
+use tokio::sync::RwLock;
 
 use crate::{
-    sampler::Sampler, utils::request_info, Array, FinishReason, GenerateRequest, ThreadRequest,
-    ThreadState, Token, TokenCounter,
+    sampler::{NucleusParams, NucleusSampler},
+    utils::request_info,
+    Array, FinishReason, GenerateRequest, ThreadRequest, ThreadState, Token, TokenCounter,
 };
 
 #[derive(Debug, Deserialize)]
@@ -26,7 +28,8 @@ pub struct CompletionRequest {
     presence_penalty: f32,
     frequency_penalty: f32,
     penalty_decay: f32,
-    logit_bias: HashMap<u16, f32>,
+    #[serde(alias = "logit_bias")]
+    bias: HashMap<u16, f32>,
 }
 
 impl Default for CompletionRequest {
@@ -41,7 +44,7 @@ impl Default for CompletionRequest {
             presence_penalty: 0.0,
             frequency_penalty: 0.0,
             penalty_decay: 1.0,
-            logit_bias: HashMap::new(),
+            bias: HashMap::new(),
         }
     }
 }
@@ -57,26 +60,32 @@ impl From<CompletionRequest> for GenerateRequest {
             presence_penalty,
             frequency_penalty,
             penalty_decay,
-            logit_bias,
+            bias,
             ..
         } = value;
 
         let prompt = Vec::from(prompt).join("");
         let max_tokens = max_tokens.min(crate::MAX_TOKENS);
         let stop = stop.into();
+        let bias = Arc::new(bias);
+
+        let sampler = Arc::new(RwLock::new(NucleusSampler {
+            params: NucleusParams {
+                top_p,
+                temperature,
+                presence_penalty,
+                frequency_penalty,
+                penalty_decay,
+            },
+            ..Default::default()
+        }));
 
         Self {
             prompt,
             max_tokens,
             stop,
-            sampler: Sampler {
-                temperature,
-                top_p,
-                presence_penalty,
-                frequency_penalty,
-                penalty_decay,
-            },
-            logit_bias,
+            sampler,
+            bias,
             ..Default::default()
         }
     }

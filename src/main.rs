@@ -16,11 +16,13 @@ use axum::{
 };
 use clap::Parser;
 use config::{AdapterOption, Config};
+use derivative::Derivative;
 use flume::{Receiver, Sender};
 use half::f16;
 use itertools::Itertools;
 use memmap2::Mmap;
 use safetensors::SafeTensors;
+use sampler::NucleusSampler;
 use serde::{Deserialize, Serialize};
 use tokio::sync::{Mutex, RwLock};
 use tower_http::{cors::CorsLayer, services::ServeDir};
@@ -149,7 +151,8 @@ pub struct RuntimeInfo {
 #[derive(Debug, Default, Clone)]
 pub struct AdapterList(pub Vec<String>);
 
-#[derive(Debug, Default, Clone)]
+#[derive(Clone, Derivative)]
+#[derivative(Debug, Default)]
 pub struct GenerateRequest {
     /// The prompt for the model.
     pub prompt: String,
@@ -160,9 +163,13 @@ pub struct GenerateRequest {
     /// Stop indicators.
     pub stop: Vec<String>,
     /// Sampler parameters.
-    pub sampler: Sampler,
+    #[derivative(
+        Debug = "ignore",
+        Default(value = "Arc::new(RwLock::new(NucleusSampler::default()))")
+    )]
+    pub sampler: Arc<RwLock<dyn Sampler + Send + Sync>>,
     /// Bias added to tokens before sampling.
-    pub logit_bias: HashMap<u16, f32>,
+    pub bias: Arc<HashMap<u16, f32>>,
     /// Whether this is an embedding request.
     pub embed: bool,
     /// The (reversed) number of layer at which the output is as embedding.
@@ -484,22 +491,14 @@ async fn model_route(receiver: Receiver<ThreadRequest>) -> Result<()> {
                 } => {
                     let tokens = Tokens(tokenizer.encode(request.prompt.as_bytes())?);
                     let model_tokens = Tokens(tokenizer.encode(request.model_text.as_bytes())?);
-                    let mut penalties = HashMap::new();
-                    for (index, token) in model_tokens.iter().rev().enumerate() {
-                        let ap = request.sampler.presence_penalty;
-                        let af = request.sampler.frequency_penalty;
-                        let ad = request.sampler.penalty_decay;
-                        let mut penalty = penalties.remove(token).unwrap_or(ap);
-                        penalty += af * ad.powf(index as f32);
-                        penalties.insert(*token, penalty);
-                    }
+                    // init sampler state here
+                    request.sampler.write().await.init(&model_tokens);
 
                     let context = GenerateContext {
                         prompt_tokens: tokens.to_vec(),
                         prompt_cached: false,
                         prefix: Default::default(),
                         suffix: tokens,
-                        penalties,
                         model_text: Default::default(),
                         buffer: Default::default(),
                         model_tokens: Default::default(),

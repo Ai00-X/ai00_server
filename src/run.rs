@@ -1,21 +1,12 @@
 use std::{
-    borrow::Borrow,
-    cmp::Ordering,
-    collections::{HashMap, HashSet},
-    convert::Infallible,
-    future::Future,
-    pin::Pin,
-    sync::Arc,
-    time::Instant,
+    borrow::Borrow, cmp::Ordering, collections::HashSet, convert::Infallible, future::Future,
+    pin::Pin, sync::Arc, time::Instant,
 };
 
 use anyhow::Result;
 use flume::{Receiver, Sender};
 use itertools::Itertools;
 use qp_trie::Trie;
-use rayon::prelude::{
-    IndexedParallelIterator, IntoParallelIterator, IntoParallelRefIterator, ParallelIterator,
-};
 use tokio::sync::{Mutex, RwLock};
 use web_rwkv::{
     model::{
@@ -213,8 +204,6 @@ pub struct GenerateContext {
     pub prefix: Tokens,
     /// Tokens to be computed.
     pub suffix: Tokens,
-    /// The accumulated penalties for model-output tokens.
-    pub penalties: HashMap<u16, f32>,
     /// Texts that are output by the model.
     pub model_text: Vec<u8>,
     /// Model may output partial utf-8. This makes sure the output is always valid.
@@ -527,36 +516,48 @@ where
                 }
             },
         };
-        // let penalty_free_tokens = &self._penalty_free_tokens;
-        let outputs = payloads
-            .par_iter()
-            .zip_eq(outputs.into_par_iter())
+
+        // update raw outputs
+        let handles = payloads
+            .iter()
+            .zip_eq(outputs.into_iter())
             .map(|(payload, output)| match payload {
                 Payload::Busy(context) => match output {
                     ModelOutput::None => None,
-                    ModelOutput::Last(data) => Some(data),
-                    ModelOutput::Full(data) => Some(data.into_iter().last()?),
-                }
-                .map(|mut data| {
-                    context
-                        .penalties
-                        .iter()
-                        // .filter(|(token, _)| !penalty_free_tokens.contains(token))
-                        .for_each(|(token, penalty)| data[*token as usize] -= penalty);
-                    context
-                        .request
-                        .logit_bias
-                        .iter()
-                        .for_each(|(token, bias)| data[*token as usize] += *bias);
-                    data
-                }),
+                    ModelOutput::Last(data) => Some((
+                        context.request.sampler.clone(),
+                        context.request.bias.clone(),
+                        data,
+                    )),
+                    ModelOutput::Full(_) => unreachable!(),
+                },
                 _ => None,
             })
-            .map(|x| match x {
-                Some(data) => ModelOutput::Last(data),
-                None => ModelOutput::None,
+            .map(|operand| {
+                tokio::spawn(async move {
+                    match operand {
+                        Some((sampler, bias, mut data)) => {
+                            sampler.write().await.transform(&mut data);
+                            bias.iter()
+                                .for_each(|(token, bias)| data[*token as usize] += *bias);
+                            Some(data)
+                        }
+                        None => None,
+                    }
+                })
             })
-            .collect();
+            .collect_vec();
+        let outputs = {
+            let mut outputs = vec![];
+            for handle in handles {
+                let output = match handle.await? {
+                    Some(data) => ModelOutput::Last(data),
+                    None => ModelOutput::None,
+                };
+                outputs.push(output);
+            }
+            outputs
+        };
 
         // compute probabilities
         let outputs = match occupancy {
@@ -565,18 +566,32 @@ where
         };
 
         // sample tokens
-        let outputs: Vec<_> = payloads
-            .par_iter()
-            .zip_eq(outputs.into_par_iter())
-            .map(|(payload, outputs)| match payload {
-                Payload::Busy(context) => match outputs {
+        let handles = payloads
+            .iter()
+            .zip_eq(outputs.into_iter())
+            .map(|(payload, output)| match payload {
+                Payload::Busy(context) => match output {
                     ModelOutput::None => None,
-                    ModelOutput::Last(data) => Some(context.request.sampler.sample(data)),
+                    ModelOutput::Last(data) => Some((context.request.sampler.clone(), data)),
                     ModelOutput::Full(_) => unreachable!(),
                 },
                 _ => None,
             })
-            .collect();
+            .map(|operand| {
+                tokio::spawn(async move {
+                    match operand {
+                        Some((sampler, data)) => Some(sampler.read().await.sample(&data)),
+                        None => None,
+                    }
+                })
+            });
+        let outputs = {
+            let mut outputs = vec![];
+            for handle in handles {
+                outputs.push(handle.await?);
+            }
+            outputs
+        };
 
         for (batch, payload, token, input) in payloads
             .iter_mut()
@@ -597,10 +612,6 @@ where
             let len = model_tokens.len() - input.tokens.len();
             context.prefix = Tokens(model_tokens[..len].to_vec());
             context.suffix = Tokens(model_tokens[len..].to_vec());
-            context
-                .penalties
-                .iter_mut()
-                .for_each(|(_, penalty)| *penalty *= context.request.sampler.penalty_decay);
 
             let Some(token) = token else {
                 continue;
@@ -624,11 +635,7 @@ where
             assert_eq!(context.suffix.len(), 0);
             context.suffix.0.push(token);
 
-            let penalty = match context.penalties.get(&token) {
-                Some(penalty) => penalty + context.request.sampler.frequency_penalty,
-                None => context.request.sampler.presence_penalty,
-            };
-            context.penalties.insert(token, penalty);
+            context.request.sampler.write().await.update(token);
 
             let mut word = self.tokenizer.decode(&[token])?;
             context.model_text.append(&mut word.clone());

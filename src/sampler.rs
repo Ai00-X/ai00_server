@@ -1,41 +1,80 @@
+use std::collections::HashMap;
+
+use derivative::Derivative;
 use itertools::Itertools;
 
-#[derive(Debug, Clone)]
-pub struct Sampler {
+pub trait Sampler {
+    /// Initialize the sampler state.
+    fn init(&mut self, model_tokens: &[u16]);
+    /// Update the raw model output.
+    fn transform(&self, output: &mut [f32]);
+    /// Select one token from the distribution.
+    fn sample(&self, probs: &[f32]) -> u16;
+    /// Update the sampler state after a token is chosen.
+    fn update(&mut self, token: u16);
+}
+
+#[derive(Debug, Clone, Derivative)]
+#[derivative(Default)]
+pub struct NucleusParams {
+    #[derivative(Default(value = "1.0"))]
     pub top_p: f32,
+    #[derivative(Default(value = "1.0"))]
     pub temperature: f32,
+    #[derivative(Default(value = "0.0"))]
     pub presence_penalty: f32,
+    #[derivative(Default(value = "0.0"))]
     pub frequency_penalty: f32,
+    #[derivative(Default(value = "1.0"))]
     pub penalty_decay: f32,
 }
 
-impl Default for Sampler {
-    fn default() -> Self {
-        Self {
-            top_p: 1.0,
-            temperature: 1.0,
-            presence_penalty: 0.0,
-            frequency_penalty: 0.0,
-            penalty_decay: 1.0,
-        }
-    }
+#[derive(Debug, Default, Clone)]
+pub struct NucleusState {
+    pub penalties: HashMap<u16, f32>,
 }
 
-impl Sampler {
-    pub fn sample(&self, probs: Vec<f32>) -> u16 {
+#[derive(Debug, Default, Clone)]
+pub struct NucleusSampler {
+    pub params: NucleusParams,
+    pub state: NucleusState,
+}
+
+impl Sampler for NucleusSampler {
+    fn init(&mut self, model_tokens: &[u16]) {
+        let NucleusSampler { params, state } = self;
+        for (index, token) in model_tokens.iter().rev().enumerate() {
+            let ap = params.presence_penalty;
+            let af = params.frequency_penalty;
+            let ad = params.penalty_decay;
+            let mut penalty = state.penalties.remove(token).unwrap_or(ap);
+            penalty += af * ad.powf(index as f32);
+            state.penalties.insert(*token, penalty);
+        }
+    }
+
+    fn transform(&self, output: &mut [f32]) {
+        self.state
+            .penalties
+            .iter()
+            // .filter(|(token, _)| !penalty_free_tokens.contains(token))
+            .for_each(|(token, penalty)| output[*token as usize] -= penalty)
+    }
+
+    fn sample(&self, probs: &[f32]) -> u16 {
         let sorted = probs
-            .into_iter()
+            .iter()
             .enumerate()
             .sorted_unstable_by(|(_, x), (_, y)| x.total_cmp(y).reverse())
             .scan((0, 0.0, 0.0), |(_, cum, _), (id, x)| {
-                if *cum > self.top_p {
+                if *cum > self.params.top_p {
                     None
                 } else {
                     *cum += x;
                     Some((id, *cum, x))
                 }
             })
-            .map(|(id, _, x)| (id, x.powf(1.0 / self.temperature)))
+            .map(|(id, _, x)| (id, x.powf(1.0 / self.params.temperature)))
             .collect_vec();
 
         let sum: f32 = sorted.iter().map(|(_, x)| x).sum();
@@ -55,5 +94,20 @@ impl Sampler {
             .map(|(id, _)| id)
             .unwrap_or_default();
         token as u16
+    }
+
+    fn update(&mut self, token: u16) {
+        let NucleusSampler { params, state } = self;
+
+        state
+            .penalties
+            .iter_mut()
+            .for_each(|(_, penalty)| *penalty *= params.penalty_decay);
+
+        let penalty = match state.penalties.get(&token) {
+            Some(penalty) => penalty + params.frequency_penalty,
+            None => params.presence_penalty,
+        };
+        state.penalties.insert(token, penalty);
     }
 }
