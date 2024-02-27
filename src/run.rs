@@ -533,19 +533,19 @@ where
                 },
                 _ => None,
             })
-            .map(|operand| {
-                tokio::spawn(async move {
-                    match operand {
-                        Some((sampler, bias, mut data)) => {
-                            sampler.write().await.transform(&mut data);
-                            bias.iter()
-                                .for_each(|(token, bias)| data[*token as usize] += *bias);
-                            Some(data)
+            .map(|bundle| async move {
+                match bundle {
+                    Some((sampler, bias, mut data)) => {
+                        sampler.read().await.transform(&mut data);
+                        for (token, bias) in bias.iter() {
+                            data[*token as usize] += *bias
                         }
-                        None => None,
+                        Some(data)
                     }
-                })
+                    None => None,
+                }
             })
+            .map(tokio::spawn)
             .collect_vec();
         let outputs = {
             let mut outputs = vec![];
@@ -577,14 +577,13 @@ where
                 },
                 _ => None,
             })
-            .map(|operand| {
-                tokio::spawn(async move {
-                    match operand {
-                        Some((sampler, data)) => Some(sampler.read().await.sample(&data)),
-                        None => None,
-                    }
-                })
-            });
+            .map(|bundle| async move {
+                match bundle {
+                    Some((sampler, data)) => Some(sampler.read().await.sample(&data)),
+                    None => None,
+                }
+            })
+            .map(tokio::spawn);
         let outputs = {
             let mut outputs = vec![];
             for handle in handles {
