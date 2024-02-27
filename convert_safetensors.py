@@ -65,7 +65,7 @@ def convert_file(pt_filename: str, sf_filename: str, rename={}, transpose_names=
         loaded[new_k] = {
             "dtype": str(v.dtype).split(".")[-1],
             "shape": v.shape,
-            "data": v.numpy().tobytes(),
+            "data": v.detach().numpy().tobytes(),
         }
 
     dirname = os.path.dirname(sf_filename)
