@@ -2262,6 +2262,17 @@ dependencies = [
 ]
 
 [[package]]
+name = "trait-variant"
+version = "0.1.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "45e1a477061e97925d81a2f89fb73b2b8038e6baa5a0023bad380ac23b5f4fa6"
+dependencies = [
+ "proc-macro2",
+ "quote",
+ "syn 2.0.50",
+]
+
+[[package]]
 name = "typenum"
 version = "1.17.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -2410,9 +2421,9 @@ checksum = "4f186bd2dcf04330886ce82d6f33dd75a7bfcf69ecf5763b89fcde53b6ac9838"
 
 [[package]]
 name = "web-rwkv"
-version = "0.6.22"
+version = "0.6.23"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "b1bef728ea694a1429c417bb970f3315ef359d9d98e4f7e840326a4ffdad0405"
+checksum = "f3af21fa3f40d1a2fb1cbe9e1fe5823f7694e1cc646a12cbce7b9f4987894a3f"
 dependencies = [
  "ahash",
  "anyhow",
@@ -2430,6 +2441,7 @@ dependencies = [
  "safetensors",
  "serde",
  "serde_json",
+ "trait-variant",
  "uid",
  "wasm-bindgen",
  "web-rwkv-derive",

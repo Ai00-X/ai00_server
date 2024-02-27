@@ -468,16 +468,18 @@ async fn model_route(receiver: Receiver<ThreadRequest>) -> Result<()> {
                         let _ = sender.send(());
                         anyhow::Ok(())
                     };
-                    match reload.await {
-                        Ok(_) => {
-                            callback(true);
-                            log::info!("model reloaded")
-                        }
-                        Err(err) => {
-                            callback(false);
-                            log::error!("reload model failed: {}", err);
-                        }
-                    };
+                    tokio::spawn(async move {
+                        match reload.await {
+                            Ok(_) => {
+                                callback(true);
+                                log::info!("model reloaded")
+                            }
+                            Err(err) => {
+                                callback(false);
+                                log::error!("reload model failed: {}", err);
+                            }
+                        };
+                    });
                 }
                 ThreadRequest::Unload => {
                     let mut env = env.write().await;
