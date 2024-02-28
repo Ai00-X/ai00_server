@@ -583,7 +583,8 @@ where
                     None => None,
                 }
             })
-            .map(tokio::spawn);
+            .map(tokio::spawn)
+            .collect_vec();
         let outputs = {
             let mut outputs = vec![];
             for handle in handles {
