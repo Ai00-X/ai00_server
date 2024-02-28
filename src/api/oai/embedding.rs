@@ -5,7 +5,7 @@ use futures_util::StreamExt;
 use serde::{Deserialize, Serialize};
 
 use crate::{
-    utils::request_info, Array, GenerateRequest, ThreadRequest, ThreadState, Token, TokenCounter,
+    api::request_info, Array, GenerateRequest, ThreadRequest, ThreadState, Token, TokenCounter,
 };
 
 #[derive(Debug, Default, Clone, Deserialize)]

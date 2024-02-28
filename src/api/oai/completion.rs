@@ -7,49 +7,19 @@ use axum::{
     Json,
 };
 use futures_util::{Stream, StreamExt};
-use itertools::Itertools;
-use regex::Regex;
 use serde::{Deserialize, Serialize};
 use tokio::sync::RwLock;
 
 use crate::{
+    api::request_info,
     sampler::nucleus::{NucleusParams, NucleusSampler},
-    utils::request_info,
     Array, FinishReason, GenerateRequest, ThreadRequest, ThreadState, Token, TokenCounter,
 };
 
-#[derive(Debug, Default, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
-pub enum Role {
-    #[default]
-    #[serde(alias = "system")]
-    System,
-    #[serde(alias = "user")]
-    User,
-    #[serde(alias = "assistant")]
-    Assistant,
-}
-
-impl std::fmt::Display for Role {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        match self {
-            Role::System => write!(f, "System"),
-            Role::User => write!(f, "User"),
-            Role::Assistant => write!(f, "Assistant"),
-        }
-    }
-}
-
-#[derive(Default, Debug, Clone, Serialize, Deserialize)]
-pub struct ChatRecord {
-    role: Role,
-    content: String,
-}
-
 #[derive(Debug, Deserialize)]
 #[serde(default)]
-pub struct ChatRequest {
-    messages: Array<ChatRecord>,
-    names: HashMap<Role, String>,
+pub struct CompletionRequest {
+    prompt: Array<String>,
     max_tokens: usize,
     stop: Array<String>,
     stream: bool,
@@ -62,13 +32,12 @@ pub struct ChatRequest {
     bias: HashMap<u16, f32>,
 }
 
-impl Default for ChatRequest {
+impl Default for CompletionRequest {
     fn default() -> Self {
         Self {
-            messages: Array::default(),
-            names: HashMap::new(),
+            prompt: Array::default(),
             max_tokens: 256,
-            stop: Array::Item("\n\n".into()),
+            stop: Array::default(),
             stream: false,
             temperature: 1.0,
             top_p: 1.0,
@@ -80,11 +49,10 @@ impl Default for ChatRequest {
     }
 }
 
-impl From<ChatRequest> for GenerateRequest {
-    fn from(value: ChatRequest) -> Self {
-        let ChatRequest {
-            messages,
-            names,
+impl From<CompletionRequest> for GenerateRequest {
+    fn from(value: CompletionRequest) -> Self {
+        let CompletionRequest {
+            prompt,
             max_tokens,
             stop,
             temperature,
@@ -96,29 +64,7 @@ impl From<ChatRequest> for GenerateRequest {
             ..
         } = value;
 
-        let re = Regex::new(r"\n(\s*\n)+").unwrap();
-        let prompt = Vec::from(messages.clone())
-            .into_iter()
-            .map(|ChatRecord { role, content }| {
-                let role = names.get(&role).cloned().unwrap_or(role.to_string());
-                let content = re.replace_all(&content, "\n");
-                let content = content.trim();
-                format!("{role}: {content}")
-            })
-            .join("\n\n");
-        let model_text = Vec::from(messages)
-            .into_iter()
-            .filter(|record| record.role == Role::Assistant)
-            .map(|record| record.content)
-            .join("\n\n");
-
-        let assistant = Role::Assistant;
-        let assistant = names
-            .get(&assistant)
-            .cloned()
-            .unwrap_or(assistant.to_string());
-        let prompt = prompt + &format!("\n\n{assistant}:");
-
+        let prompt = Vec::from(prompt).join("");
         let max_tokens = max_tokens.min(crate::MAX_TOKENS);
         let stop = stop.into();
         let bias = Arc::new(bias);
@@ -136,7 +82,6 @@ impl From<ChatRequest> for GenerateRequest {
 
         Self {
             prompt,
-            model_text,
             max_tokens,
             stop,
             sampler,
@@ -147,30 +92,30 @@ impl From<ChatRequest> for GenerateRequest {
 }
 
 #[derive(Debug, Serialize)]
-struct ChatChoice {
-    message: ChatRecord,
+pub struct CompletionChoice {
+    text: String,
     index: usize,
     finish_reason: FinishReason,
 }
 
 #[derive(Debug, Serialize)]
-struct ChatResponse {
+pub struct CompletionResponse {
     object: String,
     model: String,
-    choices: Vec<ChatChoice>,
+    choices: Vec<CompletionChoice>,
     #[serde(rename = "usage")]
     counter: TokenCounter,
 }
 
-async fn chat_completions_one(
+async fn completions_one(
     State(ThreadState(sender)): State<ThreadState>,
-    Json(request): Json<ChatRequest>,
-) -> Json<ChatResponse> {
+    Json(request): Json<CompletionRequest>,
+) -> Json<CompletionResponse> {
     let info = request_info(sender.clone(), Duration::from_secs(1)).await;
     let model_name = info.reload.model_path.to_string_lossy().into_owned();
 
     let (token_sender, token_receiver) = flume::unbounded();
-    let request = request.into();
+    let request = GenerateRequest::from(request);
     let _ = sender.send(ThreadRequest::Generate {
         request,
         tokenizer: info.tokenizer,
@@ -197,14 +142,11 @@ async fn chat_completions_one(
         }
     }
 
-    Json(ChatResponse {
-        object: "chat.completion".into(),
+    Json(CompletionResponse {
+        object: "text_completion".into(),
         model: model_name,
-        choices: vec![ChatChoice {
-            message: ChatRecord {
-                role: Role::Assistant,
-                content: text.trim().into(),
-            },
+        choices: vec![CompletionChoice {
+            text,
             index: 0,
             finish_reason,
         }],
@@ -214,62 +156,49 @@ async fn chat_completions_one(
 
 #[derive(Debug, Default, Serialize)]
 #[serde(rename_all = "snake_case")]
-enum PartialChatRecord {
+pub enum PartialCompletionRecord {
     #[default]
     #[serde(rename = "")]
     None,
-    Role(Role),
     Content(String),
 }
 
 #[derive(Debug, Default, Serialize)]
-struct PartialChatChoice {
-    delta: PartialChatRecord,
+pub struct PartialCompletionChoice {
+    delta: PartialCompletionRecord,
     index: usize,
     finish_reason: FinishReason,
 }
 
 #[derive(Debug, Serialize)]
-struct PartialChatResponse {
+pub struct PartialCompletionResponse {
     object: String,
     model: String,
-    choices: Vec<PartialChatChoice>,
+    choices: Vec<PartialCompletionChoice>,
 }
 
-async fn chat_completions_stream(
+async fn completions_stream(
     State(ThreadState(sender)): State<ThreadState>,
-    Json(request): Json<ChatRequest>,
+    Json(request): Json<CompletionRequest>,
 ) -> Sse<impl Stream<Item = Result<Event>>> {
     let info = request_info(sender.clone(), Duration::from_secs(1)).await;
     let model_name = info.reload.model_path.to_string_lossy().into_owned();
 
     let (token_sender, token_receiver) = flume::unbounded();
-    let request = request.into();
+    let request = GenerateRequest::from(request);
     let _ = sender.send(ThreadRequest::Generate {
         request,
         tokenizer: info.tokenizer,
         sender: token_sender,
     });
 
-    let mut start_token = true;
-    let stream = token_receiver.into_stream().map(move |token| {
+    let stream = token_receiver.into_stream().skip(1).map(move |token| {
         let choice = match token {
-            Token::Start => PartialChatChoice {
-                delta: PartialChatRecord::Role(Role::Assistant),
+            Token::Token(token) => PartialCompletionChoice {
+                delta: PartialCompletionRecord::Content(token),
                 ..Default::default()
             },
-            Token::Token(token) => {
-                let token = match start_token {
-                    true => token.trim_start().into(),
-                    false => token,
-                };
-                start_token = false;
-                PartialChatChoice {
-                    delta: PartialChatRecord::Content(token),
-                    ..Default::default()
-                }
-            }
-            Token::Stop(finish_reason, _) => PartialChatChoice {
+            Token::Stop(finish_reason, _) => PartialCompletionChoice {
                 finish_reason,
                 ..Default::default()
             },
@@ -277,8 +206,8 @@ async fn chat_completions_stream(
             _ => unreachable!(),
         };
 
-        let json = serde_json::to_string(&PartialChatResponse {
-            object: "chat.completion.chunk".into(),
+        let json = serde_json::to_string(&PartialCompletionResponse {
+            object: "text_completion.chunk".into(),
             model: model_name.clone(),
             choices: vec![choice],
         })?;
@@ -288,17 +217,15 @@ async fn chat_completions_stream(
     Sse::new(stream)
 }
 
-pub async fn chat_completions(
+pub async fn completions(
     state: State<ThreadState>,
-    Json(request): Json<ChatRequest>,
+    Json(request): Json<CompletionRequest>,
 ) -> Response {
     if request.stream {
-        chat_completions_stream(state, Json(request))
+        completions_stream(state, Json(request))
             .await
             .into_response()
     } else {
-        chat_completions_one(state, Json(request))
-            .await
-            .into_response()
+        completions_one(state, Json(request)).await.into_response()
     }
 }

@@ -3,7 +3,7 @@ use std::time::Duration;
 use axum::{extract::State, Json};
 use serde::Serialize;
 
-use crate::{utils::request_info, ThreadState};
+use crate::{api::request_info, ThreadState};
 
 #[derive(Debug, Serialize)]
 struct ModelChoice {

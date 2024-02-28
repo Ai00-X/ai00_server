@@ -38,16 +38,15 @@ use web_rwkv::{
 };
 
 use crate::{
+    api::oai,
     run::{GenerateContext, Runner, Runtime, SlotResult, Tokens},
     sampler::Sampler,
 };
 
 mod api;
 mod config;
-mod oai;
 mod run;
 mod sampler;
-mod utils;
 
 pub const MAX_TOKENS: usize = 4096;
 

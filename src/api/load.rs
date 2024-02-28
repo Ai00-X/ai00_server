@@ -11,10 +11,8 @@ use futures_util::{Stream, StreamExt};
 use serde::Serialize;
 use web_rwkv::model::ModelInfo;
 
-use crate::{
-    utils::{request_info, request_info_stream, try_request_info},
-    ReloadRequest, RuntimeInfo, ThreadRequest, ThreadState,
-};
+use super::{request_info, request_info_stream, try_request_info};
+use crate::{ReloadRequest, RuntimeInfo, ThreadRequest, ThreadState};
 
 #[derive(Debug, Clone, Serialize)]
 pub struct InfoResponse {
