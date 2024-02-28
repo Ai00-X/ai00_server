@@ -482,9 +482,12 @@ async fn model_route(receiver: Receiver<ThreadRequest>) -> Result<()> {
                     });
                 }
                 ThreadRequest::Unload => {
-                    let mut env = env.write().await;
-                    *env = Environment::None;
-                    log::info!("model unloaded");
+                    let env = env.clone();
+                    tokio::spawn(async move {
+                        let mut env = env.write().await;
+                        *env = Environment::None;
+                        log::info!("model unloaded");
+                    });
                 }
                 ThreadRequest::Generate {
                     request,
