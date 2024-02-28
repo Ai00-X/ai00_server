@@ -13,7 +13,7 @@ use serde::{Deserialize, Serialize};
 use tokio::sync::RwLock;
 
 use crate::{
-    sampler::{NucleusParams, NucleusSampler},
+    sampler::nucleus::{NucleusParams, NucleusSampler},
     utils::request_info,
     Array, FinishReason, GenerateRequest, ThreadRequest, ThreadState, Token, TokenCounter,
 };

@@ -22,7 +22,7 @@ use half::f16;
 use itertools::Itertools;
 use memmap2::Mmap;
 use safetensors::SafeTensors;
-use sampler::NucleusSampler;
+use sampler::nucleus::NucleusSampler;
 use serde::{Deserialize, Serialize};
 use tokio::sync::{Mutex, RwLock};
 use tower_http::{cors::CorsLayer, services::ServeDir};
