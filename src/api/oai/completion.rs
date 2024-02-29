@@ -8,12 +8,11 @@ use axum::{
 };
 use futures_util::{Stream, StreamExt};
 use serde::{Deserialize, Serialize};
-use tokio::sync::RwLock;
 
+use super::SamplerParams;
 use crate::{
-    api::request_info,
-    sampler::nucleus::{NucleusParams, NucleusSampler},
-    Array, FinishReason, GenerateRequest, ThreadRequest, ThreadState, Token, TokenCounter,
+    api::request_info, Array, FinishReason, GenerateRequest, ThreadRequest, ThreadState, Token,
+    TokenCounter,
 };
 
 #[derive(Debug, Deserialize)]
@@ -23,13 +22,10 @@ pub struct CompletionRequest {
     max_tokens: usize,
     stop: Array<String>,
     stream: bool,
-    temperature: f32,
-    top_p: f32,
-    presence_penalty: f32,
-    frequency_penalty: f32,
-    penalty_decay: f32,
     #[serde(alias = "logit_bias")]
     bias: HashMap<u16, f32>,
+    #[serde(flatten)]
+    sampler: SamplerParams,
 }
 
 impl Default for CompletionRequest {
@@ -39,12 +35,8 @@ impl Default for CompletionRequest {
             max_tokens: 256,
             stop: Array::default(),
             stream: false,
-            temperature: 1.0,
-            top_p: 1.0,
-            presence_penalty: 0.0,
-            frequency_penalty: 0.0,
-            penalty_decay: 1.0,
             bias: HashMap::new(),
+            sampler: SamplerParams::Nucleus(Default::default()),
         }
     }
 }
@@ -55,11 +47,7 @@ impl From<CompletionRequest> for GenerateRequest {
             prompt,
             max_tokens,
             stop,
-            temperature,
-            top_p,
-            presence_penalty,
-            frequency_penalty,
-            penalty_decay,
+            sampler,
             bias,
             ..
         } = value;
@@ -68,17 +56,7 @@ impl From<CompletionRequest> for GenerateRequest {
         let max_tokens = max_tokens.min(crate::MAX_TOKENS);
         let stop = stop.into();
         let bias = Arc::new(bias);
-
-        let sampler = Arc::new(RwLock::new(NucleusSampler {
-            params: NucleusParams {
-                top_p,
-                temperature,
-                presence_penalty,
-                frequency_penalty,
-                penalty_decay,
-            },
-            ..Default::default()
-        }));
+        let sampler = sampler.into();
 
         Self {
             prompt,

@@ -2,11 +2,13 @@ use std::collections::HashMap;
 
 use derivative::Derivative;
 use itertools::Itertools;
+use serde::{Deserialize, Serialize};
 
 use super::Sampler;
 
-#[derive(Debug, Clone, Derivative)]
+#[derive(Debug, Clone, Derivative, Serialize, Deserialize)]
 #[derivative(Default)]
+#[serde(default)]
 pub struct NucleusParams {
     #[derivative(Default(value = "1.0"))]
     pub top_p: f32,
@@ -31,6 +33,15 @@ pub struct NucleusSampler {
     pub state: NucleusState,
 }
 
+impl NucleusSampler {
+    pub fn new(params: NucleusParams) -> Self {
+        Self {
+            params,
+            state: Default::default(),
+        }
+    }
+}
+
 impl Sampler for NucleusSampler {
     fn init(&mut self, model_tokens: &[u16]) {
         let NucleusSampler { params, state } = self;
@@ -52,20 +63,22 @@ impl Sampler for NucleusSampler {
             .for_each(|(token, penalty)| output[*token as usize] -= penalty)
     }
 
-    fn sample(&self, probs: &[f32]) -> u16 {
+    fn sample(&mut self, probs: &[f32]) -> u16 {
+        let NucleusSampler { params, state } = self;
+
         let sorted = probs
             .iter()
             .enumerate()
             .sorted_unstable_by(|(_, x), (_, y)| x.total_cmp(y).reverse())
             .scan((0, 0.0, 0.0), |(_, cum, _), (id, x)| {
-                if *cum > self.params.top_p {
+                if *cum > params.top_p {
                     None
                 } else {
                     *cum += x;
-                    Some((id, *cum, x))
+                    Some((id, *cum, *x))
                 }
             })
-            .map(|(id, _, x)| (id, x.powf(1.0 / self.params.temperature)))
+            .map(|(id, _, x)| (id, x.powf(1.0 / params.temperature)))
             .collect_vec();
 
         let sum: f32 = sorted.iter().map(|(_, x)| x).sum();
@@ -84,11 +97,7 @@ impl Sampler for NucleusSampler {
             .find_or_first(|&(_, cum)| rand <= cum)
             .map(|(id, _)| id)
             .unwrap_or_default();
-        token as u16
-    }
-
-    fn update(&mut self, token: u16) {
-        let NucleusSampler { params, state } = self;
+        let token = token as u16;
 
         state
             .penalties
@@ -100,5 +109,7 @@ impl Sampler for NucleusSampler {
             None => params.presence_penalty,
         };
         state.penalties.insert(token, penalty);
+
+        token
     }
 }

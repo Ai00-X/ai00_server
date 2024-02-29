@@ -161,14 +161,14 @@ pub struct GenerateRequest {
     pub max_tokens: usize,
     /// Stop indicators.
     pub stop: Vec<String>,
+    /// Bias added to tokens before sampling.
+    pub bias: Arc<HashMap<u16, f32>>,
     /// Sampler parameters.
     #[derivative(
         Debug = "ignore",
         Default(value = "Arc::new(RwLock::new(NucleusSampler::default()))")
     )]
     pub sampler: Arc<RwLock<dyn Sampler + Send + Sync>>,
-    /// Bias added to tokens before sampling.
-    pub bias: Arc<HashMap<u16, f32>>,
     /// Whether this is an embedding request.
     pub embed: bool,
     /// The (reversed) number of layer at which the output is as embedding.

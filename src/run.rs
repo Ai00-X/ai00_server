@@ -579,7 +579,7 @@ where
             })
             .map(|bundle| async move {
                 match bundle {
-                    Some((sampler, data)) => Some(sampler.read().await.sample(&data)),
+                    Some((sampler, data)) => Some(sampler.write().await.sample(&data)),
                     None => None,
                 }
             })
@@ -634,8 +634,6 @@ where
 
             assert_eq!(context.suffix.len(), 0);
             context.suffix.0.push(token);
-
-            context.request.sampler.write().await.update(token);
 
             let mut word = self.tokenizer.decode(&[token])?;
             context.model_text.append(&mut word.clone());
