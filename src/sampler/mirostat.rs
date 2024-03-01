@@ -10,7 +10,7 @@ use super::Sampler;
 pub struct MirostatParams {
     #[derivative(Default(value = "3.0"))]
     pub tau: f32,
-    #[derivative(Default(value = "1.0"))]
+    #[derivative(Default(value = "0.1"))]
     pub rate: f32,
     #[derivative(Default(value = "128"))]
     pub threshold: usize,
@@ -50,8 +50,9 @@ impl MirostatSampler {
 
     fn compute_k(&self, probs: &[f32], s: f32) -> usize {
         let n = probs.len() as f32;
+        let tau = self.state.max_surprise;
         let eps = s - 1.0;
-        let k = (eps * 2.0_f32.powf(self.params.tau) / (1.0 - n.powf(-eps))).powf(1.0 / s);
+        let k = (eps * 2.0_f32.powf(tau) / (1.0 - n.powf(-eps))).powf(1.0 / s);
         k.round() as usize
     }
 }
@@ -70,7 +71,8 @@ impl Sampler for MirostatSampler {
         let sorted_probs = sorted.iter().map(|x| x.2).collect_vec();
 
         let s = self.estimate_s(&sorted_probs);
-        let k = self.compute_k(&sorted_probs, s);
+        let k = self.compute_k(&sorted_probs, s) + 1;
+        let k = k.min(probs.len() - 1);
 
         let sum = sorted.get(k).map(|&(_, cum, _)| cum).unwrap_or_default();
         let rand = fastrand::f32() * sum;

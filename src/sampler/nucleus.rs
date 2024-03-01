@@ -8,7 +8,6 @@ use super::Sampler;
 
 #[derive(Debug, Clone, Derivative, Serialize, Deserialize)]
 #[derivative(Default)]
-#[serde(default)]
 pub struct NucleusParams {
     #[derivative(Default(value = "1.0"))]
     pub top_p: f32,

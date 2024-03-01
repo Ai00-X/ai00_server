@@ -36,7 +36,7 @@ impl Default for CompletionRequest {
             stop: Array::default(),
             stream: false,
             bias: HashMap::new(),
-            sampler: SamplerParams::Nucleus(Default::default()),
+            sampler: Default::default(),
         }
     }
 }
