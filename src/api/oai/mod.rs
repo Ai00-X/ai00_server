@@ -19,18 +19,21 @@ use crate::sampler::{
     Sampler,
 };
 
-#[derive(Debug, Clone, Deserialize)]
-#[serde(untagged)]
-pub enum SamplerParams {
-    Nucleus(NucleusParams),
-    Mirostat(MirostatParams),
+#[derive(Debug, Default, Clone, Deserialize)]
+pub struct SamplerParams {
+    #[serde(flatten)]
+    nucleus: Option<NucleusParams>,
+    #[serde(flatten)]
+    mirostat: Option<MirostatParams>,
 }
 
 impl From<SamplerParams> for Arc<RwLock<dyn Sampler + Send + Sync>> {
     fn from(value: SamplerParams) -> Self {
-        match value {
-            SamplerParams::Nucleus(params) => Arc::new(RwLock::new(NucleusSampler::new(params))),
-            SamplerParams::Mirostat(params) => Arc::new(RwLock::new(MirostatSampler::new(params))),
+        let SamplerParams { nucleus, mirostat } = value;
+        match (nucleus, mirostat) {
+            (None, None) => Arc::new(RwLock::new(NucleusSampler::new(Default::default()))),
+            (None, Some(params)) => Arc::new(RwLock::new(MirostatSampler::new(params))),
+            (Some(params), _) => Arc::new(RwLock::new(NucleusSampler::new(params))),
         }
     }
 }

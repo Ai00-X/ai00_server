@@ -10,11 +10,12 @@ use futures_util::{Stream, StreamExt};
 use itertools::Itertools;
 use regex::Regex;
 use serde::{Deserialize, Serialize};
+use tokio::sync::RwLock;
 
 use super::SamplerParams;
 use crate::{
-    api::request_info, Array, FinishReason, GenerateRequest, ThreadRequest, ThreadState, Token,
-    TokenCounter,
+    api::request_info, sampler::Sampler, Array, FinishReason, GenerateRequest, ThreadRequest,
+    ThreadState, Token, TokenCounter,
 };
 
 #[derive(Debug, Default, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
@@ -67,7 +68,7 @@ impl Default for ChatRequest {
             stop: Array::Item("\n\n".into()),
             stream: false,
             bias: HashMap::new(),
-            sampler: SamplerParams::Nucleus(Default::default()),
+            sampler: Default::default(),
         }
     }
 }
@@ -110,7 +111,7 @@ impl From<ChatRequest> for GenerateRequest {
         let max_tokens = max_tokens.min(crate::MAX_TOKENS);
         let stop = stop.into();
         let bias = Arc::new(bias);
-        let sampler = sampler.into();
+        let sampler: Arc<RwLock<dyn Sampler + Send + Sync>> = sampler.into();
 
         Self {
             prompt,
