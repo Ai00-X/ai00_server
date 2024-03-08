@@ -18,7 +18,12 @@ pub struct NucleusParams {
     #[derivative(Default(value = "0.0"))]
     pub frequency_penalty: f32,
     #[derivative(Default(value = "1.0"))]
+    #[serde(default = "default_penalty_decay")]
     pub penalty_decay: f32,
+}
+
+fn default_penalty_decay() -> f32 {
+    NucleusParams::default().penalty_decay
 }
 
 #[derive(Debug, Default, Clone)]

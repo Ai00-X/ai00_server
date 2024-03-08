@@ -10,6 +10,7 @@ pub struct MirostatParams {
     #[derivative(Default(value = "3.0"))]
     pub tau: f32,
     #[derivative(Default(value = "0.1"))]
+    #[serde(alias = "learning_rate")]
     pub rate: f32,
     #[derivative(Default(value = "128"))]
     #[serde(default = "default_threshold")]
