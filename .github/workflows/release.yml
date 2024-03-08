@@ -115,6 +115,7 @@ jobs:
           path: ./${{ env.RELEASE_DIR }}
 
   release:
+    permissions: write-all
     name: GitHub Release
     needs: build
     runs-on: ubuntu-latest
