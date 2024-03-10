@@ -21,6 +21,8 @@
 | 中台 | [middleware](src/middleware.rs) | 入口是`model_route`函数。这个函数运行在一个单独的线程里，时刻监听前台发来的消息。 |
 | 后台 | [run](src/run.rs)               | 入口是`run`函数。这个函数持有模型、状态缓存等，也运行在一个单独的线程里。         |
 
+流程图见[这里](Ai00.drawio.html)。
+
 ## Ai00 的底层依赖
 
 `Ai00`最重要的依赖是[`web-rwkv`](https://github.com/cryscan/web-rwkv)，它提供了tokenization、载入模型、模型推理的功能，这是整个`Ai00`后端的基础。这里简单介绍以下`web-rwkv`本身提供的功能。
