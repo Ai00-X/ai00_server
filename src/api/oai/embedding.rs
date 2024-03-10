@@ -5,7 +5,8 @@ use futures_util::StreamExt;
 use serde::{Deserialize, Serialize};
 
 use crate::{
-    api::request_info, Array, GenerateRequest, ThreadRequest, ThreadState, Token, TokenCounter,
+    api::request_info,
+    middleware::{Array, GenerateRequest, ThreadRequest, ThreadState, Token, TokenCounter},
 };
 
 #[derive(Debug, Default, Clone, Deserialize)]
@@ -44,6 +45,7 @@ pub struct EmbeddingResponse {
     counter: TokenCounter,
 }
 
+/// `/api/oai/embeddings`, `/api/oai/v1/embeddings`.
 pub async fn embeddings(
     State(ThreadState(sender)): State<ThreadState>,
     Json(request): Json<EmbeddingRequest>,

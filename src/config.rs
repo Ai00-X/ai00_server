@@ -4,7 +4,7 @@ use derivative::Derivative;
 use serde::{Deserialize, Serialize};
 use web_rwkv::model::{EmbedDevice, Quant};
 
-use crate::ReloadRequest;
+use crate::middleware::ReloadRequest;
 
 #[derive(Debug, Default, Clone, Serialize, Deserialize)]
 #[serde(default)]

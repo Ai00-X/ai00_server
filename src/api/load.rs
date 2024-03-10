@@ -12,7 +12,7 @@ use serde::Serialize;
 use web_rwkv::model::ModelInfo;
 
 use super::{request_info, request_info_stream, try_request_info};
-use crate::{ReloadRequest, RuntimeInfo, ThreadRequest, ThreadState};
+use crate::middleware::{ReloadRequest, RuntimeInfo, ThreadRequest, ThreadState};
 
 #[derive(Debug, Clone, Serialize)]
 pub struct InfoResponse {

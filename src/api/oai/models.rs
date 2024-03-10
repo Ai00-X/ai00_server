@@ -16,6 +16,7 @@ pub struct ModelResponse {
     data: Vec<ModelChoice>,
 }
 
+/// `/api/oai/models`, `/api/oai/v1/models`.
 pub async fn models(State(ThreadState(sender)): State<ThreadState>) -> Json<ModelResponse> {
     let info = request_info(sender, Duration::from_secs(1)).await;
     let model_name = info

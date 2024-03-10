@@ -11,8 +11,11 @@ use serde::{Deserialize, Serialize};
 
 use super::SamplerParams;
 use crate::{
-    api::request_info, Array, FinishReason, GenerateRequest, ThreadRequest, ThreadState, Token,
-    TokenCounter,
+    api::request_info,
+    middleware::{
+        Array, FinishReason, GenerateRequest, ThreadRequest, ThreadState, Token, TokenCounter,
+        MAX_TOKENS,
+    },
 };
 
 #[derive(Debug, Deserialize)]
@@ -53,7 +56,7 @@ impl From<CompletionRequest> for GenerateRequest {
         } = value;
 
         let prompt = Vec::from(prompt).join("");
-        let max_tokens = max_tokens.min(crate::MAX_TOKENS);
+        let max_tokens = max_tokens.min(MAX_TOKENS);
         let stop = stop.into();
         let bias = Arc::new(bias);
         let sampler = sampler.into();
@@ -85,7 +88,7 @@ pub struct CompletionResponse {
     counter: TokenCounter,
 }
 
-async fn completions_one(
+async fn respond_one(
     State(ThreadState(sender)): State<ThreadState>,
     Json(request): Json<CompletionRequest>,
 ) -> Json<CompletionResponse> {
@@ -108,7 +111,7 @@ async fn completions_one(
     while let Some(token) = stream.next().await {
         match token {
             Token::Start => {}
-            Token::Token(token) => {
+            Token::Content(token) => {
                 text += &token;
             }
             Token::Stop(reason, counter) => {
@@ -155,7 +158,7 @@ pub struct PartialCompletionResponse {
     choices: Vec<PartialCompletionChoice>,
 }
 
-async fn completions_stream(
+async fn respond_stream(
     State(ThreadState(sender)): State<ThreadState>,
     Json(request): Json<CompletionRequest>,
 ) -> Sse<impl Stream<Item = Result<Event>>> {
@@ -172,7 +175,7 @@ async fn completions_stream(
 
     let stream = token_receiver.into_stream().skip(1).map(move |token| {
         let choice = match token {
-            Token::Token(token) => PartialCompletionChoice {
+            Token::Content(token) => PartialCompletionChoice {
                 delta: PartialCompletionRecord::Content(token),
                 ..Default::default()
             },
@@ -195,15 +198,13 @@ async fn completions_stream(
     Sse::new(stream)
 }
 
+/// `/api/oai/completions`, `/api/oai/v1/completions`.
 pub async fn completions(
     state: State<ThreadState>,
     Json(request): Json<CompletionRequest>,
 ) -> Response {
-    if request.stream {
-        completions_stream(state, Json(request))
-            .await
-            .into_response()
-    } else {
-        completions_one(state, Json(request)).await.into_response()
+    match request.stream {
+        true => respond_stream(state, Json(request)).await.into_response(),
+        false => respond_one(state, Json(request)).await.into_response(),
     }
 }

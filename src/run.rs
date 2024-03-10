@@ -15,7 +15,7 @@ use web_rwkv::{
     tokenizer::Tokenizer,
 };
 
-use crate::{Environment, FinishReason, GenerateRequest, Token, TokenCounter};
+use crate::middleware::{Environment, FinishReason, GenerateRequest, Token, TokenCounter};
 
 const PENALTY_FREE_LIST: [&str; 5] = ["\n", ",", ".", "\u{002c}", "\u{002f}"];
 pub const PROMPT_CACHE_TOKENS: usize = 32;
@@ -105,16 +105,20 @@ impl Payload {
         }
     }
 
+    /// Returns `true` if the payload is [`Empty`].
+    ///
+    /// [`Empty`]: Payload::Empty
+    #[must_use]
     pub fn is_empty(&self) -> bool {
         matches!(self, Self::Empty)
     }
 
+    /// Returns `true` if the payload is [`Busy`].
+    ///
+    /// [`Busy`]: Payload::Busy
+    #[must_use]
     pub fn is_busy(&self) -> bool {
-        matches!(self, Self::Busy(_))
-    }
-
-    pub fn is_done(&self) -> bool {
-        matches!(self, Self::Done(_))
+        matches!(self, Self::Busy(..))
     }
 }
 
@@ -697,12 +701,12 @@ where
                 done = true;
             } else if stop_matched {
                 let output = String::from_utf8_lossy(head);
-                let _ = context.sender.send(Token::Token(output.into()));
+                let _ = context.sender.send(Token::Content(output.into()));
                 finish(FinishReason::Stop);
             } else if context.model_tokens.len() >= context.request.max_tokens {
                 finish(FinishReason::Length);
             } else if let Ok(word) = String::from_utf8(head.to_vec()) {
-                let _ = context.sender.send(Token::Token(word));
+                let _ = context.sender.send(Token::Content(word));
                 context.buffer = tail.to_vec();
             }
 

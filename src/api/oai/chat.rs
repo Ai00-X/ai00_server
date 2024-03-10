@@ -14,8 +14,12 @@ use tokio::sync::RwLock;
 
 use super::SamplerParams;
 use crate::{
-    api::request_info, sampler::Sampler, Array, FinishReason, GenerateRequest, ThreadRequest,
-    ThreadState, Token, TokenCounter,
+    api::request_info,
+    middleware::{
+        Array, FinishReason, GenerateRequest, ThreadRequest, ThreadState, Token, TokenCounter,
+        MAX_TOKENS,
+    },
+    sampler::Sampler,
 };
 
 #[derive(Debug, Default, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
@@ -108,7 +112,7 @@ impl From<ChatRequest> for GenerateRequest {
             .unwrap_or(assistant.to_string());
         let prompt = prompt + &format!("\n\n{assistant}:");
 
-        let max_tokens = max_tokens.min(crate::MAX_TOKENS);
+        let max_tokens = max_tokens.min(MAX_TOKENS);
         let stop = stop.into();
         let bias = Arc::new(bias);
         let sampler: Arc<RwLock<dyn Sampler + Send + Sync>> = sampler.into();
@@ -141,7 +145,7 @@ struct ChatResponse {
     counter: TokenCounter,
 }
 
-async fn chat_completions_one(
+async fn respond_one(
     State(ThreadState(sender)): State<ThreadState>,
     Json(request): Json<ChatRequest>,
 ) -> Json<ChatResponse> {
@@ -164,7 +168,7 @@ async fn chat_completions_one(
     while let Some(token) = stream.next().await {
         match token {
             Token::Start => {}
-            Token::Token(token) => {
+            Token::Content(token) => {
                 text += &token;
             }
             Token::Stop(reason, counter) => {
@@ -215,7 +219,7 @@ struct PartialChatResponse {
     choices: Vec<PartialChatChoice>,
 }
 
-async fn chat_completions_stream(
+async fn respond_stream(
     State(ThreadState(sender)): State<ThreadState>,
     Json(request): Json<ChatRequest>,
 ) -> Sse<impl Stream<Item = Result<Event>>> {
@@ -237,7 +241,7 @@ async fn chat_completions_stream(
                 delta: PartialChatRecord::Role(Role::Assistant),
                 ..Default::default()
             },
-            Token::Token(token) => {
+            Token::Content(token) => {
                 let token = match start_token {
                     true => token.trim_start().into(),
                     false => token,
@@ -267,17 +271,13 @@ async fn chat_completions_stream(
     Sse::new(stream)
 }
 
+/// `/api/oai/chat/completions`, `/api/oai/v1/chat/completions`.
 pub async fn chat_completions(
     state: State<ThreadState>,
     Json(request): Json<ChatRequest>,
 ) -> Response {
-    if request.stream {
-        chat_completions_stream(state, Json(request))
-            .await
-            .into_response()
-    } else {
-        chat_completions_one(state, Json(request))
-            .await
-            .into_response()
+    match request.stream {
+        true => respond_stream(state, Json(request)).await.into_response(),
+        false => respond_one(state, Json(request)).await.into_response(),
     }
 }

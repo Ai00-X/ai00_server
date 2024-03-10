@@ -12,7 +12,7 @@ pub use adapter::adapters;
 pub use file::{dir, load_config, models, save_config, unzip};
 pub use load::{info, load, state, unload};
 
-use crate::{RuntimeInfo, ThreadRequest};
+use crate::middleware::{RuntimeInfo, ThreadRequest};
 
 pub async fn try_request_info(sender: Sender<ThreadRequest>) -> Result<RuntimeInfo> {
     let (info_sender, info_receiver) = flume::unbounded();

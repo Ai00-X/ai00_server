@@ -1,6 +1,6 @@
 use axum::{extract::State, Json};
 
-use crate::{AdapterList, ThreadRequest, ThreadState};
+use crate::middleware::{AdapterList, ThreadRequest, ThreadState};
 
 /// `/api/adapters`.
 pub async fn adapters(State(ThreadState(sender)): State<ThreadState>) -> Json<Vec<String>> {
