@@ -15,11 +15,11 @@
   - 中台在接受生成文字请求的时候，会将各种生成任务整理成统一的续写请求，发送后台处理。
 - 后台: 后台拥有着一个模型和一个状态缓存池，而且它只接受中台发来的续写请求。在接受到续写请求后，后台会完成续写，把结果直接发送回前台。
 
-| 模块 | 代码位置                        | 说明                                                                              |
-| ---- | ------------------------------- | --------------------------------------------------------------------------------- |
-| 前台 | [api](src/api/)                 | 与OpenAI兼容的API在[api/oai](src/api/oai/)里面。                                  |
-| 中台 | [middleware](src/middleware.rs) | 入口是`model_route`函数。这个函数运行在一个单独的线程里，时刻监听前台发来的消息。 |
-| 后台 | [run](src/run.rs)               | 入口是`run`函数。这个函数持有模型、状态缓存等，也运行在一个单独的线程里。         |
+| 模块 | 代码位置                           | 说明                                                                              |
+| ---- | ---------------------------------- | --------------------------------------------------------------------------------- |
+| 前台 | [api/](src/api/)                   | 与OpenAI兼容的API在[api/oai](src/api/oai/)里面。                                  |
+| 中台 | [middleware.rs](src/middleware.rs) | 入口是`model_route`函数。这个函数运行在一个单独的线程里，时刻监听前台发来的消息。 |
+| 后台 | [run.rs](src/run.rs)               | 入口是`run`函数。这个函数持有模型、状态缓存等，也运行在一个单独的线程里。         |
 
 ![flowchart](flowchart.png)
 
@@ -50,7 +50,7 @@ match logits[0] {
 
 ## `Ai00`的前台都定义了哪些API？
 
-如果想了解`Ai00`支持哪些API，可以看[api](src/api/)里面的代码。这里面一个文件定义了一组相关的API。我们拿[chat](src/api/oai/chat.rs)这个文件举例。先在文件的最后，找到这么一个public函数：
+如果想了解`Ai00`支持哪些API，可以看[api/](src/api/)里面的代码。这里面一个文件定义了一组相关的API。我们拿[chat](src/api/oai/chat.rs)这个文件举例。先在文件的最后，找到这么一个public函数：
 
 ```rust
 /// `/api/oai/chat/completions`, `/api/oai/v1/chat/completions`.
@@ -184,8 +184,11 @@ pub struct MirostatParams {
 
 显而易见，如果我们接收的`JSON`里含有`temperature`、`top_p`、`presence_penalty`、`frequency_penalty`，程序会自动匹配`nucleus`类型；如果有`tau`、`rate`或`learning_rate`字段，会匹配`mirostat`类型。
 
-> 关于更多`enum`（反）序列化的方式，参见[`enum`表示](https://serde.rs/enum-representations.html)。
+> 关于更多`enum`（反）序列化的方式，参见[`enum`的表示](https://serde.rs/enum-representations.html)。
 
 哦，还有一件事。你可能注意到`chat_completions`还有一个参数`State(ThreadState(sender)): State<ThreadState>`。其实这就是给中台发送请求的一个channel。我们这个函数的目的就是把收到的`ChatRequest`对象通过这个channel发送给中台。
 
-从这里开始，你应该就已经能通过代码了解到所有`Ai00`支持的API了。
+从这里开始，你应该就已经能通过代码了解到所有`Ai00`支持的API了。方法总结起来就是：
+1. 打开一个[api/](src/api/)下的源码文件；
+2. 找到带有API注释的public函数，这就是API接收器；
+3. 研究它的参数的结构，对照[`serde`的文档](https://serde.rs/)得到对应的API。
