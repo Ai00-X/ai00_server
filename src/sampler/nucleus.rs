@@ -17,7 +17,7 @@ pub struct NucleusParams {
     pub presence_penalty: f32,
     #[derivative(Default(value = "0.0"))]
     pub frequency_penalty: f32,
-    #[derivative(Default(value = "1.0"))]
+    #[derivative(Default(value = "0.99654026"))]
     #[serde(default = "default_penalty_decay")]
     pub penalty_decay: f32,
 }
