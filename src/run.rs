@@ -1,6 +1,12 @@
 use std::{
-    borrow::Borrow, cmp::Ordering, collections::HashSet, convert::Infallible, future::Future,
-    pin::Pin, sync::Arc, time::Instant,
+    borrow::Borrow,
+    cmp::Ordering,
+    collections::HashSet,
+    convert::Infallible,
+    future::Future,
+    pin::Pin,
+    sync::Arc,
+    time::{Duration, Instant},
 };
 
 use anyhow::Result;
@@ -18,7 +24,8 @@ use web_rwkv::{
 use crate::middleware::{Environment, FinishReason, GenerateRequest, Token, TokenCounter};
 
 const PENALTY_FREE_LIST: [&str; 5] = ["\n", ",", ".", "\u{002c}", "\u{002f}"];
-pub const PROMPT_CACHE_TOKENS: usize = 32;
+const PROMPT_CACHE_TOKENS: usize = 32;
+const MAX_CACHE_ITEMS: usize = 256;
 
 #[derive(Debug)]
 pub enum SlotResult {
@@ -220,6 +227,37 @@ pub struct GenerateContext {
     pub sender: Sender<Token>,
 }
 
+#[derive(Debug)]
+struct CachedItem<B: BackedState> {
+    backed: Arc<B>,
+    instant: Instant,
+}
+
+impl<B: BackedState> CachedItem<B> {
+    pub fn new(backed: B) -> Self {
+        Self {
+            backed: Arc::new(backed),
+            instant: Instant::now(),
+        }
+    }
+
+    pub fn renew(item: CachedItem<B>) -> Self {
+        Self {
+            backed: item.backed,
+            instant: Instant::now(),
+        }
+    }
+}
+
+impl<B: BackedState> Clone for CachedItem<B> {
+    fn clone(&self) -> Self {
+        Self {
+            backed: self.backed.clone(),
+            instant: self.instant,
+        }
+    }
+}
+
 pub trait Runner {
     fn info(&self) -> &ModelInfo;
     fn num_batch(&self) -> usize;
@@ -236,6 +274,9 @@ pub trait Runner {
         &'a self,
         payloads: &'a mut [Payload],
     ) -> Pin<Box<dyn Future<Output = Result<()>> + 'a>>;
+
+    /// Keep the items in the cache less then [`MAX_CACHE_ITEMS`].
+    fn limit_cache(&self) -> Pin<Box<dyn Future<Output = ()> + Send + '_>>;
 }
 
 #[derive(Debug)]
@@ -250,7 +291,7 @@ where
     state: S,
     tokenizer: Arc<Tokenizer>,
     slots: Mutex<Vec<SlotState>>,
-    backed: Mutex<Trie<Tokens, Arc<B>>>,
+    backed: Mutex<Trie<Tokens, CachedItem<B>>>,
     max_runtime_batch: usize,
     state_chunk_size: usize,
     _penalty_free_tokens: HashSet<u16>,
@@ -306,7 +347,7 @@ where
 
         let prefix = prefix[0..len].to_vec();
         let reload = match cache.remove(prefix[..].as_token_slice()) {
-            Some(reload) => reload,
+            Some(reload) => CachedItem::renew(reload),
             None => {
                 let context = self.model.context();
                 let info = self.model.info();
@@ -314,14 +355,14 @@ where
                     .with_chunk_size(self.state_chunk_size)
                     .build()
                     .unwrap();
-                Arc::new(backed)
+                CachedItem::new(backed)
             }
         };
         if len > 0 {
             let key = Tokens(prefix.clone());
             cache.insert(key, reload.clone());
         }
-        (prefix, reload)
+        (prefix, reload.backed)
     }
 
     /// Queue an inference task.
@@ -460,7 +501,7 @@ where
                 let _ = context.sender.send(Token::Embed(embed));
             }
 
-            cache.insert(context.prefix.clone(), backed.into());
+            cache.insert(context.prefix.clone(), CachedItem::new(backed));
             log::info!("backed slot {} of length {}", batch, context.prefix.len());
 
             assert!(matches!(slots[batch], SlotState::Busy));
@@ -626,7 +667,7 @@ where
                 let mut cache = self.backed.lock().await;
                 let backed = self.state.back_batch(batch).await.unwrap();
 
-                cache.insert(context.prefix.clone(), backed.into());
+                cache.insert(context.prefix.clone(), CachedItem::new(backed));
                 context.prompt_cached = true;
 
                 log::info!(
@@ -715,6 +756,27 @@ where
 
         Ok(())
     }
+
+    /// Keep the items in the cache less then [`MAX_CACHE_ITEMS`].
+    async fn limit_cache(&self) {
+        let mut cache = self.backed.lock().await;
+        if cache.count() <= MAX_CACHE_ITEMS {
+            return;
+        }
+
+        let mut removing = vec![];
+        for (tokens, _) in cache
+            .iter()
+            .sorted_unstable_by_key(|(_, item)| item.instant.elapsed())
+            .skip(MAX_CACHE_ITEMS)
+        {
+            removing.push(tokens.to_owned());
+        }
+
+        for tokens in removing.into_iter() {
+            cache.remove(&tokens);
+        }
+    }
 }
 
 impl<M, S, B> Runner for Runtime<M, S, B>
@@ -754,10 +816,28 @@ where
     ) -> Pin<Box<dyn Future<Output = Result<()>> + 'a>> {
         Box::pin(self.process(payloads))
     }
+
+    #[inline]
+    fn limit_cache(&self) -> Pin<Box<dyn Future<Output = ()> + Send + '_>> {
+        Box::pin(self.limit_cache())
+    }
 }
 
 #[tokio::main]
 pub async fn run(receiver: Receiver<()>, env: Arc<RwLock<Environment>>) {
+    {
+        // this task constantly runs, cleaning up state cache
+        let env = env.clone();
+        tokio::spawn(async move {
+            loop {
+                if let Environment::Loaded { runtime, .. } = &*env.read().await {
+                    runtime.limit_cache().await;
+                }
+                tokio::time::sleep(Duration::from_secs(1)).await;
+            }
+        });
+    }
+
     while let Ok(()) = receiver.recv_async().await {
         if let Environment::Loaded { runtime, .. } = &*env.read().await {
             let mut payloads = vec![Payload::default(); runtime.num_batch()];
