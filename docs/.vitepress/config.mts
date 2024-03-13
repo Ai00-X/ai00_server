@@ -16,7 +16,7 @@ export default defineConfig({
     // https://vitepress.dev/reference/default-theme-config
     
    socialLinks: [
-      { icon: 'github', link: 'https://github.com/cgisky1980/ai00_rwkv_server' }
+      { icon: 'github', link: 'https://github.com/Ai00-X/ai00_server' }
     ],
 
 
@@ -42,7 +42,7 @@ export default defineConfig({
           }
         },
         editLink: {
-          pattern: 'https://github.com/cgisky1980/ai00_rwkv_server/edit/main/docs/:path',
+          pattern: 'https://github.com/Ai00-X/ai00_server/edit/main/docs/:path',
           text: '在GITHUB编辑此页面'
         },
         sidebar: [
