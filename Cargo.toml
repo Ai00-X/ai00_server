@@ -43,9 +43,12 @@ tokio = { version = "1", features = ["full"] }
 toml = "0.8.6"
 tower = { version = "0.4.13", features = ["full"] }
 tower-http = { version = "0.5.0", features = ["full"] }
-web-rwkv = "0.6.26"
+web-rwkv = "0.6.27"
 web-rwkv-converter = "0.1.1"
 zip-extract = "0.1"
+
+# [dependencies.web-rwkv]
+# path = "../web-rwkv"
 
 [dependencies.axum]
 default-features = false

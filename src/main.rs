@@ -68,7 +68,8 @@ struct Args {
 async fn main() {
     simple_logger::SimpleLogger::new()
         .with_level(log::LevelFilter::Warn)
-        .with_module_level("ai00_server", log::LevelFilter::Trace)
+        .with_module_level("ai00_server", log::LevelFilter::Info)
+        .with_module_level("web_rwkv", log::LevelFilter::Info)
         .init()
         .unwrap();
 
