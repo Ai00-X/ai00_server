@@ -990,6 +990,7 @@ dependencies = [
  "bytemuck",
  "cfg-if",
  "crunchy",
+ "serde",
 ]
 
 [[package]]
@@ -1175,6 +1176,18 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "a0c10553d664a4d0bcff9f4215d0aac67a639cc68ef660840afe309b807bc9f5"
 dependencies = [
  "generic-array",
+]
+
+[[package]]
+name = "instant"
+version = "0.1.12"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "7a5bbe824c507c5da5956355e86a746d82e0e1464f65d862cc5e71da70e94b2c"
+dependencies = [
+ "cfg-if",
+ "js-sys",
+ "wasm-bindgen",
+ "web-sys",
 ]
 
 [[package]]
@@ -2431,9 +2444,9 @@ checksum = "af190c94f2773fdb3729c55b007a722abb5384da03bc0986df4c289bf5567e96"
 
 [[package]]
 name = "web-rwkv"
-version = "0.6.28"
+version = "0.6.29"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "92e81b8109e0d8f9775fde3de0dd2f83d2f68ae5f5a426c539a76c0013cf3976"
+checksum = "4b7efb589c790bb246db48892c4b4d51523cb89bbf25a2388dd603384cf97545"
 dependencies = [
  "ahash",
  "anyhow",
@@ -2444,6 +2457,7 @@ dependencies = [
  "futures",
  "gpp",
  "half",
+ "instant",
  "itertools",
  "lazy_static",
  "log",

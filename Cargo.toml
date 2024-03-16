@@ -48,7 +48,7 @@ zip-extract = "0.1"
 
 [dependencies.web-rwkv]
 # path = "../web-rwkv"
-version = "0.6.28"
+version = "0.6.29"
 
 [dependencies.axum]
 default-features = false
