@@ -19,7 +19,9 @@ pub struct ModelResponse {
     data: Vec<ModelChoice>,
 }
 
-/// `/api/oai/models`, `/api/oai/v1/models`.
+/// This method is getting the current model's information 
+///
+/// The responses the model name and id by current choice.
 #[endpoint]
 pub async fn salvo_oai_models(depot: &mut Depot) -> salvo::prelude::Json<ModelResponse> {
     let ThreadState(sender) = depot.obtain::<ThreadState>().unwrap();

@@ -205,6 +205,10 @@ async fn salvo_oai_respond_stream(
     salvo::sse::stream(res, stream);
 }
 
+
+/// Generate the completions for giving text
+/// 
+/// 由RWKV根据输入的上下文作为前提来产生后续的内容
 #[endpoint(
     responses(
         (status_code=200, description="Generate one response for stream is false.", body=CompletionResponse),
