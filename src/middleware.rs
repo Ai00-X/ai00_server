@@ -198,7 +198,7 @@ impl Default for ReloadRequest {
     }
 }
 
-#[derive(Debug, Default, Clone, Serialize)]
+#[derive(Debug, Default, Clone, Serialize, Deserialize)]
 pub struct TokenCounter {
     pub prompt_tokens: usize,
     pub completion_tokens: usize,
