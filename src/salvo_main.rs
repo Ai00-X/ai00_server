@@ -28,6 +28,7 @@ use salvo::oapi::extract::*;
 
 #[cfg(feature = "salvo-api")]
 pub async fn salvo_main() {
+    use clap::CommandFactory;
     use salvo::conn::rustls::{Keycert, RustlsConfig};
 
     simple_logger::SimpleLogger::new()
@@ -142,7 +143,11 @@ pub async fn salvo_main() {
     //);
     //.fallback_service(ServeDir::new(serve_path))
     //.layer(CorsLayer::permissive());
-    let doc = OpenApi::new("test api", "0.0.1").merge_router(&app);
+    
+    let version = Args::command().get_version().unwrap_or("0.0.1");
+    let bin_name = Args::command().get_bin_name().unwrap_or("ai00_server");
+
+    let doc = OpenApi::new(bin_name, version).merge_router(&app);
 
     let app = app
         .push(doc.into_router("/api-doc/openapi.json"))
