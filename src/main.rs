@@ -15,17 +15,16 @@ use crate::{
     middleware::{model_route, ThreadRequest, ThreadState},
 };
 
-
 mod api;
 mod config;
 mod middleware;
 mod run;
 mod sampler;
 
-#[cfg(feature="salvo-api")]
-mod salvo_main;
-#[cfg(feature="axum-api")]
+#[cfg(feature = "axum-api")]
 mod axum_main;
+#[cfg(feature = "salvo-api")]
+mod salvo_main;
 
 pub fn load_web(path: impl AsRef<Path>, target: &Path) -> Result<()> {
     let file = File::open(path)?;
@@ -66,14 +65,13 @@ pub struct Args {
     port: u16,
 }
 
-
 #[tokio::main]
 async fn main() {
     if cfg!(feature = "axum-api") {
-        #[cfg(feature="axum-api")]
+        #[cfg(feature = "axum-api")]
         axum_main::axum_main().await
     } else {
-        #[cfg(feature="salvo-api")]
+        #[cfg(feature = "salvo-api")]
         salvo_main::salvo_main().await
     }
 }

@@ -1,7 +1,7 @@
-use std::{collections::HashMap, sync::Arc, time::Duration};
 use anyhow::Result;
 use futures_util::{Stream, StreamExt};
 use serde::{Deserialize, Serialize};
+use std::{collections::HashMap, sync::Arc, time::Duration};
 
 use super::SamplerParams;
 use crate::{
@@ -11,10 +11,14 @@ use crate::{
         MAX_TOKENS,
     },
 };
-use salvo::{macros::{handler, Extractible}, Depot, Writer};
+use salvo::{
+    macros::{handler, Extractible},
+    oapi::extract::JsonBody,
+    prelude::*,
+    Depot, Writer,
+};
 
-
-#[derive(Debug, Deserialize, Serialize)]
+#[derive(Debug, Deserialize, Serialize, ToSchema)]
 #[serde(default)]
 pub struct CompletionRequest {
     prompt: Array<String>,
@@ -68,14 +72,14 @@ impl From<CompletionRequest> for GenerateRequest {
     }
 }
 
-#[derive(Debug, Serialize)]
+#[derive(Debug, Serialize, ToSchema, ToResponse)]
 pub struct CompletionChoice {
     text: String,
     index: usize,
     finish_reason: FinishReason,
 }
 
-#[derive(Debug, Serialize)]
+#[derive(Debug, Serialize, ToSchema, ToResponse)]
 pub struct CompletionResponse {
     object: String,
     model: String,
@@ -84,7 +88,7 @@ pub struct CompletionResponse {
     counter: TokenCounter,
 }
 
-#[derive(Debug, Default, Serialize)]
+#[derive(Debug, Default, Serialize, ToSchema, ToResponse)]
 #[serde(rename_all = "snake_case")]
 pub enum PartialCompletionRecord {
     #[default]
@@ -93,14 +97,14 @@ pub enum PartialCompletionRecord {
     Content(String),
 }
 
-#[derive(Debug, Default, Serialize)]
+#[derive(Debug, Default, Serialize, ToSchema, ToResponse)]
 pub struct PartialCompletionChoice {
     delta: PartialCompletionRecord,
     index: usize,
     finish_reason: FinishReason,
 }
 
-#[derive(Debug, Serialize)]
+#[derive(Debug, Serialize, ToSchema, ToResponse)]
 pub struct PartialCompletionResponse {
     object: String,
     model: String,
@@ -160,7 +164,7 @@ use salvo::sse::{self, SseEvent};
 async fn salvo_oai_respond_stream(
     depot: &mut Depot,
     request: CompletionRequest,
-    res: &mut salvo::http::Response
+    res: &mut salvo::http::Response,
 ) {
     let ThreadState(sender) = depot.obtain::<ThreadState>().unwrap();
     let info = request_info(sender.clone(), Duration::from_secs(1)).await;
@@ -193,36 +197,29 @@ async fn salvo_oai_respond_stream(
             model: model_name.clone(),
             choices: vec![choice],
         }) {
-            Ok(json_text) => {
-                Ok(SseEvent::default().text(json_text))
-            }
-            Err(err) => {
-                Err(err)
-            }
+            Ok(json_text) => Ok(SseEvent::default().text(json_text)),
+            Err(err) => Err(err),
         }
     });
 
     salvo::sse::stream(res, stream);
 }
 
-#[handler]
+#[endpoint(
+    responses(
+        (status_code=200, description="Generate one response for stream is false.", body=CompletionResponse),
+        (status_code=201, description="Generate Server Side Event response for stream is true. StatusCode should be 200.", body=PartialCompletionResponse)
+    ))]
 pub async fn salvo_oai_completions(
     depot: &mut Depot,
-    req: &mut salvo::http::Request,
-    res: &mut salvo::http::Response
+    req: JsonBody<CompletionRequest>,
+    res: &mut salvo::http::Response,
 ) {
-    let request = match req.parse_json::<CompletionRequest>().await {
-        Ok(t) => t,
-        Err(err) => {
-            log::info!("Parse to CompletionRequest failed. {}", err);
-            res.status_code(salvo::prelude::StatusCode::INTERNAL_SERVER_ERROR);
-            return;
-        }
-    };
+    let request = req.0;
     match request.stream {
         true => {
             salvo_oai_respond_stream(depot, request, res).await;
-        },
+        }
         false => {
             let resp = salvo_oai_respond_one(depot, request).await;
             res.render(resp);

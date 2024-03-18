@@ -1,22 +1,26 @@
-use std::time::Duration;
-use salvo::{Depot, macros::handler};
+use salvo::{
+    macros::handler,
+    oapi::{endpoint, ToSchema},
+    Depot,
+};
 use serde::Serialize;
+use std::time::Duration;
 
 use crate::{api::request_info, ThreadState};
 
-#[derive(Debug, Serialize)]
+#[derive(Debug, Serialize, ToSchema)]
 struct ModelChoice {
     object: String,
     id: String,
 }
 
-#[derive(Debug, Serialize)]
+#[derive(Debug, Serialize, ToSchema)]
 pub struct ModelResponse {
     data: Vec<ModelChoice>,
 }
 
 /// `/api/oai/models`, `/api/oai/v1/models`.
-#[handler]
+#[endpoint]
 pub async fn salvo_oai_models(depot: &mut Depot) -> salvo::prelude::Json<ModelResponse> {
     let ThreadState(sender) = depot.obtain::<ThreadState>().unwrap();
     let info = request_info(sender.to_owned(), Duration::from_secs(1)).await;

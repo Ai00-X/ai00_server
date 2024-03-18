@@ -7,8 +7,8 @@ use std::{
 use anyhow::{bail, Result};
 use itertools::Itertools;
 use memmap2::Mmap;
-use salvo::{handler, macros::Extractible, Depot};
 use salvo::prelude::*;
+use salvo::{handler, macros::Extractible, Depot};
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
 
@@ -129,7 +129,7 @@ pub async fn salvo_models(depot: &mut Depot, res: &mut salvo::http::Response) {
         Ok((status, files)) => {
             res.status_code(status);
             res.render(salvo::prelude::Json(files));
-        },
+        }
         Err(status) => {
             res.status_code(status);
             res.render("ERROR");
@@ -138,9 +138,11 @@ pub async fn salvo_models(depot: &mut Depot, res: &mut salvo::http::Response) {
 }
 
 #[handler]
-pub async fn salvo_dir(depot: &mut Depot, 
-            req: &mut salvo::http::Request,  
-            res: &mut salvo::http::Response) {
+pub async fn salvo_dir(
+    depot: &mut Depot,
+    req: &mut salvo::http::Request,
+    res: &mut salvo::http::Response,
+) {
     let request = match req.parse_json::<FileInfoRequest>().await {
         Ok(t) => t,
         Err(err) => {
@@ -154,14 +156,13 @@ pub async fn salvo_dir(depot: &mut Depot,
         Ok((status, files)) => {
             res.status_code(status);
             res.render(salvo::prelude::Json(files));
-        },
+        }
         Err(status) => {
             res.status_code(status);
             res.render("ERROR");
         }
     }
 }
-
 
 #[derive(Debug, Clone, Deserialize, Serialize, Extractible)]
 #[salvo(extract(default_source(from = "body")))]
@@ -172,13 +173,8 @@ pub struct UnzipRequest {
     output: PathBuf,
 }
 
-
-
 #[handler]
-pub async fn salvo_unzip(
-    depot: &mut Depot,
-    request: UnzipRequest,
-) -> salvo::prelude::StatusCode {
+pub async fn salvo_unzip(depot: &mut Depot, request: UnzipRequest) -> salvo::prelude::StatusCode {
     if let Err(err) = check_path(&request.path) {
         log::error!("check path failed: {}", err);
         return salvo::prelude::StatusCode::FORBIDDEN;
@@ -215,13 +211,12 @@ pub struct LoadRequest {
     path: PathBuf,
 }
 
-
 /// `/api/files/config/load`.
 #[handler]
 pub async fn salvo_load_config(
     depot: &mut Depot,
     request: LoadRequest,
-    response: &mut salvo::prelude::Response
+    response: &mut salvo::prelude::Response,
 ) {
     if let Err(err) = check_path(&request.path) {
         log::error!("check path failed: {}", err);
@@ -232,7 +227,7 @@ pub async fn salvo_load_config(
         Ok(config) => {
             response.status_code(salvo::prelude::StatusCode::OK);
             response.render(salvo::prelude::Json(config));
-        },
+        }
         Err(err) => {
             log::error!("failed to load config: {}", err);
             // Err(StatusCode::NOT_FOUND)
@@ -252,7 +247,7 @@ pub struct SaveRequest {
 #[handler]
 pub async fn salvo_save_config(
     depot: &mut Depot,
-    request: SaveRequest
+    request: SaveRequest,
 ) -> salvo::prelude::StatusCode {
     if let Err(err) = check_path(&request.path) {
         log::error!("check path failed: {}", err);

@@ -1,9 +1,9 @@
-use std::{collections::HashMap, sync::Arc, time::Duration};
 use anyhow::Result;
 use futures_util::{Stream, StreamExt};
 use itertools::Itertools;
 use regex::Regex;
 use serde::{Deserialize, Serialize};
+use std::{collections::HashMap, sync::Arc, time::Duration};
 use tokio::sync::RwLock;
 
 use super::SamplerParams;
@@ -15,10 +15,15 @@ use crate::{
     },
     sampler::Sampler,
 };
-use salvo::{macros::{handler, Extractible}, Depot, Writer};
 use salvo::sse::{self, SseEvent};
+use salvo::{
+    macros::{handler, Extractible},
+    oapi::extract::JsonBody,
+    prelude::*,
+    Depot, Writer,
+};
 
-#[derive(Debug, Default, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[derive(Debug, Default, Clone, PartialEq, Eq, Hash, Serialize, Deserialize, ToSchema)]
 pub enum Role {
     #[default]
     #[serde(alias = "system")]
@@ -39,13 +44,13 @@ impl std::fmt::Display for Role {
     }
 }
 
-#[derive(Default, Debug, Clone, Serialize, Deserialize, Extractible)]
+#[derive(Default, Debug, Clone, Serialize, Deserialize, ToSchema)]
 pub struct ChatRecord {
     role: Role,
     content: String,
 }
 
-#[derive(Debug, Deserialize, Serialize)]
+#[derive(Debug, Deserialize, Serialize, ToSchema)]
 #[serde(default)]
 pub struct ChatRequest {
     messages: Array<ChatRecord>,
@@ -125,14 +130,14 @@ impl From<ChatRequest> for GenerateRequest {
     }
 }
 
-#[derive(Debug, Serialize)]
+#[derive(Debug, Serialize, ToSchema, ToResponse)]
 struct ChatChoice {
     message: ChatRecord,
     index: usize,
     finish_reason: FinishReason,
 }
 
-#[derive(Debug, Serialize)]
+#[derive(Debug, Serialize, ToSchema, ToResponse)]
 struct ChatResponse {
     object: String,
     model: String,
@@ -141,8 +146,7 @@ struct ChatResponse {
     counter: TokenCounter,
 }
 
-
-#[derive(Debug, Default, Serialize)]
+#[derive(Debug, Default, Serialize, ToSchema, ToResponse)]
 #[serde(rename_all = "snake_case")]
 enum PartialChatRecord {
     #[default]
@@ -152,25 +156,24 @@ enum PartialChatRecord {
     Content(String),
 }
 
-#[derive(Debug, Default, Serialize)]
+#[derive(Debug, Default, Serialize, ToSchema, ToResponse)]
 struct PartialChatChoice {
     delta: PartialChatRecord,
     index: usize,
     finish_reason: FinishReason,
 }
 
-#[derive(Debug, Serialize)]
+#[derive(Debug, Serialize, ToSchema, ToResponse)]
 struct PartialChatResponse {
     object: String,
     model: String,
     choices: Vec<PartialChatChoice>,
 }
 
-
 async fn salvo_oai_chat_respond_one(
     depot: &mut Depot,
     request: ChatRequest,
-    res: &mut salvo::prelude::Response
+    res: &mut salvo::prelude::Response,
 ) {
     let ThreadState(sender) = depot.obtain::<ThreadState>().unwrap();
     let info = request_info(sender.clone(), Duration::from_secs(1)).await;
@@ -204,7 +207,7 @@ async fn salvo_oai_chat_respond_one(
         }
     }
 
-    let json_  = salvo::prelude::Json(ChatResponse {
+    let json_ = salvo::prelude::Json(ChatResponse {
         object: "chat.completion".into(),
         model: model_name,
         choices: vec![ChatChoice {
@@ -220,11 +223,10 @@ async fn salvo_oai_chat_respond_one(
     res.render(json_);
 }
 
-
 async fn salvo_oai_chat_respond_stream(
     depot: &mut Depot,
     request: ChatRequest,
-    res: &mut salvo::prelude::Response
+    res: &mut salvo::prelude::Response,
 ) {
     let ThreadState(sender) = depot.obtain::<ThreadState>().unwrap();
     let info = request_info(sender.clone(), Duration::from_secs(1)).await;
@@ -269,35 +271,30 @@ async fn salvo_oai_chat_respond_stream(
             model: model_name.clone(),
             choices: vec![choice],
         }) {
-            Ok(json_text) => {
-                Ok(SseEvent::default().text(json_text))
-            }
-            Err(err) => {
-                Err(err)
-            }
+            Ok(json_text) => Ok(SseEvent::default().text(json_text)),
+            Err(err) => Err(err),
         }
     });
 
     salvo::sse::stream(res, stream);
 }
 
-#[handler]
+#[endpoint(
+    responses(
+        (status_code=200, description="Generate one response for stream is false.", body=ChatResponse),
+        (status_code=201, description="Generate Server Side Event response for stream is true. StatusCode should be 200.", body=PartialChatResponse)
+    )
+)]
 pub async fn salvo_oai_chat_completions(
     depot: &mut Depot,
-    req: &mut salvo::http::Request,
-    res: &mut salvo::http::Response
+    req: JsonBody<ChatRequest>,
+    res: &mut salvo::http::Response,
 ) {
-    let request = match req.parse_json::<ChatRequest>().await {
-        Ok(t) => t,
-        Err(err) => {
-            res.status_code(salvo::prelude::StatusCode::INTERNAL_SERVER_ERROR);
-            return;
-        }
-    };    
+    let request = req.0;
     match request.stream {
         true => {
             salvo_oai_chat_respond_stream(depot, request, res).await;
-        },
+        }
         false => {
             salvo_oai_chat_respond_one(depot, request, res).await;
         }

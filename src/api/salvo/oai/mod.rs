@@ -1,6 +1,6 @@
 use std::sync::Arc;
 
-use salvo::macros::Extractible;
+use salvo::{macros::Extractible, oapi::ToSchema};
 use serde::{Deserialize, Serialize};
 use tokio::sync::RwLock;
 
@@ -20,7 +20,7 @@ use crate::sampler::{
     Sampler,
 };
 
-#[derive(Debug, Clone, Deserialize, Serialize)]
+#[derive(Debug, Clone, Deserialize, Serialize, ToSchema)]
 #[serde(untagged)]
 pub enum SamplerParams {
     Nucleus(NucleusParams),

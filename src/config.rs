@@ -13,6 +13,7 @@ pub struct Config {
     pub lora: Vec<Lora>,
     pub tokenizer: Tokenizer,
     pub adapter: AdapterOption,
+    pub listen: Option<ListenerOption>,
 }
 
 impl From<Config> for ReloadRequest {
@@ -36,6 +37,7 @@ impl From<Config> for ReloadRequest {
                 path: tokenizer_path,
             },
             adapter,
+            listen,
             ..
         } = value;
         Self {
@@ -52,6 +54,7 @@ impl From<Config> for ReloadRequest {
             embed_device,
             tokenizer_path,
             adapter,
+            listen,
         }
     }
 }
@@ -112,4 +115,13 @@ pub enum AdapterOption {
     Auto,
     Economical,
     Manual(usize),
+}
+
+#[derive(Debug, Default, Clone, Serialize, Deserialize)]
+pub struct ListenerOption {
+    pub domain: Option<String>, // bind the domain for certs, the certs stored in assets/certs/
+    pub ip: Option<String>,     // bind the ip to listen
+    pub acme: Option<bool>,     // using acme to issue the certs if the domain is not local
+    pub port: Option<u16>,      // bind the port
+    pub tls: Option<bool>, // force to enable https. When acme is true, tls should be true mandatory
 }

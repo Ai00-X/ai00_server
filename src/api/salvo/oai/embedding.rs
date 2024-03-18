@@ -1,14 +1,19 @@
-use std::time::Duration;
 use futures_util::StreamExt;
 use serde::{Deserialize, Serialize};
+use std::time::Duration;
 
 use crate::{
     api::request_info,
     middleware::{Array, GenerateRequest, ThreadRequest, ThreadState, Token, TokenCounter},
 };
-use salvo::{macros::{handler, Extractible}, Depot, Writer, prelude::*};
+use salvo::{
+    macros::{handler, Extractible},
+    oapi::extract::JsonBody,
+    prelude::*,
+    Depot, Writer,
+};
 
-#[derive(Debug, Default, Clone, Deserialize, Serialize, Extractible)]
+#[derive(Debug, Default, Clone, Deserialize, Serialize, ToSchema, ToParameters)]
 #[serde(default)]
 pub struct EmbeddingRequest {
     input: Array<String>,
@@ -28,14 +33,14 @@ impl From<EmbeddingRequest> for GenerateRequest {
     }
 }
 
-#[derive(Debug, Serialize, Deserialize, Extractible)]
+#[derive(Debug, Serialize, Deserialize, Extractible, ToSchema)]
 pub struct EmbeddingData {
     object: String,
     index: usize,
     embedding: Vec<f32>,
 }
 
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Debug, Serialize, Deserialize, ToSchema)]
 pub struct EmbeddingResponse {
     object: String,
     model: String,
@@ -44,12 +49,12 @@ pub struct EmbeddingResponse {
     counter: TokenCounter,
 }
 
-#[handler]
+#[endpoint]
 pub async fn salvo_oai_embeddings(
     depot: &mut Depot,
-    req: &mut Request,
+    req: JsonBody<EmbeddingRequest>,
 ) -> salvo::prelude::Json<EmbeddingResponse> {
-    let request = req.parse_json::<EmbeddingRequest>().await.unwrap();
+    let request = req.to_owned(); // req.parse_json::<EmbeddingRequest>().await.unwrap();
     let ThreadState(sender) = depot.obtain::<ThreadState>().unwrap();
     let info = request_info(sender.clone(), Duration::from_secs(1)).await;
     let model_name = info.reload.model_path.to_string_lossy().into_owned();

@@ -1,4 +1,3 @@
-
 use std::{
     fs::File,
     io::{BufReader, Cursor, Read},
@@ -16,7 +15,10 @@ use memmap2::Mmap;
 use tower_http::{cors::CorsLayer, services::ServeDir};
 
 use crate::{
-    api::{self, oai}, load_config, load_plugin, load_web, middleware::{model_route, ThreadRequest, ThreadState}, Args
+    api::{self, oai},
+    load_config, load_plugin, load_web,
+    middleware::{model_route, ThreadRequest, ThreadState},
+    Args,
 };
 
 pub async fn axum_main() {

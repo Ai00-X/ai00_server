@@ -6,6 +6,27 @@ use serde::{Deserialize, Serialize};
 
 use super::Sampler;
 
+#[cfg(feature = "salvo-api")]
+use salvo::oapi::ToSchema;
+
+#[cfg(feature = "salvo-api")]
+#[derive(Debug, Clone, Derivative, Serialize, Deserialize, ToSchema)]
+#[derivative(Default)]
+pub struct NucleusParams {
+    #[derivative(Default(value = "1.0"))]
+    pub top_p: f32,
+    #[derivative(Default(value = "1.0"))]
+    pub temperature: f32,
+    #[derivative(Default(value = "0.0"))]
+    pub presence_penalty: f32,
+    #[derivative(Default(value = "0.0"))]
+    pub frequency_penalty: f32,
+    #[derivative(Default(value = "0.99654026"))]
+    #[serde(default = "default_penalty_decay")]
+    pub penalty_decay: f32,
+}
+
+#[cfg(feature = "axum-api")]
 #[derive(Debug, Clone, Derivative, Serialize, Deserialize)]
 #[derivative(Default)]
 pub struct NucleusParams {

@@ -3,25 +3,25 @@ use std::time::Duration;
 use anyhow::Result;
 use flume::Sender;
 
-#[cfg(feature="axum-api")]
+#[cfg(feature = "axum-api")]
 pub mod adapter;
-#[cfg(feature="axum-api")]
+#[cfg(feature = "axum-api")]
 pub mod file;
-#[cfg(feature="axum-api")]
+#[cfg(feature = "axum-api")]
 pub mod load;
-#[cfg(feature="axum-api")]
+#[cfg(feature = "axum-api")]
 pub mod oai;
-#[cfg(feature="salvo-api")]
+#[cfg(feature = "salvo-api")]
 pub mod salvo;
 
-#[cfg(feature="axum-api")]
+#[cfg(feature = "axum-api")]
 pub use adapter::adapters;
-#[cfg(feature="axum-api")]
+#[cfg(feature = "axum-api")]
 pub use file::{dir, load_config, models, save_config, unzip};
-#[cfg(feature="axum-api")]
+#[cfg(feature = "axum-api")]
 pub use load::{info, load, state, unload};
 
-#[cfg(feature="salvo-api")]
+#[cfg(feature = "salvo-api")]
 pub use salvo::*;
 
 use crate::middleware::{RuntimeInfo, ThreadRequest};

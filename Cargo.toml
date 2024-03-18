@@ -54,7 +54,7 @@ version = "0.6.29"
 [dependencies.salvo]
 version = "0.66"
 default-features = true
-features = ["affix", "sse", "cors", "serve-static", "logging"]
+features = ["affix", "sse", "cors", "serve-static", "logging", "quinn", "acme", "oapi"]
 optional = true
 
 [dependencies.axum]
@@ -75,7 +75,7 @@ optional = true
 
 
 [features]
-default = ["salvo-api"]
+default = ["axum-api"]
 salvo-api = ["salvo"]
 axum-api = ["axum"]
 

@@ -15,6 +15,7 @@ use half::f16;
 use itertools::Itertools;
 use memmap2::Mmap;
 use safetensors::SafeTensors;
+
 use serde::{Deserialize, Serialize};
 use tokio::sync::{Mutex, RwLock};
 use web_rwkv::{
@@ -29,10 +30,13 @@ use web_rwkv::{
 };
 
 use crate::{
-    config::AdapterOption,
+    config::{AdapterOption, ListenerOption},
     run::{GenerateContext, Runner, Runtime, SlotResult, Tokens},
     sampler::{nucleus::NucleusSampler, Sampler},
 };
+
+#[cfg(feature = "salvo-api")]
+use salvo::oapi::{ToResponse, ToSchema};
 
 pub const MAX_TOKENS: usize = 4096;
 
@@ -45,6 +49,7 @@ pub enum Token {
     Done,
 }
 
+#[cfg(feature = "axum-api")]
 #[derive(Debug, Default, Clone, Copy, Serialize)]
 #[serde(rename_all = "snake_case")]
 pub enum FinishReason {
@@ -59,6 +64,46 @@ pub enum FinishReason {
     Null,
 }
 
+#[cfg(feature = "salvo-api")]
+#[derive(Debug, Default, Clone, Copy, Serialize, ToSchema)]
+#[serde(rename_all = "snake_case")]
+pub enum FinishReason {
+    /// API returned complete model output.
+    Stop,
+    /// Incomplete model output due to max_tokens parameter or token limit.
+    Length,
+    /// Omitted content due to a flag from our content filters.
+    _ContentFilter,
+    /// API response still in progress or incomplete.
+    #[default]
+    Null,
+}
+
+#[cfg(feature = "salvo-api")]
+#[derive(Debug, Default, Clone, Serialize, Deserialize, ToSchema)]
+#[serde(untagged)]
+pub enum Array<T: ToSchema + 'static> {
+    #[default]
+    None,
+    Item(T),
+    Vec(Vec<T>),
+}
+
+#[cfg(feature = "salvo-api")]
+impl<T> From<Array<T>> for Vec<T>
+where
+    T: std::fmt::Debug + Clone + Serialize + ToSchema,
+{
+    fn from(value: Array<T>) -> Self {
+        match value {
+            Array::None => vec![],
+            Array::Item(item) => vec![item],
+            Array::Vec(vec) => vec,
+        }
+    }
+}
+
+#[cfg(feature = "axum-api")]
 #[derive(Debug, Default, Clone, Serialize, Deserialize)]
 #[serde(untagged)]
 pub enum Array<T> {
@@ -68,6 +113,7 @@ pub enum Array<T> {
     Vec(Vec<T>),
 }
 
+#[cfg(feature = "axum-api")]
 impl<T> From<Array<T>> for Vec<T>
 where
     T: std::fmt::Debug + Clone + Serialize,
@@ -190,6 +236,9 @@ pub struct ReloadRequest {
     pub tokenizer_path: PathBuf,
     /// Adapter selection.
     pub adapter: AdapterOption,
+
+    // the Listener Options for startup
+    pub listen: Option<ListenerOption>,
 }
 
 impl Default for ReloadRequest {
@@ -198,6 +247,15 @@ impl Default for ReloadRequest {
     }
 }
 
+#[cfg(feature = "salvo-api")]
+#[derive(Debug, Default, Clone, Serialize, Deserialize, ToSchema, ToResponse)]
+pub struct TokenCounter {
+    pub prompt_tokens: usize,
+    pub completion_tokens: usize,
+    pub total_tokens: usize,
+}
+
+#[cfg(feature = "axum-api")]
 #[derive(Debug, Default, Clone, Serialize, Deserialize)]
 pub struct TokenCounter {
     pub prompt_tokens: usize,
