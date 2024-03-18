@@ -143,7 +143,7 @@ pub async fn salvo_main() {
     //);
     //.fallback_service(ServeDir::new(serve_path))
     //.layer(CorsLayer::permissive());
-    
+
     let version = Args::command().get_version().unwrap_or("0.0.1");
     let bin_name = Args::command().get_bin_name().unwrap_or("ai00_server");
 
