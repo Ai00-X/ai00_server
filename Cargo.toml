@@ -75,7 +75,7 @@ optional = true
 
 
 [features]
-default = ["axum-api"]
+default = ["salvo-api"]
 salvo-api = ["salvo"]
 axum-api = ["axum"]
 
