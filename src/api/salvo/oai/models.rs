@@ -16,7 +16,7 @@ struct ModelChoice {
 
 #[derive(Debug, Serialize, ToSchema)]
 pub struct ModelResponse {
-    data: Vec<ModelChoice>
+    data: Vec<ModelChoice>,
 }
 
 /// This method is getting the current model's information 
