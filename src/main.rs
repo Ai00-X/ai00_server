@@ -1,18 +1,13 @@
 use std::{
     fs::File,
     io::{BufReader, Cursor, Read},
-    net::{IpAddr},
+    net::IpAddr,
     path::{Path, PathBuf},
 };
-
 use anyhow::Result;
 use clap::Parser;
 use memmap2::Mmap;
-
-
-use crate::{
-    middleware::{ThreadState},
-};
+use crate::middleware::ThreadState;
 
 mod api;
 mod config;
