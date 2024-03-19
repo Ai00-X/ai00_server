@@ -1,5 +1,5 @@
 
-use futures_util::{StreamExt};
+use futures_util::StreamExt;
 use itertools::Itertools;
 use regex::Regex;
 use serde::{Deserialize, Serialize};
@@ -15,7 +15,7 @@ use crate::{
     },
     sampler::Sampler,
 };
-use salvo::sse::{SseEvent};
+use salvo::sse::SseEvent;
 use salvo::{
     oapi::extract::JsonBody,
     prelude::*,
@@ -54,8 +54,10 @@ pub struct ChatRecord {
 pub struct ChatRequest {
     messages: Array<ChatRecord>,
     names: HashMap<Role, String>,
+    #[serde(default)]
     max_tokens: usize,
     stop: Array<String>,
+    #[serde(default)]
     stream: bool,
     #[serde(alias = "logit_bias")]
     bias: HashMap<u16, f32>,
