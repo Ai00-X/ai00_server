@@ -1,5 +1,11 @@
+use crate::{
+    api::{self},
+    middleware::{model_route, ThreadRequest, ThreadState},
+};
+use crate::{load_config, load_plugin, load_web, Args};
 use clap::Parser;
 use salvo::affix;
+use salvo::cors::AllowOrigin;
 use salvo::cors::Cors;
 use salvo::http::Method;
 use salvo::logging::Logger;
@@ -10,12 +16,6 @@ use std::{
     net::{IpAddr, Ipv4Addr, SocketAddr},
     path::Path,
 };
-use crate::{
-    api::{self},
-    middleware::{model_route, ThreadRequest, ThreadState},
-};
-use crate::{load_config, load_plugin, load_web, Args};
-use salvo::cors::AllowOrigin;
 
 pub async fn salvo_main() {
     use clap::CommandFactory;
