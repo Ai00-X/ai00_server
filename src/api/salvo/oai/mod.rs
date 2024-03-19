@@ -1,6 +1,5 @@
 use std::sync::Arc;
-
-use salvo::{oapi::ToSchema};
+use salvo::oapi::ToSchema;
 use serde::{Deserialize, Serialize};
 use tokio::sync::RwLock;
 
