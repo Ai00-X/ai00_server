@@ -1,6 +1,6 @@
-use std::sync::Arc;
 use salvo::oapi::ToSchema;
 use serde::{Deserialize, Serialize};
+use std::sync::Arc;
 use tokio::sync::RwLock;
 
 pub mod chat;
