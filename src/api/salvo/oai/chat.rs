@@ -278,9 +278,7 @@ async fn salvo_oai_chat_respond_stream(
     salvo::sse::stream(res, stream);
 }
 
-
 /// Generate the chat completions for giving inputs
-/// 
 /// 由RWKV根据输入的上下文作为前提来产生对话
 #[endpoint(
     responses(
