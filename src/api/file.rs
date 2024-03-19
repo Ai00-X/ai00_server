@@ -307,10 +307,10 @@ mod private {
             }
         };
 
-        match dir_inner(depot, salvo::prelude::Json(request)).await {
+        match dir_inner(depot, Json(request)).await {
             Ok((status, files)) => {
                 res.status_code(status);
-                res.render(salvo::prelude::Json(files));
+                res.render(Json(files));
             }
             Err(status) => {
                 res.status_code(status);
@@ -328,10 +328,10 @@ mod private {
             path: "assets/models".into(),
             is_sha: true,
         };
-        match dir_inner(depot, salvo::prelude::Json(request)).await {
+        match dir_inner(depot, Json(request)).await {
             Ok((status, files)) => {
                 res.status_code(status);
-                res.render(salvo::prelude::Json(files));
+                res.render(Json(files));
             }
             Err(status) => {
                 res.status_code(status);
@@ -384,7 +384,7 @@ mod private {
         match crate::load_config(request.path) {
             Ok(config) => {
                 response.status_code(StatusCode::OK);
-                response.render(salvo::prelude::Json(config));
+                response.render(Json(config));
             }
             Err(err) => {
                 log::error!("failed to load config: {}", err);

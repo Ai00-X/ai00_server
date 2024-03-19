@@ -273,11 +273,7 @@ mod private {
         res.render(json);
     }
 
-    async fn respond_stream(
-        depot: &mut Depot,
-        request: CompletionRequest,
-        res: &mut salvo::http::Response,
-    ) {
+    async fn respond_stream(depot: &mut Depot, request: CompletionRequest, res: &mut Response) {
         let ThreadState(sender) = depot.obtain::<ThreadState>().unwrap();
         let info = request_info(sender.clone(), Duration::from_secs(1)).await;
         let model_name = info.reload.model_path.to_string_lossy().into_owned();
@@ -326,7 +322,7 @@ mod private {
     pub async fn completions(
         depot: &mut Depot,
         req: JsonBody<CompletionRequest>,
-        res: &mut salvo::http::Response,
+        res: &mut Response,
     ) {
         let request = req.0;
         match request.stream {

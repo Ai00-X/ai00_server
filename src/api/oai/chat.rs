@@ -416,7 +416,7 @@ mod private {
     pub async fn chat_completions(
         depot: &mut Depot,
         req: JsonBody<ChatRequest>,
-        res: &mut salvo::http::Response,
+        res: &mut Response,
     ) {
         let request = req.0;
         match request.stream {
