@@ -201,13 +201,10 @@ async fn salvo_oai_respond_stream(
             Err(err) => Err(err),
         }
     });
-
     salvo::sse::stream(res, stream);
 }
 
-
 /// Generate the completions for giving text
-/// 
 /// 由RWKV根据输入的上下文作为前提来产生后续的内容
 #[endpoint(
     responses(

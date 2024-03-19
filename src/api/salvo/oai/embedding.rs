@@ -50,7 +50,6 @@ pub struct EmbeddingResponse {
 }
 
 /// Generate the embeddings for giving inputs
-/// 
 /// 根据请求的输入，以及相应的embed_layer来生成与输入相关的embeddings数据  
 #[endpoint]
 pub async fn salvo_oai_embeddings(
