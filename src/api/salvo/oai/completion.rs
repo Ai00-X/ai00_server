@@ -1,4 +1,4 @@
-
+use super::SamplerParams;
 use crate::{
     api::request_info,
     middleware::{
@@ -10,7 +10,6 @@ use futures_util::StreamExt;
 use salvo::{oapi::extract::JsonBody, prelude::*, sse::SseEvent, Depot, Writer};
 use serde::{Deserialize, Serialize};
 use std::{collections::HashMap, sync::Arc, time::Duration};
-use super::SamplerParams;
 
 #[derive(Debug, Deserialize, Serialize, ToSchema)]
 #[serde(default)]
