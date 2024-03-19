@@ -1,5 +1,5 @@
-use std::time::Duration;
-
+use super::{request_info, request_info_stream, try_request_info};
+use crate::middleware::{ReloadRequest, RuntimeInfo, ThreadRequest, ThreadState};
 use anyhow::Result;
 use axum::{
     extract::State,
@@ -9,10 +9,8 @@ use axum::{
 };
 use futures_util::{Stream, StreamExt};
 use serde::Serialize;
+use std::time::Duration;
 use web_rwkv::model::ModelInfo;
-
-use super::{request_info, request_info_stream, try_request_info};
-use crate::middleware::{ReloadRequest, RuntimeInfo, ThreadRequest, ThreadState};
 
 #[derive(Debug, Clone, Serialize)]
 pub struct InfoResponse {

@@ -1,15 +1,11 @@
-use std::time::Duration;
-
-
-use futures_util::{StreamExt};
-
-use salvo::sse::{SseEvent};
-use salvo::{handler, Depot, Request};
-use serde::Serialize;
-use web_rwkv::model::ModelInfo;
-
 use crate::api::{request_info, request_info_stream, try_request_info};
 use crate::middleware::{ReloadRequest, RuntimeInfo, ThreadRequest, ThreadState};
+use futures_util::StreamExt;
+use salvo::sse::SseEvent;
+use salvo::{handler, Depot, Request};
+use serde::Serialize;
+use std::time::Duration;
+use web_rwkv::model::ModelInfo;
 
 #[derive(Debug, Clone, Serialize)]
 pub struct InfoResponse {

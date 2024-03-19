@@ -1,11 +1,3 @@
-
-use futures_util::StreamExt;
-use itertools::Itertools;
-use regex::Regex;
-use serde::{Deserialize, Serialize};
-use std::{collections::HashMap, sync::Arc, time::Duration};
-use tokio::sync::RwLock;
-
 use super::SamplerParams;
 use crate::{
     api::request_info,
@@ -15,12 +7,14 @@ use crate::{
     },
     sampler::Sampler,
 };
+use futures_util::StreamExt;
+use itertools::Itertools;
+use regex::Regex;
 use salvo::sse::SseEvent;
-use salvo::{
-    oapi::extract::JsonBody,
-    prelude::*,
-    Depot, Writer,
-};
+use salvo::{oapi::extract::JsonBody, prelude::*, Depot, Writer};
+use serde::{Deserialize, Serialize};
+use std::{collections::HashMap, sync::Arc, time::Duration};
+use tokio::sync::RwLock;
 
 #[derive(Debug, Default, Clone, PartialEq, Eq, Hash, Serialize, Deserialize, ToSchema)]
 pub enum Role {
