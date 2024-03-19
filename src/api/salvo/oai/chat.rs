@@ -275,7 +275,6 @@ async fn salvo_oai_chat_respond_stream(
             Err(err) => Err(err),
         }
     });
-
     salvo::sse::stream(res, stream);
 }
 
