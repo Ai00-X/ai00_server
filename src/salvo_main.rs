@@ -1,14 +1,12 @@
 use std::{
-    fs::File,
-    io::{BufReader, Cursor, Read},
     net::{IpAddr, Ipv4Addr, SocketAddr},
-    path::{Path, PathBuf},
+    path::{Path},
 };
 
-use anyhow::Result;
+
 
 use clap::Parser;
-use memmap2::Mmap;
+
 use salvo::affix;
 use salvo::cors::Cors;
 use salvo::http::Method;
@@ -18,13 +16,12 @@ use salvo::serve_static::StaticDir;
 use salvo::Router;
 // use tower_http::{cors::CorsLayer, services::ServeDir};
 use crate::{
-    api::{self, oai},
-    config,
+    api::{self},
     middleware::{model_route, ThreadRequest, ThreadState},
 };
 use crate::{load_config, load_plugin, load_web, Args};
 use salvo::cors::AllowOrigin;
-use salvo::oapi::extract::*;
+
 
 #[cfg(feature = "salvo-api")]
 pub async fn salvo_main() {

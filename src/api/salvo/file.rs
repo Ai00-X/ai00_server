@@ -78,7 +78,7 @@ pub struct FileInfo {
 }
 
 pub async fn salvo_dir_inner(
-    depot: &mut Depot,
+    _depot: &mut Depot,
     salvo::prelude::Json(request): salvo::prelude::Json<FileInfoRequest>,
 ) -> Result<(salvo::prelude::StatusCode, Vec<FileInfo>), salvo::prelude::StatusCode> {
     if let Err(err) = check_path(&request.path) {
@@ -119,7 +119,7 @@ pub async fn salvo_dir_inner(
 /// `/api/models/list`.
 #[handler]
 pub async fn salvo_models(depot: &mut Depot, res: &mut salvo::http::Response) {
-    let state = depot.obtain::<ThreadState>().unwrap();
+    let _state = depot.obtain::<ThreadState>().unwrap();
 
     let request = FileInfoRequest {
         path: "assets/models".into(),
@@ -174,7 +174,7 @@ pub struct UnzipRequest {
 }
 
 #[handler]
-pub async fn salvo_unzip(depot: &mut Depot, request: UnzipRequest) -> salvo::prelude::StatusCode {
+pub async fn salvo_unzip(_depot: &mut Depot, request: UnzipRequest) -> salvo::prelude::StatusCode {
     if let Err(err) = check_path(&request.path) {
         log::error!("check path failed: {}", err);
         return salvo::prelude::StatusCode::FORBIDDEN;
@@ -214,7 +214,7 @@ pub struct LoadRequest {
 /// `/api/files/config/load`.
 #[handler]
 pub async fn salvo_load_config(
-    depot: &mut Depot,
+    _depot: &mut Depot,
     request: LoadRequest,
     response: &mut salvo::prelude::Response,
 ) {
@@ -246,7 +246,7 @@ pub struct SaveRequest {
 /// `/api/files/config/save`.
 #[handler]
 pub async fn salvo_save_config(
-    depot: &mut Depot,
+    _depot: &mut Depot,
     request: SaveRequest,
 ) -> salvo::prelude::StatusCode {
     if let Err(err) = check_path(&request.path) {

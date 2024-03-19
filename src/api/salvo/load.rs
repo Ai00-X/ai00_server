@@ -1,9 +1,9 @@
 use std::time::Duration;
 
-use anyhow::Result;
-use futures_util::{Stream, StreamExt};
-use salvo::oapi::{endpoint, ToSchema};
-use salvo::sse::{self, SseEvent};
+
+use futures_util::{StreamExt};
+
+use salvo::sse::{SseEvent};
 use salvo::{handler, Depot, Request};
 use serde::Serialize;
 use web_rwkv::model::ModelInfo;

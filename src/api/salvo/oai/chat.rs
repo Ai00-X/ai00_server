@@ -1,5 +1,5 @@
-use anyhow::Result;
-use futures_util::{Stream, StreamExt};
+
+use futures_util::{StreamExt};
 use itertools::Itertools;
 use regex::Regex;
 use serde::{Deserialize, Serialize};
@@ -15,9 +15,8 @@ use crate::{
     },
     sampler::Sampler,
 };
-use salvo::sse::{self, SseEvent};
+use salvo::sse::{SseEvent};
 use salvo::{
-    macros::{handler, Extractible},
     oapi::extract::JsonBody,
     prelude::*,
     Depot, Writer,

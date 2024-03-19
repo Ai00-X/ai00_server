@@ -21,9 +21,6 @@ pub use file::{dir, load_config, models, save_config, unzip};
 #[cfg(feature = "axum-api")]
 pub use load::{info, load, state, unload};
 
-#[cfg(feature = "salvo-api")]
-pub use salvo::*;
-
 use crate::middleware::{RuntimeInfo, ThreadRequest};
 
 pub async fn try_request_info(sender: Sender<ThreadRequest>) -> Result<RuntimeInfo> {

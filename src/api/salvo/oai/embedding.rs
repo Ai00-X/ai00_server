@@ -7,7 +7,7 @@ use crate::{
     middleware::{Array, GenerateRequest, ThreadRequest, ThreadState, Token, TokenCounter},
 };
 use salvo::{
-    macros::{handler, Extractible},
+    macros::{Extractible},
     oapi::extract::JsonBody,
     prelude::*,
     Depot, Writer,

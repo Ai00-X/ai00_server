@@ -1,18 +1,17 @@
 use std::{
     fs::File,
     io::{BufReader, Cursor, Read},
-    net::{IpAddr, Ipv4Addr, SocketAddr},
+    net::{IpAddr},
     path::{Path, PathBuf},
 };
 
 use anyhow::Result;
 use clap::Parser;
 use memmap2::Mmap;
-use tower_http::{cors::CorsLayer, services::ServeDir};
+
 
 use crate::{
-    api::oai,
-    middleware::{model_route, ThreadRequest, ThreadState},
+    middleware::{ThreadState},
 };
 
 mod api;

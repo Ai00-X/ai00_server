@@ -1,5 +1,4 @@
 use salvo::{
-    macros::handler,
     oapi::{endpoint, ToSchema},
     Depot,
 };

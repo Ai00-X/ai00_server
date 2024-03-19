@@ -1,5 +1,5 @@
-use anyhow::Result;
-use futures_util::{Stream, StreamExt};
+
+use futures_util::{StreamExt};
 use serde::{Deserialize, Serialize};
 use std::{collections::HashMap, sync::Arc, time::Duration};
 
@@ -12,7 +12,6 @@ use crate::{
     },
 };
 use salvo::{
-    macros::{handler, Extractible},
     oapi::extract::JsonBody,
     prelude::*,
     Depot, Writer,
@@ -159,7 +158,7 @@ async fn salvo_oai_respond_one(
     })
 }
 
-use salvo::sse::{self, SseEvent};
+use salvo::sse::{SseEvent};
 
 async fn salvo_oai_respond_stream(
     depot: &mut Depot,
