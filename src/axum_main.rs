@@ -1,19 +1,19 @@
-use std::{
-    net::{IpAddr, Ipv4Addr, SocketAddr},
-    path::Path,
-};
-use axum::{
-    routing::{get, post},
-    Router,
-};
-use clap::Parser;
-use tower_http::{cors::CorsLayer, services::ServeDir};
 use crate::{
     api::{self, oai},
     load_config, load_plugin, load_web,
     middleware::{model_route, ThreadRequest, ThreadState},
     Args,
 };
+use axum::{
+    routing::{get, post},
+    Router,
+};
+use clap::Parser;
+use std::{
+    net::{IpAddr, Ipv4Addr, SocketAddr},
+    path::Path,
+};
+use tower_http::{cors::CorsLayer, services::ServeDir};
 
 pub async fn axum_main() {
     simple_logger::SimpleLogger::new()
