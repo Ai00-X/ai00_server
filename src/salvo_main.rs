@@ -18,7 +18,6 @@ use crate::{
 use crate::{load_config, load_plugin, load_web, Args};
 use salvo::cors::AllowOrigin;
 
-#[cfg(feature = "salvo-api")]
 pub async fn salvo_main() {
     use clap::CommandFactory;
     use salvo::conn::rustls::{Keycert, RustlsConfig};
