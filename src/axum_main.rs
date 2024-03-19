@@ -32,7 +32,7 @@ pub async fn axum_main() {
             .clone()
             .unwrap_or("assets/configs/Config.toml".into());
         log::info!("reading config {}...", path.to_string_lossy());
-        load_config(path).expect("load config failed").into()
+        Box::new(load_config(path).expect("load config failed").into())
     };
 
     tokio::task::spawn_blocking(move || model_route(receiver));

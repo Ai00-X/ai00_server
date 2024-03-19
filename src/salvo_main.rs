@@ -44,7 +44,7 @@ pub async fn salvo_main() {
 
     tokio::task::spawn_blocking(move || model_route(receiver));
     let _ = sender.send(ThreadRequest::Reload {
-        request,
+        request: Box::new(request),
         sender: None,
     });
 
@@ -96,43 +96,31 @@ pub async fn salvo_main() {
         .hoop(Logger::new())
         .hoop(affix::inject(ThreadState(sender)))
         .hoop(cors)
-        .push(Router::with_path("/api/adapters").get(api::salvo::salvo_info))
-        .push(Router::with_path("/api/models/info").get(api::salvo::salvo_info))
-        .push(Router::with_path("/api/models/load").post(api::salvo::salvo_load))
-        .push(Router::with_path("/api/models/unload").get(api::salvo::salvo_unload))
-        .push(Router::with_path("/api/models/state").get(api::salvo::salvo_state))
-        .push(Router::with_path("/api/models/list").get(api::salvo::salvo_models))
-        .push(Router::with_path("/api/files/unzip").post(api::salvo::salvo_unzip))
-        .push(Router::with_path("/api/files/dir").post(api::salvo::salvo_dir))
-        .push(Router::with_path("/api/files/ls").post(api::salvo::salvo_dir))
-        .push(Router::with_path("/api/files/config/load").post(api::salvo::salvo_load_config))
-        .push(Router::with_path("/api/files/config/save").post(api::salvo::salvo_save_config))
-        .push(Router::with_path("/api/oai/models").get(api::salvo::oai::salvo_oai_models))
-        .push(Router::with_path("/api/oai/v1/models").get(api::salvo::oai::salvo_oai_models))
-        .push(
-            Router::with_path("/api/oai/completions").post(api::salvo::oai::salvo_oai_completions),
-        )
-        .push(
-            Router::with_path("/api/oai/v1/completions")
-                .post(api::salvo::oai::salvo_oai_completions),
-        )
-        .push(
-            Router::with_path("/api/oai/chat/completions")
-                .post(api::salvo::oai::salvo_oai_chat_completions),
-        )
-        .push(
-            Router::with_path("/api/oai/v1/chat/completions")
-                .post(api::salvo::oai::salvo_oai_chat_completions),
-        )
-        .push(Router::with_path("/api/oai/embeddings").post(api::salvo::oai::salvo_oai_embeddings))
-        .push(
-            Router::with_path("/api/oai/v1/embeddings").post(api::salvo::oai::salvo_oai_embeddings),
-        );
-    //.push(
-    //  Router::with_path("<**path>").get(StaticDir::new(serve_path).defaults(["index.html"]))
-    //);
-    //.fallback_service(ServeDir::new(serve_path))
-    //.layer(CorsLayer::permissive());
+        .push(Router::with_path("/api/adapters").get(api::adapters))
+        .push(Router::with_path("/api/models/info").get(api::info))
+        .push(Router::with_path("/api/models/load").post(api::load))
+        .push(Router::with_path("/api/models/unload").get(api::unload))
+        .push(Router::with_path("/api/models/state").get(api::state))
+        .push(Router::with_path("/api/models/list").get(api::models))
+        .push(Router::with_path("/api/files/unzip").post(api::unzip))
+        .push(Router::with_path("/api/files/dir").post(api::dir))
+        .push(Router::with_path("/api/files/ls").post(api::dir))
+        .push(Router::with_path("/api/files/config/load").post(api::load_config))
+        .push(Router::with_path("/api/files/config/save").post(api::save_config))
+        .push(Router::with_path("/api/oai/models").get(api::oai::models))
+        .push(Router::with_path("/api/oai/v1/models").get(api::oai::models))
+        .push(Router::with_path("/api/oai/completions").post(api::oai::completions))
+        .push(Router::with_path("/api/oai/v1/completions").post(api::oai::completions))
+        .push(Router::with_path("/api/oai/chat/completions").post(api::oai::chat_completions))
+        .push(Router::with_path("/api/oai/v1/chat/completions").post(api::oai::chat_completions))
+        .push(Router::with_path("/api/oai/embeddings").post(api::oai::embeddings))
+        .push(Router::with_path("/api/oai/v1/embeddings").post(api::oai::embeddings));
+    // .push(
+    //     Router::with_path("<**path>").get(StaticDir::new(serve_path).defaults(["index.html"])),
+    // )
+    // .fallback_service(ServeDir::new(serve_path))
+    // .layer(CorsLayer::permissive());
+
     let cmd = Args::command();
     let version = cmd.get_version().unwrap_or("0.0.1");
     let bin_name = cmd.get_bin_name().unwrap_or("ai00_server");
@@ -148,18 +136,16 @@ pub async fn salvo_main() {
 
     let ipaddr = if args.ip.is_some() {
         args.ip.unwrap()
+    } else if listen.is_some() {
+        let v4_addr = listen
+            .clone()
+            .unwrap()
+            .ip
+            .map(|f| f.parse().unwrap_or(Ipv4Addr::UNSPECIFIED))
+            .unwrap_or(Ipv4Addr::UNSPECIFIED);
+        IpAddr::from(v4_addr)
     } else {
-        if listen.is_some() {
-            let v4_addr = listen
-                .clone()
-                .unwrap()
-                .ip
-                .map(|f| f.parse().unwrap_or(Ipv4Addr::UNSPECIFIED))
-                .unwrap_or(Ipv4Addr::UNSPECIFIED);
-            IpAddr::from(v4_addr)
-        } else {
-            IpAddr::from(Ipv4Addr::UNSPECIFIED)
-        }
+        IpAddr::from(Ipv4Addr::UNSPECIFIED)
     };
 
     let bind_port = if args.port > 0 && args.port != 65530u16 {
@@ -173,15 +159,13 @@ pub async fn salvo_main() {
     let (bind_domain, use_acme, use_tls) = if listen.clone().is_some() {
         let clone_listen = listen.clone().unwrap();
         let domain = clone_listen.domain.unwrap_or("local".to_string());
-        let acme = if domain == "local".to_string() {
-            false
-        } else {
-            clone_listen.acme.unwrap_or_default()
+        let acme = match domain.as_str() {
+            "local" => false,
+            _ => clone_listen.acme.unwrap_or_default(),
         };
-        let tls = if acme {
-            true
-        } else {
-            clone_listen.tls.unwrap_or_default()
+        let tls = match acme {
+            true => true,
+            false => clone_listen.tls.unwrap_or_default(),
         };
 
         (domain, acme, tls)
@@ -201,23 +185,21 @@ pub async fn salvo_main() {
             .await;
         log::info!("server started at {addr} with acme and tls.");
         salvo::server::Server::new(acceptor).serve(app).await;
+    } else if use_tls {
+        let config = RustlsConfig::new(
+            Keycert::new()
+                .cert_from_path("assets/certs/cert.pem")
+                .unwrap()
+                .key_from_path("assets/certs/key.pem")
+                .unwrap(),
+        );
+        let listener = TcpListener::new(addr).rustls(config.clone());
+        let acceptor = QuinnListener::new(config, addr).join(listener).bind().await;
+        log::info!("server started at {addr} with tls.");
+        salvo::server::Server::new(acceptor).serve(app).await;
     } else {
-        if use_tls {
-            let config = RustlsConfig::new(
-                Keycert::new()
-                    .cert_from_path("assets/certs/cert.pem")
-                    .unwrap()
-                    .key_from_path("assets/certs/key.pem")
-                    .unwrap(),
-            );
-            let listener = TcpListener::new(addr).rustls(config.clone());
-            let acceptor = QuinnListener::new(config, addr).join(listener).bind().await;
-            log::info!("server started at {addr} with tls.");
-            salvo::server::Server::new(acceptor).serve(app).await;
-        } else {
-            log::info!("server started at {addr} without tls.");
-            let acceptor = TcpListener::new(addr).bind().await;
-            salvo::server::Server::new(acceptor).serve(app).await;
-        }
+        log::info!("server started at {addr} without tls.");
+        let acceptor = TcpListener::new(addr).bind().await;
+        salvo::server::Server::new(acceptor).serve(app).await;
     };
 }

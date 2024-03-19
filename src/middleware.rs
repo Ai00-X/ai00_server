@@ -16,6 +16,7 @@ use itertools::Itertools;
 use memmap2::Mmap;
 use safetensors::SafeTensors;
 
+use salvo::oapi::{ToResponse, ToSchema};
 use serde::{Deserialize, Serialize};
 use tokio::sync::{Mutex, RwLock};
 use web_rwkv::{
@@ -35,9 +36,6 @@ use crate::{
     sampler::{nucleus::NucleusSampler, Sampler},
 };
 
-#[cfg(feature = "salvo-api")]
-use salvo::oapi::{ToResponse, ToSchema};
-
 pub const MAX_TOKENS: usize = 4096;
 
 #[derive(Debug)]
@@ -49,22 +47,6 @@ pub enum Token {
     Done,
 }
 
-#[cfg(feature = "axum-api")]
-#[derive(Debug, Default, Clone, Copy, Serialize)]
-#[serde(rename_all = "snake_case")]
-pub enum FinishReason {
-    /// API returned complete model output.
-    Stop,
-    /// Incomplete model output due to max_tokens parameter or token limit.
-    Length,
-    /// Omitted content due to a flag from our content filters.
-    _ContentFilter,
-    /// API response still in progress or incomplete.
-    #[default]
-    Null,
-}
-
-#[cfg(feature = "salvo-api")]
 #[derive(Debug, Default, Clone, Copy, Serialize, ToSchema)]
 #[serde(rename_all = "snake_case")]
 pub enum FinishReason {
@@ -79,7 +61,6 @@ pub enum FinishReason {
     Null,
 }
 
-#[cfg(feature = "salvo-api")]
 #[derive(Debug, Default, Clone, Serialize, Deserialize, ToSchema)]
 #[serde(untagged)]
 pub enum Array<T: ToSchema + 'static> {
@@ -89,34 +70,9 @@ pub enum Array<T: ToSchema + 'static> {
     Vec(Vec<T>),
 }
 
-#[cfg(feature = "salvo-api")]
 impl<T> From<Array<T>> for Vec<T>
 where
     T: std::fmt::Debug + Clone + Serialize + ToSchema,
-{
-    fn from(value: Array<T>) -> Self {
-        match value {
-            Array::None => vec![],
-            Array::Item(item) => vec![item],
-            Array::Vec(vec) => vec,
-        }
-    }
-}
-
-#[cfg(feature = "axum-api")]
-#[derive(Debug, Default, Clone, Serialize, Deserialize)]
-#[serde(untagged)]
-pub enum Array<T> {
-    #[default]
-    None,
-    Item(T),
-    Vec(Vec<T>),
-}
-
-#[cfg(feature = "axum-api")]
-impl<T> From<Array<T>> for Vec<T>
-where
-    T: std::fmt::Debug + Clone + Serialize,
 {
     fn from(value: Array<T>) -> Self {
         match value {
@@ -132,12 +88,12 @@ pub enum ThreadRequest {
     Adapter(Sender<AdapterList>),
     Info(Sender<RuntimeInfo>),
     Generate {
-        request: GenerateRequest,
+        request: Box<GenerateRequest>,
         tokenizer: Arc<Tokenizer>,
         sender: Sender<Token>,
     },
     Reload {
-        request: ReloadRequest,
+        request: Box<ReloadRequest>,
         sender: Option<Sender<bool>>,
     },
     Unload,
@@ -147,7 +103,7 @@ pub enum ThreadRequest {
 pub enum Environment {
     Loaded {
         runtime: Box<dyn Runner + Send + Sync>,
-        reload: ReloadRequest,
+        reload: Box<ReloadRequest>,
     },
     #[default]
     None,
@@ -247,16 +203,7 @@ impl Default for ReloadRequest {
     }
 }
 
-#[cfg(feature = "salvo-api")]
 #[derive(Debug, Default, Clone, Serialize, Deserialize, ToSchema, ToResponse)]
-pub struct TokenCounter {
-    pub prompt_tokens: usize,
-    pub completion_tokens: usize,
-    pub total_tokens: usize,
-}
-
-#[cfg(feature = "axum-api")]
-#[derive(Debug, Default, Clone, Serialize, Deserialize)]
 pub struct TokenCounter {
     pub prompt_tokens: usize,
     pub completion_tokens: usize,
@@ -405,7 +352,7 @@ pub async fn model_route(receiver: Receiver<ThreadRequest>) -> Result<()> {
                     tokio::spawn(async move {
                         let env = &(*env.read().await);
                         if let Environment::Loaded { runtime, reload } = env {
-                            let reload = reload.clone();
+                            let reload = reload.as_ref().clone();
                             let model = runtime.info().clone();
                             let tokenizer = runtime.tokenizer();
                             let _ = sender.send(RuntimeInfo {
@@ -425,6 +372,7 @@ pub async fn model_route(receiver: Receiver<ThreadRequest>) -> Result<()> {
                             let _ = sender.send(result);
                         }
                     };
+                    let request = *request;
                     let sender = sender.clone();
                     let env = env.clone();
                     let reload = async move {
@@ -477,7 +425,7 @@ pub async fn model_route(receiver: Receiver<ThreadRequest>) -> Result<()> {
                                 ))
                             }
                         };
-                        let reload = request;
+                        let reload = Box::new(request);
                         *env = Environment::Loaded { runtime, reload };
 
                         let _ = sender.send(());
@@ -509,6 +457,7 @@ pub async fn model_route(receiver: Receiver<ThreadRequest>) -> Result<()> {
                     tokenizer,
                     sender: token_sender,
                 } => {
+                    let request = *request;
                     let tokens = Tokens(tokenizer.encode(request.prompt.as_bytes())?);
                     let model_tokens = Tokens(tokenizer.encode(request.model_text.as_bytes())?);
                     // init sampler state here

@@ -54,8 +54,16 @@ version = "0.6.29"
 [dependencies.salvo]
 version = "0.66"
 default-features = true
-features = ["affix", "sse", "cors", "serve-static", "logging", "quinn", "acme", "oapi"]
-optional = true
+features = [
+    "affix",
+    "sse",
+    "cors",
+    "serve-static",
+    "logging",
+    "quinn",
+    "acme",
+    "oapi",
+]
 
 [dependencies.axum]
 default-features = false
@@ -71,13 +79,11 @@ features = [
     "tower-log",
 ]
 version = "0.7.1"
-optional = true
-
 
 [features]
 default = ["salvo-api"]
-salvo-api = ["salvo"]
-axum-api = ["axum"]
+salvo-api = []
+axum-api = []
 
 [profile.release]
 lto = false

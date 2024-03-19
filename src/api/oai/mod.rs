@@ -1,17 +1,18 @@
 use std::sync::Arc;
 
-use serde::Deserialize;
+use salvo::oapi::ToSchema;
+use serde::{Deserialize, Serialize};
 use tokio::sync::RwLock;
 
 pub mod chat;
 pub mod completion;
 pub mod embedding;
-pub mod models;
+pub mod info;
 
 pub use chat::chat_completions;
 pub use completion::completions;
 pub use embedding::embeddings;
-pub use models::models;
+pub use info::models;
 
 use crate::sampler::{
     mirostat::{MirostatParams, MirostatSampler},
@@ -19,7 +20,7 @@ use crate::sampler::{
     Sampler,
 };
 
-#[derive(Debug, Clone, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, ToSchema)]
 #[serde(untagged)]
 pub enum SamplerParams {
     Nucleus(NucleusParams),

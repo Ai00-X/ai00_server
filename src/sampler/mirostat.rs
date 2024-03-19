@@ -1,27 +1,10 @@
 use super::Sampler;
 use derivative::Derivative;
 use itertools::Itertools;
+use salvo::oapi::ToSchema;
 use serde::{Deserialize, Serialize};
 
-#[cfg(feature = "salvo-api")]
-use salvo::oapi::ToSchema;
-
-#[cfg(feature = "salvo-api")]
 #[derive(Debug, Clone, Derivative, Serialize, Deserialize, ToSchema)]
-#[derivative(Default)]
-pub struct MirostatParams {
-    #[derivative(Default(value = "3.0"))]
-    pub tau: f32,
-    #[derivative(Default(value = "0.1"))]
-    #[serde(alias = "learning_rate")]
-    pub rate: f32,
-    #[derivative(Default(value = "128"))]
-    #[serde(default = "default_threshold")]
-    pub threshold: usize,
-}
-
-#[cfg(feature = "axum-api")]
-#[derive(Debug, Clone, Derivative, Serialize, Deserialize)]
 #[derivative(Default)]
 pub struct MirostatParams {
     #[derivative(Default(value = "3.0"))]
