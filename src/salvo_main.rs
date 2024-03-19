@@ -1,12 +1,8 @@
 use std::{
     net::{IpAddr, Ipv4Addr, SocketAddr},
-    path::{Path},
+    path::Path,
 };
-
-
-
 use clap::Parser;
-
 use salvo::affix;
 use salvo::cors::Cors;
 use salvo::http::Method;
@@ -21,7 +17,6 @@ use crate::{
 };
 use crate::{load_config, load_plugin, load_web, Args};
 use salvo::cors::AllowOrigin;
-
 
 #[cfg(feature = "salvo-api")]
 pub async fn salvo_main() {
