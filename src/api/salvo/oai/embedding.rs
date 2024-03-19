@@ -6,12 +6,7 @@ use crate::{
     api::request_info,
     middleware::{Array, GenerateRequest, ThreadRequest, ThreadState, Token, TokenCounter},
 };
-use salvo::{
-    macros::Extractible,
-    oapi::extract::JsonBody,
-    prelude::*,
-    Depot, Writer,
-};
+use salvo::{macros::Extractible, oapi::extract::JsonBody, prelude::*, Depot, Writer};
 
 #[derive(Debug, Default, Clone, Deserialize, Serialize, ToSchema, ToParameters)]
 #[serde(default)]

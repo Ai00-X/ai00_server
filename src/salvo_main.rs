@@ -1,7 +1,3 @@
-use std::{
-    net::{IpAddr, Ipv4Addr, SocketAddr},
-    path::Path,
-};
 use clap::Parser;
 use salvo::affix;
 use salvo::cors::Cors;
@@ -10,7 +6,10 @@ use salvo::logging::Logger;
 use salvo::prelude::*;
 use salvo::serve_static::StaticDir;
 use salvo::Router;
-// use tower_http::{cors::CorsLayer, services::ServeDir};
+use std::{
+    net::{IpAddr, Ipv4Addr, SocketAddr},
+    path::Path,
+};
 use crate::{
     api::{self},
     middleware::{model_route, ThreadRequest, ThreadState},
