@@ -1,17 +1,15 @@
 use std::{
-    fs::File,
-    io::{BufReader, Cursor, Read},
     net::{IpAddr, Ipv4Addr, SocketAddr},
-    path::{Path, PathBuf},
+    path::{Path},
 };
 
-use anyhow::Result;
+
 use axum::{
     routing::{get, post},
     Router,
 };
 use clap::Parser;
-use memmap2::Mmap;
+
 use tower_http::{cors::CorsLayer, services::ServeDir};
 
 use crate::{
