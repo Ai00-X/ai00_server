@@ -159,12 +159,12 @@ pub async fn salvo_main() {
             .quinn(addr);
         if let Some(ipv6_addr) = ipv6_addr {
             if ipv6_addr.is_unspecified() && ipv4_addr.is_unspecified() {
-                panic!("IPv6 address and IPv4 address should not also be unspecified.");
+                panic!("both IpV4 and IpV6 addresses are unspecified");
             }
-            let v6addr = SocketAddr::new(IpAddr::V6(ipv6_addr), port);
-            let acceptor = acme_listener.join(TcpListener::new(v6addr)).bind().await;
+            let addr_v6 = SocketAddr::new(IpAddr::V6(ipv6_addr), port);
+            let acceptor = acme_listener.join(TcpListener::new(addr_v6)).bind().await;
             log::info!("server started at {addr} with acme and tls.");
-            log::info!("server started at {v6addr} with acme and tls.");
+            log::info!("server started at {addr_v6} with acme and tls.");
             salvo::server::Server::new(acceptor).serve(app).await;
         } else {
             let acceptor = acme_listener.bind().await;
@@ -181,22 +181,22 @@ pub async fn salvo_main() {
         );
         let listener = TcpListener::new(addr).rustls(config.clone());
         if let Some(ipv6_addr) = ipv6_addr {
-            let v6addr = SocketAddr::new(IpAddr::V6(ipv6_addr), port);
-            let ipv6_listener = TcpListener::new(v6addr).rustls(config.clone());
+            let addr_v6 = SocketAddr::new(IpAddr::V6(ipv6_addr), port);
+            let ipv6_listener = TcpListener::new(addr_v6).rustls(config.clone());
             #[cfg(not(target_os = "windows"))]
-            let acceptor = QuinnListener::new(config.clone(), v6addr)
+            let acceptor = QuinnListener::new(config.clone(), addr_v6)
                 .join(ipv6_listener)
                 .bind()
                 .await;
             #[cfg(target_os = "windows")]
             let acceptor = QuinnListener::new(config.clone(), addr)
-                .join(QuinnListener::new(config, v6addr))
+                .join(QuinnListener::new(config, addr_v6))
                 .join(ipv6_listener)
                 .join(listener)
                 .bind()
                 .await;
             log::info!("server started at {addr} with tls");
-            log::info!("server started at {v6addr} with tls");
+            log::info!("server started at {addr_v6} with tls");
             salvo::server::Server::new(acceptor).serve(app).await;
         } else {
             let acceptor = QuinnListener::new(config.clone(), addr)
@@ -207,22 +207,19 @@ pub async fn salvo_main() {
             salvo::server::Server::new(acceptor).serve(app).await;
         };
     } else if let Some(ipv6_addr) = ipv6_addr {
-        let v6addr = SocketAddr::new(IpAddr::V6(ipv6_addr), port);
-        let ipv6_listener = TcpListener::new(v6addr);
+        let addr_v6 = SocketAddr::new(IpAddr::V6(ipv6_addr), port);
+        let ipv6_listener = TcpListener::new(addr_v6);
         log::info!("server started at {addr} without tls");
-        log::info!("server started at {v6addr} without tls");
+        log::info!("server started at {addr_v6} without tls");
         // On linux, when the IPv6 addr is unspecified, and IPv4 addr is unspecified, that will cause exception "Address in used"
         #[cfg(not(target_os = "windows"))]
-        if ipv6_addr.is_unspecified() {
-            let acceptor = ipv6_listener.bind().await;
-            salvo::server::Server::new(acceptor).serve(app).await;
+        let acceptor = if ipv6_addr.is_unspecified() {
+            ipv6_listener.bind().await
         } else {
-            let acceptor = TcpListener::new(addr).join(ipv6_listener).bind().await;
-            salvo::server::Server::new(acceptor).serve(app).await;
-        }
+            TcpListener::new(addr).join(ipv6_listener).bind().await
+        };
         #[cfg(target_os = "windows")]
         let acceptor = TcpListener::new(addr).join(ipv6_listener).bind().await;
-        #[cfg(target_os = "windows")]
         salvo::server::Server::new(acceptor).serve(app).await;
     } else {
         log::info!("server started at {addr} without tls");
