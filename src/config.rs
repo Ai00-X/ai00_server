@@ -121,6 +121,7 @@ pub enum AdapterOption {
 pub struct ListenerOption {
     pub domain: Option<String>, // bind the domain for certs, the certs stored in assets/certs/
     pub ip: Option<String>,     // bind the ip to listen
+    pub ipv6: Option<String>,   // bind the ipv6 to listen
     pub acme: Option<bool>,     // using acme to issue the certs if the domain is not local
     pub port: Option<u16>,      // bind the port
     pub tls: Option<bool>, // force to enable https. When acme is true, tls should be true mandatory

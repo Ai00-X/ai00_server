@@ -13,7 +13,7 @@ use salvo::prelude::*;
 use salvo::serve_static::StaticDir;
 use salvo::Router;
 use std::{
-    net::{IpAddr, Ipv4Addr, SocketAddr},
+    net::{IpAddr, Ipv4Addr, Ipv6Addr, SocketAddr},
     path::Path,
 };
 
@@ -134,8 +134,8 @@ pub async fn salvo_main() {
             Router::with_path("<**path>").get(StaticDir::new(serve_path).defaults(["index.html"])),
         ); // this static serve should after the swagger.
 
-    let ipaddr = if args.ip.is_some() {
-        args.ip.unwrap()
+    let (ipaddr, ipv6addr) = if args.ip.is_some() {
+        (args.ip.unwrap(), None)
     } else if listen.is_some() {
         let v4_addr = listen
             .clone()
@@ -143,9 +143,14 @@ pub async fn salvo_main() {
             .ip
             .map(|f| f.parse().unwrap_or(Ipv4Addr::UNSPECIFIED))
             .unwrap_or(Ipv4Addr::UNSPECIFIED);
-        IpAddr::from(v4_addr)
+        let v6_addr = listen
+            .clone()
+            .unwrap()
+            .ipv6
+            .map(|f| f.parse().unwrap_or(Ipv6Addr::UNSPECIFIED));
+        (IpAddr::from(v4_addr), v6_addr)
     } else {
-        IpAddr::from(Ipv4Addr::UNSPECIFIED)
+        (IpAddr::from(Ipv4Addr::UNSPECIFIED), None)
     };
 
     let bind_port = if args.port > 0 && args.port != 65530u16 {
@@ -176,15 +181,22 @@ pub async fn salvo_main() {
     let addr = SocketAddr::new(ipaddr, bind_port);
 
     if use_acme {
-        let acceptor = TcpListener::new(addr)
+        let acmelistener = TcpListener::new(addr)
             .acme()
             .cache_path("assets/certs")
             .add_domain(bind_domain)
-            .quinn(addr)
-            .bind()
-            .await;
-        log::info!("server started at {addr} with acme and tls.");
-        salvo::server::Server::new(acceptor).serve(app).await;
+            .quinn(addr);
+        if ipv6addr.is_some() {
+            let v6addr = SocketAddr::new(IpAddr::V6(ipv6addr.clone().unwrap()), bind_port);
+            let acceptor = acmelistener.join(TcpListener::new(v6addr)).bind().await;
+            log::info!("server started at {addr} with acme and tls.");
+            log::info!("server started at {v6addr} with acme and tls.");
+            salvo::server::Server::new(acceptor).serve(app).await;
+        } else {
+            let acceptor = acmelistener.bind().await;
+            log::info!("server started at {addr} with acme and tls.");
+            salvo::server::Server::new(acceptor).serve(app).await;
+        };
     } else if use_tls {
         let config = RustlsConfig::new(
             Keycert::new()
@@ -194,12 +206,38 @@ pub async fn salvo_main() {
                 .unwrap(),
         );
         let listener = TcpListener::new(addr).rustls(config.clone());
-        let acceptor = QuinnListener::new(config, addr).join(listener).bind().await;
-        log::info!("server started at {addr} with tls.");
-        salvo::server::Server::new(acceptor).serve(app).await;
+        if ipv6addr.is_some() {
+            let v6addr = SocketAddr::new(IpAddr::V6(ipv6addr.clone().unwrap()), bind_port);
+            let ipv6listener = TcpListener::new(v6addr).rustls(config.clone());
+            let acceptor = QuinnListener::new(config.clone(), addr)
+                .join(QuinnListener::new(config, v6addr))
+                .join(ipv6listener)
+                .join(listener)
+                .bind()
+                .await;
+            log::info!("server started at {addr} with tls.");
+            log::info!("server started at {v6addr} with tls.");
+            salvo::server::Server::new(acceptor).serve(app).await;
+        } else {
+            let acceptor = QuinnListener::new(config.clone(), addr)
+                .join(listener)
+                .bind()
+                .await;
+            log::info!("server started at {addr} with tls.");
+            salvo::server::Server::new(acceptor).serve(app).await;
+        };
     } else {
-        log::info!("server started at {addr} without tls.");
-        let acceptor = TcpListener::new(addr).bind().await;
-        salvo::server::Server::new(acceptor).serve(app).await;
+        if ipv6addr.is_some() {
+            let v6addr = SocketAddr::new(IpAddr::V6(ipv6addr.clone().unwrap()), bind_port);
+            let ipv6listener = TcpListener::new(v6addr);
+            let acceptor = TcpListener::new(addr).join(ipv6listener).bind().await;
+            log::info!("server started at {addr} without tls.");
+            log::info!("server started at {v6addr} without tls.");
+            salvo::server::Server::new(acceptor).serve(app).await;
+        } else {
+            log::info!("server started at {addr} without tls.");
+            let acceptor = TcpListener::new(addr).bind().await;
+            salvo::server::Server::new(acceptor).serve(app).await;
+        };
     };
 }
