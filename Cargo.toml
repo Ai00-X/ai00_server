@@ -48,22 +48,21 @@ zip-extract = "0.1"
 
 [dependencies.web-rwkv]
 # path = "../web-rwkv"
-version = "0.6.29"
-
+version = "0.6.30"
 
 [dependencies.salvo]
-version = "0.66"
 default-features = true
 features = [
-    "affix",
-    "sse",
-    "cors",
-    "serve-static",
-    "logging",
-    "quinn",
     "acme",
+    "affix",
+    "cors",
+    "logging",
     "oapi",
+    "quinn",
+    "serve-static",
+    "sse",
 ]
+version = "0.66"
 
 [dependencies.axum]
 default-features = false
@@ -81,9 +80,9 @@ features = [
 version = "0.7.1"
 
 [features]
+axum-api = []
 default = ["salvo-api"]
 salvo-api = []
-axum-api = []
 
 [profile.release]
 lto = false
