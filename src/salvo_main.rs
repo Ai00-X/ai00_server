@@ -158,6 +158,9 @@ pub async fn salvo_main() {
             .add_domain(listen.domain)
             .quinn(addr);
         if let Some(ipv6_addr) = ipv6_addr {
+            if ipv6_addr.is_unspecified() && ipv4_addr.is_unspecified() {
+                panic!("IPv6 address and IPv4 address should not also be unspecified.");
+            }
             let v6addr = SocketAddr::new(IpAddr::V6(ipv6_addr), port);
             let acceptor = acme_listener.join(TcpListener::new(v6addr)).bind().await;
             log::info!("server started at {addr} with acme and tls.");
@@ -180,6 +183,12 @@ pub async fn salvo_main() {
         if let Some(ipv6_addr) = ipv6_addr {
             let v6addr = SocketAddr::new(IpAddr::V6(ipv6_addr), port);
             let ipv6_listener = TcpListener::new(v6addr).rustls(config.clone());
+            #[cfg(not(target_os = "windows"))]
+            let acceptor = QuinnListener::new(config.clone(), v6addr)
+                .join(ipv6_listener)
+                .bind()
+                .await;
+            #[cfg(target_os = "windows")]
             let acceptor = QuinnListener::new(config.clone(), addr)
                 .join(QuinnListener::new(config, v6addr))
                 .join(ipv6_listener)
@@ -200,9 +209,20 @@ pub async fn salvo_main() {
     } else if let Some(ipv6_addr) = ipv6_addr {
         let v6addr = SocketAddr::new(IpAddr::V6(ipv6_addr), port);
         let ipv6_listener = TcpListener::new(v6addr);
-        let acceptor = TcpListener::new(addr).join(ipv6_listener).bind().await;
         log::info!("server started at {addr} without tls");
         log::info!("server started at {v6addr} without tls");
+        // On linux, when the IPv6 addr is unspecified, and IPv4 addr is unspecified, that will cause exception "Address in used"
+        #[cfg(not(target_os = "windows"))]
+        if ipv6_addr.is_unspecified() {
+            let acceptor = ipv6_listener.bind().await;
+            salvo::server::Server::new(acceptor).serve(app).await;
+        } else {
+            let acceptor = TcpListener::new(addr).join(ipv6_listener).bind().await;
+            salvo::server::Server::new(acceptor).serve(app).await;
+        }
+        #[cfg(target_os = "windows")]
+        let acceptor = TcpListener::new(addr).join(ipv6_listener).bind().await;
+        #[cfg(target_os = "windows")]
         salvo::server::Server::new(acceptor).serve(app).await;
     } else {
         log::info!("server started at {addr} without tls");
