@@ -107,7 +107,7 @@ mod private {
         middleware::{ThreadRequest, ThreadState, Token, TokenCounter},
     };
 
-    /// Generate the embeddings for given text, with layer number specified for producing the embedding.
+    /// Generate a embedding vector for the given text, with layer number specified for producing the embedding.
     #[endpoint]
     pub async fn embeddings(
         depot: &mut Depot,

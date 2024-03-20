@@ -49,7 +49,7 @@ mod private {
     use super::*;
     use crate::{api::request_info, ThreadState};
 
-    /// Response with the model name and id of current choice.
+    /// Model name and id of the current choice.
     #[endpoint]
     pub async fn models(depot: &mut Depot) -> Json<ModelResponse> {
         let ThreadState(sender) = depot.obtain::<ThreadState>().unwrap();
