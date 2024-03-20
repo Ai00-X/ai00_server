@@ -10,12 +10,16 @@ use crate::middleware::{Array, FinishReason, GenerateRequest, TokenCounter, MAX_
 pub use private::completions;
 
 #[derive(Debug, Deserialize, ToSchema, ToResponse)]
-#[serde(default)]
 pub struct CompletionRequest {
+    #[serde(default)]
     prompt: Array<String>,
+    #[serde(default = "default_max_tokens")]
     max_tokens: usize,
+    #[serde(default)]
     stop: Array<String>,
+    #[serde(default)]
     stream: bool,
+    #[serde(default)]
     #[serde(alias = "logit_bias")]
     bias: HashMap<u16, f32>,
     #[serde(flatten)]
@@ -33,6 +37,10 @@ impl Default for CompletionRequest {
             sampler: Default::default(),
         }
     }
+}
+
+fn default_max_tokens() -> usize {
+    CompletionRequest::default().max_tokens
 }
 
 impl From<CompletionRequest> for GenerateRequest {

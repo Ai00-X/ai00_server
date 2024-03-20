@@ -43,13 +43,18 @@ pub struct ChatRecord {
 }
 
 #[derive(Debug, Deserialize, ToSchema)]
-#[serde(default)]
 pub struct ChatRequest {
+    #[serde(default)]
     messages: Array<ChatRecord>,
+    #[serde(default)]
     names: HashMap<Role, String>,
+    #[serde(default = "default_max_tokens")]
     max_tokens: usize,
+    #[serde(default = "default_stop")]
     stop: Array<String>,
+    #[serde(default)]
     stream: bool,
+    #[serde(default)]
     #[serde(alias = "logit_bias")]
     bias: HashMap<u16, f32>,
     #[serde(flatten)]
@@ -68,6 +73,14 @@ impl Default for ChatRequest {
             sampler: Default::default(),
         }
     }
+}
+
+fn default_max_tokens() -> usize {
+    ChatRequest::default().max_tokens
+}
+
+fn default_stop() -> Array<String> {
+    ChatRequest::default().stop
 }
 
 impl From<ChatRequest> for GenerateRequest {

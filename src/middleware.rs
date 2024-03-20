@@ -49,13 +49,14 @@ pub enum Token {
 
 #[derive(Debug, Default, Clone, Copy, Serialize, ToSchema)]
 #[serde(rename_all = "snake_case")]
+#[allow(dead_code)]
 pub enum FinishReason {
     /// API returned complete model output.
     Stop,
     /// Incomplete model output due to max_tokens parameter or token limit.
     Length,
     /// Omitted content due to a flag from our content filters.
-    _ContentFilter,
+    ContentFilter,
     /// API response still in progress or incomplete.
     #[default]
     Null,
