@@ -17,6 +17,7 @@ use std::{
     path::Path,
 };
 
+#[allow(clippy::collapsible_else_if)]
 pub async fn salvo_main() {
     use clap::CommandFactory;
     use salvo::conn::rustls::{Keycert, RustlsConfig};
@@ -187,7 +188,7 @@ pub async fn salvo_main() {
             .add_domain(bind_domain)
             .quinn(addr);
         if ipv6addr.is_some() {
-            let v6addr = SocketAddr::new(IpAddr::V6(ipv6addr.clone().unwrap()), bind_port);
+            let v6addr = SocketAddr::new(IpAddr::V6(ipv6addr.unwrap()), bind_port);
             let acceptor = acmelistener.join(TcpListener::new(v6addr)).bind().await;
             log::info!("server started at {addr} with acme and tls.");
             log::info!("server started at {v6addr} with acme and tls.");
@@ -207,7 +208,7 @@ pub async fn salvo_main() {
         );
         let listener = TcpListener::new(addr).rustls(config.clone());
         if ipv6addr.is_some() {
-            let v6addr = SocketAddr::new(IpAddr::V6(ipv6addr.clone().unwrap()), bind_port);
+            let v6addr = SocketAddr::new(IpAddr::V6(ipv6addr.unwrap()), bind_port);
             let ipv6listener = TcpListener::new(v6addr).rustls(config.clone());
             let acceptor = QuinnListener::new(config.clone(), addr)
                 .join(QuinnListener::new(config, v6addr))
@@ -228,7 +229,7 @@ pub async fn salvo_main() {
         };
     } else {
         if ipv6addr.is_some() {
-            let v6addr = SocketAddr::new(IpAddr::V6(ipv6addr.clone().unwrap()), bind_port);
+            let v6addr = SocketAddr::new(IpAddr::V6(ipv6addr.unwrap()), bind_port);
             let ipv6listener = TcpListener::new(v6addr);
             let acceptor = TcpListener::new(addr).join(ipv6listener).bind().await;
             log::info!("server started at {addr} without tls.");
