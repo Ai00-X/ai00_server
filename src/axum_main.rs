@@ -101,7 +101,10 @@ pub async fn axum_main() {
         .route("/api/oai/v1/embeddings", post(oai::embeddings))
         .fallback_service(ServeDir::new(serve_path))
         .layer(CorsLayer::permissive())
-        .with_state(ThreadState(sender, config));
+        .with_state(ThreadState {
+            sender,
+            model_path: config.model.model_path,
+        });
     let addr = SocketAddr::new(
         args.ip.unwrap_or(IpAddr::from(Ipv4Addr::UNSPECIFIED)),
         args.port.unwrap_or(65530u16),

@@ -127,7 +127,7 @@ mod private {
     };
 
     async fn respond_one(
-        State(ThreadState(sender, _)): State<ThreadState>,
+        State(ThreadState { sender, .. }): State<ThreadState>,
         Json(request): Json<CompletionRequest>,
     ) -> Json<CompletionResponse> {
         let info = request_info(sender.clone(), Duration::from_secs(1)).await;
@@ -174,7 +174,7 @@ mod private {
     }
 
     async fn respond_stream(
-        State(ThreadState(sender, _)): State<ThreadState>,
+        State(ThreadState { sender, .. }): State<ThreadState>,
         Json(request): Json<CompletionRequest>,
     ) -> Sse<impl Stream<Item = Result<Event>>> {
         let info = request_info(sender.clone(), Duration::from_secs(1)).await;
@@ -236,7 +236,7 @@ mod private {
     };
 
     async fn respond_one(depot: &mut Depot, request: CompletionRequest, res: &mut Response) {
-        let ThreadState(sender, _) = depot.obtain::<ThreadState>().unwrap();
+        let ThreadState { sender, .. } = depot.obtain::<ThreadState>().unwrap();
         let info = request_info(sender.clone(), Duration::from_secs(1)).await;
         let model_name = info.reload.model_path.to_string_lossy().into_owned();
 
@@ -282,7 +282,7 @@ mod private {
     }
 
     async fn respond_stream(depot: &mut Depot, request: CompletionRequest, res: &mut Response) {
-        let ThreadState(sender, _) = depot.obtain::<ThreadState>().unwrap();
+        let ThreadState { sender, .. } = depot.obtain::<ThreadState>().unwrap();
         let info = request_info(sender.clone(), Duration::from_secs(1)).await;
         let model_name = info.reload.model_path.to_string_lossy().into_owned();
 

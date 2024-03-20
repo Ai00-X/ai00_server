@@ -98,7 +98,10 @@ pub async fn salvo_main() {
     let app = Router::new()
         //.hoop(CorsLayer::permissive())
         .hoop(Logger::new())
-        .hoop(affix::inject(ThreadState(sender, config)))
+        .hoop(affix::inject(ThreadState {
+            sender,
+            model_path: config.model.model_path,
+        }))
         .hoop(cors)
         .push(Router::with_path("/api/adapters").get(api::adapters))
         .push(Router::with_path("/api/models/info").get(api::info))

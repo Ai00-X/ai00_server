@@ -56,7 +56,7 @@ mod private {
 
     /// `/api/oai/embeddings`, `/api/oai/v1/embeddings`.
     pub async fn embeddings(
-        State(ThreadState(sender, _)): State<ThreadState>,
+        State(ThreadState { sender, .. }): State<ThreadState>,
         Json(request): Json<EmbeddingRequest>,
     ) -> Json<EmbeddingResponse> {
         let info = request_info(sender.clone(), Duration::from_secs(1)).await;
@@ -114,7 +114,7 @@ mod private {
         req: JsonBody<EmbeddingRequest>,
     ) -> Json<EmbeddingResponse> {
         let request = req.to_owned(); // req.parse_json::<EmbeddingRequest>().await.unwrap();
-        let ThreadState(sender, _) = depot.obtain::<ThreadState>().unwrap();
+        let ThreadState { sender, .. } = depot.obtain::<ThreadState>().unwrap();
         let info = request_info(sender.clone(), Duration::from_secs(1)).await;
         let model_name = info.reload.model_path.to_string_lossy().into_owned();
 

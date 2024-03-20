@@ -1,5 +1,5 @@
 use crate::middleware::ThreadState;
-use anyhow::Result;
+use anyhow::{bail, Result};
 use clap::Parser;
 use memmap2::Mmap;
 use std::{
@@ -15,10 +15,40 @@ mod middleware;
 mod run;
 mod sampler;
 
+#[cfg(all(feature = "axum-api", feature = "salvo-api"))]
+compile_error!("feature \"axum-api\" and feature \"salvo-api\" cannot be enabled at the same time");
+
 #[cfg(feature = "axum-api")]
 mod axum_main;
 #[cfg(feature = "salvo-api")]
 mod salvo_main;
+
+pub fn build_path_safe(path: impl AsRef<Path>, name: impl AsRef<Path>) -> Result<PathBuf> {
+    let path = path.as_ref();
+    let name = name.as_ref();
+    let permitted = path.canonicalize()?;
+    let path = match name.is_absolute() || name.starts_with(path) {
+        true => name.canonicalize()?,
+        false => permitted.join(name).canonicalize()?,
+    };
+    log::info!("{:?}", path);
+    match path.starts_with(permitted) {
+        true => Ok(path),
+        false => bail!("path not permitted"),
+    }
+}
+
+pub fn check_path_permitted(path: impl AsRef<Path>, permitted: &[&str]) -> Result<()> {
+    let current_path = std::env::current_dir()?;
+    for sub in permitted {
+        let permitted = current_path.join(sub).canonicalize()?;
+        let path = path.as_ref().canonicalize()?;
+        if path.starts_with(permitted) {
+            return Ok(());
+        }
+    }
+    bail!("path not permitted");
+}
 
 pub fn load_web(path: impl AsRef<Path>, target: &Path) -> Result<()> {
     let file = File::open(path)?;

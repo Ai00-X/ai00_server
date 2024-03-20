@@ -4,7 +4,7 @@ use std::{
     path::{Path, PathBuf},
 };
 
-use anyhow::{bail, Result};
+use anyhow::Result;
 use itertools::Itertools;
 use memmap2::Mmap;
 use salvo::{
@@ -14,7 +14,7 @@ use salvo::{
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
 
-use crate::config::Config;
+use crate::{check_path_permitted, config::Config};
 
 pub use private::{dir, load_config, models, save_config, unzip};
 
@@ -25,18 +25,6 @@ const PERMITTED_PATHS: [&str; 4] = [
     "assets/www",
 ];
 const UNZIP_PATHS: [&str; 2] = ["assets/unzip", "assets/temp"];
-
-fn check_path_permitted(path: impl AsRef<Path>, permitted: &[&str]) -> Result<()> {
-    let current_path = std::env::current_dir()?;
-    for sub in permitted {
-        let permitted = std::fs::canonicalize(current_path.join(sub))?;
-        let path = std::fs::canonicalize(path.as_ref())?;
-        if path.starts_with(permitted) {
-            return Ok(());
-        }
-    }
-    bail!("path not valid");
-}
 
 fn check_path(path: impl AsRef<Path>) -> Result<()> {
     check_path_permitted(path, &PERMITTED_PATHS)
@@ -111,7 +99,7 @@ mod private {
 
     /// `/api/files/dir`, `/api/files/ls`.
     pub async fn dir(
-        State(ThreadState(_, _)): State<ThreadState>,
+        _: State<ThreadState>,
         Json(request): Json<FileInfoRequest>,
     ) -> impl IntoResponse {
         if let Err(err) = check_path(&request.path) {
@@ -152,20 +140,17 @@ mod private {
 
     /// `/api/models/list`.
     pub async fn models(
-        State(ThreadState(sender, config)): State<ThreadState>,
+        State(ThreadState { sender, model_path }): State<ThreadState>,
     ) -> impl IntoResponse {
         let request = FileInfoRequest {
-            path: config.model.model_path.clone(),
+            path: model_path.clone(),
             is_sha: true,
         };
-        dir(State(ThreadState(sender, config)), Json(request)).await
+        dir(State(ThreadState { sender, model_path }), Json(request)).await
     }
 
     /// `/api/files/unzip`.
-    pub async fn unzip(
-        State(ThreadState(_, _)): State<ThreadState>,
-        Json(request): Json<UnzipRequest>,
-    ) -> StatusCode {
+    pub async fn unzip(_: State<ThreadState>, Json(request): Json<UnzipRequest>) -> StatusCode {
         if let Err(err) = check_path(&request.path) {
             log::error!("check path failed: {}", err);
             return StatusCode::FORBIDDEN;
@@ -199,7 +184,7 @@ mod private {
 
     /// `/api/files/config/load`.
     pub async fn load_config(
-        State(ThreadState(_, _)): State<ThreadState>,
+        _: State<ThreadState>,
         Json(request): Json<LoadRequest>,
     ) -> impl IntoResponse {
         if let Err(err) = check_path(&request.path) {
@@ -217,7 +202,7 @@ mod private {
 
     /// `/api/files/config/save`.
     pub async fn save_config(
-        State(ThreadState(_, _)): State<ThreadState>,
+        _: State<ThreadState>,
         Json(request): Json<SaveRequest>,
     ) -> StatusCode {
         if let Err(err) = check_path(&request.path) {
@@ -326,9 +311,9 @@ mod private {
     /// `/api/models/list`.
     #[handler]
     pub async fn models(depot: &mut Depot, res: &mut Response) {
-        let ThreadState(_, config) = depot.obtain::<ThreadState>().unwrap();
+        let ThreadState { model_path, .. } = depot.obtain::<ThreadState>().unwrap();
         let request = FileInfoRequest {
-            path: config.model.model_path.clone(),
+            path: model_path.clone(),
             is_sha: true,
         };
         match dir_inner(depot, Json(request)).await {

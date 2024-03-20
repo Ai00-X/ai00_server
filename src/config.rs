@@ -7,7 +7,7 @@ use derivative::Derivative;
 use serde::{Deserialize, Serialize};
 use web_rwkv::model::{EmbedDevice, Quant};
 
-use crate::middleware::ReloadRequest;
+use crate::{build_path_safe, middleware::ReloadRequest};
 
 #[derive(Debug, Default, Clone, Serialize, Deserialize)]
 #[serde(default)]
@@ -44,8 +44,7 @@ impl From<Config> for ReloadRequest {
             ..
         } = value;
         Self {
-            model_name,
-            model_path,
+            model_path: build_path_safe(model_path, model_name).expect("error building path"),
             lora,
             quant,
             quant_type,
@@ -66,9 +65,9 @@ impl From<Config> for ReloadRequest {
 #[derivative(Default)]
 #[serde(default)]
 pub struct Model {
-    /// Path to the model.
+    /// Name of the model.
     pub model_name: PathBuf,
-    /// Path to the model storage folder
+    /// Path to the folder containing all models.
     #[derivative(Default(value = "String::from(\"assets/models\").into()"))]
     pub model_path: PathBuf,
     /// Specify layers that needs to be quantized.

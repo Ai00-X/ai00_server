@@ -24,7 +24,9 @@ mod private {
     use crate::{api::request_info, ThreadState};
 
     /// `/api/oai/models`, `/api/oai/v1/models`.
-    pub async fn models(State(ThreadState(sender, _)): State<ThreadState>) -> Json<ModelResponse> {
+    pub async fn models(
+        State(ThreadState { sender, .. }): State<ThreadState>,
+    ) -> Json<ModelResponse> {
         let info = request_info(sender, Duration::from_secs(1)).await;
         let model_name = info
             .reload
@@ -52,7 +54,7 @@ mod private {
     /// Model name and id of the current choice.
     #[endpoint]
     pub async fn models(depot: &mut Depot) -> Json<ModelResponse> {
-        let ThreadState(sender, _) = depot.obtain::<ThreadState>().unwrap();
+        let ThreadState { sender, .. } = depot.obtain::<ThreadState>().unwrap();
         let info = request_info(sender.to_owned(), Duration::from_secs(1)).await;
         let model_name = info
             .reload
