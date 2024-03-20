@@ -30,7 +30,7 @@ mod private {
     use crate::middleware::{ReloadRequest, RuntimeInfo, ThreadRequest, ThreadState};
 
     /// `/api/models/info`.
-    pub async fn info(State(ThreadState(sender)): State<ThreadState>) -> Json<InfoResponse> {
+    pub async fn info(State(ThreadState(sender, _)): State<ThreadState>) -> Json<InfoResponse> {
         let RuntimeInfo { reload, model, .. } =
             request_info(sender, Duration::from_millis(500)).await;
         Json(InfoResponse { reload, model })
@@ -38,7 +38,7 @@ mod private {
 
     /// `/api/models/state`.
     pub async fn state(
-        State(ThreadState(sender)): State<ThreadState>,
+        State(ThreadState(sender, _)): State<ThreadState>,
     ) -> Sse<impl Stream<Item = Result<Event>>> {
         let (info_sender, info_receiver) = flume::unbounded();
         let task = request_info_stream(sender, info_sender, Duration::from_millis(500));
@@ -54,7 +54,7 @@ mod private {
 
     /// `/api/models/load`.
     pub async fn load(
-        State(ThreadState(sender)): State<ThreadState>,
+        State(ThreadState(sender, _)): State<ThreadState>,
         Json(request): Json<ReloadRequest>,
     ) -> StatusCode {
         let (result_sender, result_receiver) = flume::unbounded();
@@ -69,7 +69,7 @@ mod private {
     }
 
     /// `/api/models/unload`.
-    pub async fn unload(State(ThreadState(sender)): State<ThreadState>) -> StatusCode {
+    pub async fn unload(State(ThreadState(sender, _)): State<ThreadState>) -> StatusCode {
         let _ = sender.send(ThreadRequest::Unload);
         while try_request_info(sender.clone()).await.is_ok() {}
         StatusCode::OK
@@ -87,7 +87,7 @@ mod private {
 
     #[handler]
     pub async fn info(depot: &mut Depot) -> Json<InfoResponse> {
-        let ThreadState(sender) = depot.obtain::<ThreadState>().unwrap();
+        let ThreadState(sender, _) = depot.obtain::<ThreadState>().unwrap();
         let RuntimeInfo { reload, model, .. } =
             request_info(sender.to_owned(), Duration::from_millis(500)).await;
         Json(InfoResponse { reload, model })
@@ -96,7 +96,7 @@ mod private {
     /// `/api/models/state`.
     #[handler]
     pub async fn state(depot: &mut Depot, res: &mut Response) {
-        let ThreadState(sender) = depot.obtain::<ThreadState>().unwrap();
+        let ThreadState(sender, _) = depot.obtain::<ThreadState>().unwrap();
         let (info_sender, info_receiver) = flume::unbounded();
         let task = request_info_stream(sender.to_owned(), info_sender, Duration::from_millis(500));
         tokio::task::spawn(task);
@@ -115,7 +115,7 @@ mod private {
     /// `/api/models/load`.
     #[handler]
     pub async fn load(depot: &mut Depot, req: &mut Request) -> StatusCode {
-        let ThreadState(sender) = depot.obtain::<ThreadState>().unwrap();
+        let ThreadState(sender, _) = depot.obtain::<ThreadState>().unwrap();
         let (result_sender, result_receiver) = flume::unbounded();
         let reload = req.parse_body().await.unwrap();
         let _ = sender.send(ThreadRequest::Reload {
@@ -131,7 +131,7 @@ mod private {
     /// `/api/models/unload`.
     #[handler]
     pub async fn unload(depot: &mut Depot) -> StatusCode {
-        let ThreadState(sender) = depot.obtain::<ThreadState>().unwrap();
+        let ThreadState(sender, _) = depot.obtain::<ThreadState>().unwrap();
         let _ = sender.send(ThreadRequest::Unload);
         while try_request_info(sender.clone()).await.is_ok() {}
         StatusCode::OK

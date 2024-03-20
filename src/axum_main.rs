@@ -26,13 +26,14 @@ pub async fn axum_main() {
     let args = Args::parse();
     let (sender, receiver) = flume::unbounded::<ThreadRequest>();
 
-    let request = {
+    let (request, config) = {
         let path = args
             .config
             .clone()
             .unwrap_or("assets/configs/Config.toml".into());
         log::info!("reading config {}...", path.to_string_lossy());
-        Box::new(load_config(path).expect("load config failed").into())
+        let conf = load_config(path).expect("load config failed");
+        (Box::new(conf.clone().into()), conf)
     };
 
     tokio::task::spawn_blocking(move || model_route(receiver));
@@ -100,7 +101,7 @@ pub async fn axum_main() {
         .route("/api/oai/v1/embeddings", post(oai::embeddings))
         .fallback_service(ServeDir::new(serve_path))
         .layer(CorsLayer::permissive())
-        .with_state(ThreadState(sender));
+        .with_state(ThreadState(sender, config));
     let addr = SocketAddr::new(
         args.ip.unwrap_or(IpAddr::from(Ipv4Addr::UNSPECIFIED)),
         args.port.unwrap_or(65530u16),

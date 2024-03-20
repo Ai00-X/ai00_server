@@ -8,7 +8,7 @@ use std::{
     time::Duration,
 };
 
-use anyhow::Result;
+use anyhow::{bail, Result};
 use derivative::Derivative;
 use flume::{Receiver, Sender};
 use half::f16;
@@ -31,7 +31,7 @@ use web_rwkv::{
 };
 
 use crate::{
-    config::AdapterOption,
+    config::{AdapterOption, Config},
     run::{GenerateContext, Runner, Runtime, SlotResult, Tokens},
     sampler::{nucleus::NucleusSampler, Sampler},
 };
@@ -167,6 +167,7 @@ pub struct GenerateRequest {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(default)]
 pub struct ReloadRequest {
+    pub model_name: PathBuf,
     /// Path to the model.
     pub model_path: PathBuf,
     /// List of LoRA blended on the model.
@@ -209,7 +210,7 @@ pub struct TokenCounter {
 }
 
 #[derive(Clone)]
-pub struct ThreadState(pub Sender<ThreadRequest>);
+pub struct ThreadState(pub Sender<ThreadRequest>, pub Config);
 
 fn list_adapters() -> AdapterList {
     let backends = Backends::all();
@@ -245,6 +246,16 @@ fn load_tokenizer(path: impl AsRef<Path>) -> Result<Tokenizer> {
     Ok(Tokenizer::new(&contents)?)
 }
 
+pub fn relative_path(path: &Path, name: &Path) -> Result<PathBuf, anyhow::Error> {
+    if name.is_absolute() {
+        Ok(name.to_path_buf())
+    } else if name.starts_with("..") {
+        bail!("could not use relative path in model_name");
+    } else {
+        Ok(path.to_path_buf().join(name))
+    }
+}
+
 async fn load_model<M, S>(context: &Context, request: ReloadRequest) -> Result<(M, S)>
 where
     S: ModelState,
@@ -253,6 +264,7 @@ where
     StateBuilder: Build<S, Error = Infallible>,
 {
     let ReloadRequest {
+        model_name,
         model_path,
         quant,
         quant_type,
@@ -267,7 +279,7 @@ where
     let lora: Vec<_> = lora
         .into_iter()
         .map(|lora| -> Result<_> {
-            let file = File::open(&lora.path)?;
+            let file = File::open(relative_path(&model_path, &lora.path)?)?;
             let data = unsafe { Mmap::map(&file) }?;
             let blend = LoraBlend::full(lora.alpha);
             Ok((data, blend))
@@ -282,7 +294,7 @@ where
         })
         .try_collect()?;
 
-    let file = File::open(&model_path)?;
+    let file = File::open(relative_path(&model_path, &model_name)?)?;
     let data = unsafe { Mmap::map(&file) }?;
     let model = SafeTensors::deserialize(&data)?;
     let model = ModelBuilder::new(context, model)
@@ -377,8 +389,8 @@ pub async fn model_route(receiver: Receiver<ThreadRequest>) -> Result<()> {
                         let sender = sender.clone();
                         let max_runtime_batch = request.max_runtime_batch;
                         let state_chunk_size = request.state_chunk_size;
-
-                        let file = File::open(&request.model_path)?;
+                        let model_path = relative_path(&request.model_path, &request.model_name)?;
+                        let file = File::open(&model_path)?;
                         let data = unsafe { Mmap::map(&file)? };
                         let model = SafeTensors::deserialize(&data)?;
                         let info = Loader::info(&model)?;

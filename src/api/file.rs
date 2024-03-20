@@ -111,7 +111,7 @@ mod private {
 
     /// `/api/files/dir`, `/api/files/ls`.
     pub async fn dir(
-        State(ThreadState(_)): State<ThreadState>,
+        State(ThreadState(_, _)): State<ThreadState>,
         Json(request): Json<FileInfoRequest>,
     ) -> impl IntoResponse {
         if let Err(err) = check_path(&request.path) {
@@ -151,17 +151,19 @@ mod private {
     }
 
     /// `/api/models/list`.
-    pub async fn models(state: State<ThreadState>) -> impl IntoResponse {
+    pub async fn models(
+        State(ThreadState(sender, config)): State<ThreadState>,
+    ) -> impl IntoResponse {
         let request = FileInfoRequest {
-            path: "assets/models".into(),
+            path: config.model.model_path.clone(),
             is_sha: true,
         };
-        dir(state, Json(request)).await
+        dir(State(ThreadState(sender, config)), Json(request)).await
     }
 
     /// `/api/files/unzip`.
     pub async fn unzip(
-        State(ThreadState(_)): State<ThreadState>,
+        State(ThreadState(_, _)): State<ThreadState>,
         Json(request): Json<UnzipRequest>,
     ) -> StatusCode {
         if let Err(err) = check_path(&request.path) {
@@ -197,7 +199,7 @@ mod private {
 
     /// `/api/files/config/load`.
     pub async fn load_config(
-        State(ThreadState(_)): State<ThreadState>,
+        State(ThreadState(_, _)): State<ThreadState>,
         Json(request): Json<LoadRequest>,
     ) -> impl IntoResponse {
         if let Err(err) = check_path(&request.path) {
@@ -215,7 +217,7 @@ mod private {
 
     /// `/api/files/config/save`.
     pub async fn save_config(
-        State(ThreadState(_)): State<ThreadState>,
+        State(ThreadState(_, _)): State<ThreadState>,
         Json(request): Json<SaveRequest>,
     ) -> StatusCode {
         if let Err(err) = check_path(&request.path) {
@@ -260,10 +262,6 @@ mod private {
         _depot: &mut Depot,
         Json(request): Json<FileInfoRequest>,
     ) -> Result<(StatusCode, Vec<FileInfo>), StatusCode> {
-        if let Err(err) = check_path(&request.path) {
-            log::error!("check path failed: {}", err);
-            return Err(StatusCode::FORBIDDEN);
-        }
         match std::fs::read_dir(request.path) {
             Ok(path) => {
                 let files = path
@@ -306,6 +304,12 @@ mod private {
                 return;
             }
         };
+        if let Err(err) = check_path(&request.path) {
+            log::error!("check path failed: {}", err);
+            res.status_code(StatusCode::FORBIDDEN);
+            res.render("ERROR");
+            return;
+        }
 
         match dir_inner(depot, Json(request)).await {
             Ok((status, files)) => {
@@ -322,10 +326,9 @@ mod private {
     /// `/api/models/list`.
     #[handler]
     pub async fn models(depot: &mut Depot, res: &mut Response) {
-        let _state = depot.obtain::<ThreadState>().unwrap();
-
+        let ThreadState(_, config) = depot.obtain::<ThreadState>().unwrap();
         let request = FileInfoRequest {
-            path: "assets/models".into(),
+            path: config.model.model_path.clone(),
             is_sha: true,
         };
         match dir_inner(depot, Json(request)).await {

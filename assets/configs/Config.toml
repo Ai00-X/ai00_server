@@ -1,9 +1,10 @@
 [model]
+model_name = "RWKV-x060-World-1B6-v2-20240208-ctx4096.st" # Path to the model.
+model_path = "assets/models"
 embed_device = "Cpu"                                             # Device to put the embed tensor ("Cpu" or "Gpu").
 head_chunk_size = 8192                                           # DO NOT modify this if you don't know what you are doing.
 max_batch = 16                                                   # The maximum batches that are cached on GPU.
 max_runtime_batch = 8                                            # The maximum batches that can be scheduled for inference at the same time.
-path = "assets/models/RWKV-x060-World-3B-v2-20240228-ctx4096.st" # Path to the model.
 quant = 0                                                        # Layers to be quantized.
 quant_type = "Int8"                                              # Quantization type ("Int8" or "NF4").
 state_chunk_size = 4                                             # The chunk size of layers in model state.

@@ -35,7 +35,7 @@ pub async fn salvo_main() {
     let args = Args::parse();
     let (sender, receiver) = flume::unbounded::<ThreadRequest>();
 
-    let (listen, request) = {
+    let (listen, request, config) = {
         let path = args
             .config
             .clone()
@@ -43,7 +43,7 @@ pub async fn salvo_main() {
         log::info!("reading config {}...", path.to_string_lossy());
         let config = load_config(path).expect("load config failed");
         let listen = config.listen.clone();
-        (listen, ReloadRequest::from(config))
+        (listen, ReloadRequest::from(config.clone()), config)
     };
 
     tokio::task::spawn_blocking(move || model_route(receiver));
@@ -98,7 +98,7 @@ pub async fn salvo_main() {
     let app = Router::new()
         //.hoop(CorsLayer::permissive())
         .hoop(Logger::new())
-        .hoop(affix::inject(ThreadState(sender)))
+        .hoop(affix::inject(ThreadState(sender, config)))
         .hoop(cors)
         .push(Router::with_path("/api/adapters").get(api::adapters))
         .push(Router::with_path("/api/models/info").get(api::info))

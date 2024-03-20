@@ -24,7 +24,8 @@ impl From<Config> for ReloadRequest {
         let Config {
             model:
                 Model {
-                    path: model_path,
+                    model_name,
+                    model_path,
                     quant,
                     quant_type,
                     turbo,
@@ -43,6 +44,7 @@ impl From<Config> for ReloadRequest {
             ..
         } = value;
         Self {
+            model_name,
             model_path,
             lora,
             quant,
@@ -65,7 +67,10 @@ impl From<Config> for ReloadRequest {
 #[serde(default)]
 pub struct Model {
     /// Path to the model.
-    pub path: PathBuf,
+    pub model_name: PathBuf,
+    /// Path to the model storage folder
+    #[derivative(Default(value = "String::from(\"assets/models\").into()"))]
+    pub model_path: PathBuf,
     /// Specify layers that needs to be quantized.
     pub quant: usize,
     /// Quantization type (Int8 or NF4).
