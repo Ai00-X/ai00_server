@@ -1,4 +1,7 @@
-use std::path::PathBuf;
+use std::{
+    net::{IpAddr, Ipv4Addr},
+    path::PathBuf,
+};
 
 use derivative::Derivative;
 use serde::{Deserialize, Serialize};
@@ -13,7 +16,7 @@ pub struct Config {
     pub lora: Vec<Lora>,
     pub tokenizer: Tokenizer,
     pub adapter: AdapterOption,
-    pub listen: Option<ListenerOption>,
+    pub listen: ListenerOption,
 }
 
 impl From<Config> for ReloadRequest {
@@ -37,7 +40,6 @@ impl From<Config> for ReloadRequest {
                 path: tokenizer_path,
             },
             adapter,
-            listen,
             ..
         } = value;
         Self {
@@ -54,7 +56,6 @@ impl From<Config> for ReloadRequest {
             embed_device,
             tokenizer_path,
             adapter,
-            listen,
         }
     }
 }
@@ -117,12 +118,20 @@ pub enum AdapterOption {
     Manual(usize),
 }
 
-#[derive(Debug, Default, Clone, Serialize, Deserialize)]
+#[derive(Debug, Derivative, Clone, Serialize, Deserialize)]
+#[derivative(Default)]
 pub struct ListenerOption {
-    pub domain: Option<String>, // bind the domain for certs, the certs stored in assets/certs/
-    pub ip: Option<String>,     // bind the ip to listen
-    pub ipv6: Option<String>,   // bind the ipv6 to listen
-    pub acme: Option<bool>,     // using acme to issue the certs if the domain is not local
-    pub port: Option<u16>,      // bind the port
-    pub tls: Option<bool>, // force to enable https. When acme is true, tls should be true mandatory
+    /// Ip to listen to.
+    #[derivative(Default(value = "IpAddr::V4(Ipv4Addr::new(0, 0, 0, 0))"))]
+    pub ip: IpAddr,
+    /// Binding port.
+    #[derivative(Default(value = "65530u16"))]
+    pub port: u16,
+    /// Domain for certs. Certs are stored in `assets/certs/`.
+    #[derivative(Default(value = "String::from(\"local\")"))]
+    pub domain: String,
+    /// Using acme to issue the certs if the domain is not local.
+    pub acme: bool,
+    /// Force to enable https. When acme is true, tls must be true.
+    pub tls: bool,
 }

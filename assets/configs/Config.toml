@@ -17,11 +17,10 @@ path = "assets/tokenizer/rwkv_vocab_v20230424.json" # Path to the tokenizer.
 [adapter]
 Auto = {}
 
-
 [listen]
-domain = "local"
-ip = "0.0.0.0"
-port = 65530
 acme = false
+domain = "local"
+ip = "0.0.0.0"   # Use IpV4
+# ip = "::"        # To enable IpV6
+port = 65530
 tls = false
-ipv6 = "::"

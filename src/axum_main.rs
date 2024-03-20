@@ -103,7 +103,7 @@ pub async fn axum_main() {
         .with_state(ThreadState(sender));
     let addr = SocketAddr::new(
         args.ip.unwrap_or(IpAddr::from(Ipv4Addr::UNSPECIFIED)),
-        args.port,
+        args.port.unwrap_or(65530u16),
     );
     let listener = tokio::net::TcpListener::bind(addr).await.unwrap();
     log::info!("server started at {addr}");

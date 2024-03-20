@@ -31,7 +31,7 @@ use web_rwkv::{
 };
 
 use crate::{
-    config::{AdapterOption, ListenerOption},
+    config::AdapterOption,
     run::{GenerateContext, Runner, Runtime, SlotResult, Tokens},
     sampler::{nucleus::NucleusSampler, Sampler},
 };
@@ -192,9 +192,6 @@ pub struct ReloadRequest {
     pub tokenizer_path: PathBuf,
     /// Adapter selection.
     pub adapter: AdapterOption,
-
-    // the Listener Options for startup
-    pub listen: Option<ListenerOption>,
 }
 
 impl Default for ReloadRequest {

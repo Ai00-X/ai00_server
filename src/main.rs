@@ -55,8 +55,8 @@ pub struct Args {
     config: Option<PathBuf>,
     #[arg(long, short)]
     ip: Option<IpAddr>,
-    #[arg(long, short, default_value_t = 65530)]
-    port: u16,
+    #[arg(long, short)]
+    port: Option<u16>,
 }
 
 #[tokio::main]
