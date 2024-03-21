@@ -24,4 +24,4 @@ domain = "local"
 ip = "0.0.0.0"   # Use IpV4
 # ip = "::"        # To enable IpV6
 port = 65530
-tls = false
+tls = true

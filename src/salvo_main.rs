@@ -6,7 +6,7 @@ use std::{
 use clap::Parser;
 use salvo::{
     affix,
-    cors::{AllowOrigin, Cors},
+    cors::{AllowOrigin, Cors,AllowHeaders},
     http::Method,
     logging::Logger,
     prelude::*,
@@ -92,7 +92,7 @@ pub async fn salvo_main() {
     let cors = Cors::new()
         .allow_origin(AllowOrigin::any())
         .allow_methods(vec![Method::GET, Method::POST, Method::DELETE])
-        .allow_headers("authorization")
+        .allow_headers(AllowHeaders::any())
         .into_handler();
 
     let app = Router::new()
@@ -102,7 +102,6 @@ pub async fn salvo_main() {
             sender,
             model_path: config.model.model_path,
         }))
-        .hoop(cors)
         .push(Router::with_path("/api/adapters").get(api::adapters))
         .push(Router::with_path("/api/models/info").get(api::info))
         .push(Router::with_path("/api/models/load").post(api::load))
@@ -128,6 +127,8 @@ pub async fn salvo_main() {
     // .fallback_service(ServeDir::new(serve_path))
     // .layer(CorsLayer::permissive());
 
+
+
     let cmd = Args::command();
     let version = cmd.get_version().unwrap_or("0.0.1");
     let bin_name = cmd.get_bin_name().unwrap_or("ai00_server");
@@ -141,7 +142,8 @@ pub async fn salvo_main() {
             // this static serve should be after `swagger`
             Router::with_path("<**path>").get(StaticDir::new(serve_path).defaults(["index.html"])),
         );
-
+        let service = Service::new(app)
+        .hoop(cors);
     let ip_addr = args.ip.unwrap_or(listen.ip);
     let (ipv4_addr, ipv6_addr) = match ip_addr {
         IpAddr::V4(addr) => (addr, None),
@@ -168,11 +170,11 @@ pub async fn salvo_main() {
             let acceptor = acme_listener.join(TcpListener::new(addr_v6)).bind().await;
             log::info!("server started at {addr} with acme and tls.");
             log::info!("server started at {addr_v6} with acme and tls.");
-            salvo::server::Server::new(acceptor).serve(app).await;
+            salvo::server::Server::new(acceptor).serve(service).await;
         } else {
             let acceptor = acme_listener.bind().await;
             log::info!("server started at {addr} with acme and tls.");
-            salvo::server::Server::new(acceptor).serve(app).await;
+            salvo::server::Server::new(acceptor).serve(service).await;
         };
     } else if tls {
         let config = RustlsConfig::new(
@@ -200,14 +202,14 @@ pub async fn salvo_main() {
                 .await;
             log::info!("server started at {addr} with tls");
             log::info!("server started at {addr_v6} with tls");
-            salvo::server::Server::new(acceptor).serve(app).await;
+            salvo::server::Server::new(acceptor).serve(service).await;
         } else {
             let acceptor = QuinnListener::new(config.clone(), addr)
                 .join(listener)
                 .bind()
                 .await;
             log::info!("server started at {addr} with tls");
-            salvo::server::Server::new(acceptor).serve(app).await;
+            salvo::server::Server::new(acceptor).serve(service).await;
         };
     } else if let Some(ipv6_addr) = ipv6_addr {
         let addr_v6 = SocketAddr::new(IpAddr::V6(ipv6_addr), port);
@@ -226,11 +228,11 @@ pub async fn salvo_main() {
         #[cfg(target_os = "windows")]
         {
             let acceptor = TcpListener::new(addr).join(ipv6_listener).bind().await;
-            salvo::server::Server::new(acceptor).serve(app).await;
+            salvo::server::Server::new(acceptor).serve(service).await;
         }
     } else {
         log::info!("server started at {addr} without tls");
         let acceptor = TcpListener::new(addr).bind().await;
-        salvo::server::Server::new(acceptor).serve(app).await;
+        salvo::server::Server::new(acceptor).serve(service).await;
     };
 }
