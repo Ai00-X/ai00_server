@@ -154,7 +154,7 @@ pub async fn salvo_main() {
     let addr = SocketAddr::new(IpAddr::V4(ipv4_addr), port);
 
     if acme {
-        let acme_listener = TcpListener::new(addr)
+        let listener = TcpListener::new(addr)
             .acme()
             .cache_path("assets/certs")
             .add_domain(listen.domain)
@@ -164,12 +164,12 @@ pub async fn salvo_main() {
                 panic!("both IpV4 and IpV6 addresses are unspecified");
             }
             let addr_v6 = SocketAddr::new(IpAddr::V6(ipv6_addr), port);
-            let acceptor = acme_listener.join(TcpListener::new(addr_v6)).bind().await;
-            log::info!("server started at {addr} with acme and tls.");
-            log::info!("server started at {addr_v6} with acme and tls.");
+            let acceptor = listener.join(TcpListener::new(addr_v6)).bind().await;
+            log::info!("server started at {addr} with acme and tls");
+            log::info!("server started at {addr_v6} with acme and tls");
             salvo::server::Server::new(acceptor).serve(service).await;
         } else {
-            let acceptor = acme_listener.bind().await;
+            let acceptor = listener.bind().await;
             log::info!("server started at {addr} with acme and tls.");
             salvo::server::Server::new(acceptor).serve(service).await;
         };
@@ -217,10 +217,10 @@ pub async fn salvo_main() {
         #[cfg(not(target_os = "windows"))]
         if ipv6_addr.is_unspecified() {
             let acceptor = ipv6_listener.bind().await;
-            salvo::server::Server::new(acceptor).serve(app).await;
+            salvo::server::Server::new(acceptor).serve(service).await;
         } else {
             let acceptor = TcpListener::new(addr).join(ipv6_listener).bind().await;
-            salvo::server::Server::new(acceptor).serve(app).await;
+            salvo::server::Server::new(acceptor).serve(service).await;
         };
         #[cfg(target_os = "windows")]
         {
