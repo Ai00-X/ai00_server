@@ -16,11 +16,10 @@ use salvo::{
 
 use crate::{
     api, load_config, load_plugin, load_web,
-    middleware::{model_route, ReloadRequest, ThreadRequest, ThreadState},
+    middleware::{model_route, ThreadRequest, ThreadState},
     Args,
 };
 
-#[allow(clippy::collapsible_else_if)]
 pub async fn salvo_main() {
     use clap::CommandFactory;
     use salvo::conn::rustls::{Keycert, RustlsConfig};
@@ -34,6 +33,7 @@ pub async fn salvo_main() {
 
     let args = Args::parse();
     let (sender, receiver) = flume::unbounded::<ThreadRequest>();
+    tokio::task::spawn_blocking(move || model_route(receiver));
 
     let (listen, config) = {
         let path = args
@@ -46,9 +46,9 @@ pub async fn salvo_main() {
         (listen, config)
     };
 
-    tokio::task::spawn_blocking(move || model_route(receiver));
+    let request = Box::new(config.clone().try_into().unwrap());
     let _ = sender.send(ThreadRequest::Reload {
-        request: Box::new(ReloadRequest::from(config.clone())),
+        request,
         sender: None,
     });
 

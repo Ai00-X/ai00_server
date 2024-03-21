@@ -165,7 +165,8 @@ pub struct GenerateRequest {
     pub embed_layer: usize,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Derivative, Clone, Serialize, Deserialize)]
+#[derivative(Default)]
 #[serde(default)]
 pub struct ReloadRequest {
     /// Path to the model.
@@ -177,16 +178,19 @@ pub struct ReloadRequest {
     /// Quantization type (Int8 or NF4).
     pub quant_type: Quant,
     /// Whether to use alternative GEMM kernel to speed-up long prompts.
+    #[derivative(Default(value = "true"))]
     pub turbo: bool,
     /// Maximum tokens to be processed in parallel at once.
+    #[derivative(Default(value = "128"))]
     pub token_chunk_size: usize,
-    /// The chunk size for each split of the head matrix.
-    pub head_chunk_size: usize,
     /// The chunk size of layers in model state.
+    #[derivative(Default(value = "4"))]
     pub state_chunk_size: usize,
+    #[derivative(Default(value = "8"))]
     /// Maximum number of batches that are active at once.
     pub max_runtime_batch: usize,
     /// Number of states that are cached on GPU.
+    #[derivative(Default(value = "16"))]
     pub max_batch: usize,
     /// Device to put the embed tensor.
     pub embed_device: EmbedDevice,
@@ -194,12 +198,6 @@ pub struct ReloadRequest {
     pub tokenizer_path: PathBuf,
     /// Adapter selection.
     pub adapter: AdapterOption,
-}
-
-impl Default for ReloadRequest {
-    fn default() -> Self {
-        crate::config::Config::default().into()
-    }
 }
 
 #[derive(Debug, Default, Clone, Serialize, Deserialize, ToSchema, ToResponse)]

@@ -26,6 +26,6 @@ ip = "0.0.0.0"   # Use IpV4
 port = 65530
 tls = false
 
-[[lora]]
-alpha = 192
-path = "asssets/models/rwkv-x060-3b.lora.st"
+# [[lora]]
+# alpha = 192
+# path = "assets/models/rwkv-x060-3b.lora.st"

@@ -80,8 +80,9 @@ features = [
 version = "0.7.1"
 
 [features]
-axum-api = []
 default = ["salvo-api"]
+
+axum-api = []
 salvo-api = []
 
 [profile.release]

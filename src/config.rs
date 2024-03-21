@@ -19,8 +19,10 @@ pub struct Config {
     pub listen: ListenerOption,
 }
 
-impl From<Config> for ReloadRequest {
-    fn from(value: Config) -> Self {
+impl TryFrom<Config> for ReloadRequest {
+    type Error = anyhow::Error;
+
+    fn try_from(value: Config) -> Result<Self, Self::Error> {
         let Config {
             model:
                 Model {
@@ -30,7 +32,6 @@ impl From<Config> for ReloadRequest {
                     quant_type,
                     turbo,
                     token_chunk_size,
-                    head_chunk_size,
                     state_chunk_size,
                     max_runtime_batch,
                     max_batch,
@@ -45,25 +46,24 @@ impl From<Config> for ReloadRequest {
         } = value;
 
         for lora in lora.iter_mut() {
-            lora.path = build_path(&model_path, &lora.path).expect("error building path");
+            lora.path = build_path(&model_path, &lora.path)?;
         }
-        let model_path = build_path(&model_path, model_name).expect("error building path");
+        let model_path = build_path(&model_path, model_name)?;
 
-        Self {
+        Ok(Self {
             model_path,
             lora,
             quant,
             quant_type,
             turbo,
             token_chunk_size,
-            head_chunk_size,
             state_chunk_size,
             max_runtime_batch,
             max_batch,
             embed_device,
             tokenizer_path,
             adapter,
-        }
+        })
     }
 }
 
@@ -71,11 +71,11 @@ impl From<Config> for ReloadRequest {
 #[derivative(Default)]
 #[serde(default)]
 pub struct Model {
-    /// Name of the model.
-    pub model_name: PathBuf,
     /// Path to the folder containing all models.
     #[derivative(Default(value = "String::from(\"assets/models\").into()"))]
     pub model_path: PathBuf,
+    /// Name of the model.
+    pub model_name: PathBuf,
     /// Specify layers that needs to be quantized.
     pub quant: usize,
     /// Quantization type (Int8 or NF4).
@@ -85,11 +85,8 @@ pub struct Model {
     #[derivative(Default(value = "true"))]
     pub turbo: bool,
     /// Maximum tokens to be processed in parallel at once.
-    #[derivative(Default(value = "32"))]
+    #[derivative(Default(value = "128"))]
     pub token_chunk_size: usize,
-    /// The chunk size for each split of the head matrix.
-    #[derivative(Default(value = "8192"))]
-    pub head_chunk_size: usize,
     /// The chunk size of layers in model state.
     #[derivative(Default(value = "4"))]
     pub state_chunk_size: usize,

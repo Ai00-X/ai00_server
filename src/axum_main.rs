@@ -25,18 +25,18 @@ pub async fn axum_main() {
 
     let args = Args::parse();
     let (sender, receiver) = flume::unbounded::<ThreadRequest>();
+    tokio::task::spawn_blocking(move || model_route(receiver));
 
-    let (request, config) = {
+    let config = {
         let path = args
             .config
             .clone()
             .unwrap_or("assets/configs/Config.toml".into());
         log::info!("reading config {}...", path.to_string_lossy());
-        let conf = load_config(path).expect("load config failed");
-        (Box::new(conf.clone().into()), conf)
+        load_config(path).expect("load config failed")
     };
 
-    tokio::task::spawn_blocking(move || model_route(receiver));
+    let request = Box::new(config.clone().try_into().unwrap());
     let _ = sender.send(ThreadRequest::Reload {
         request,
         sender: None,
