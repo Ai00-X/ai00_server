@@ -3,7 +3,7 @@ use serde::Serialize;
 use web_rwkv::model::ModelInfo;
 
 use super::{request_info, request_info_stream, try_request_info};
-use crate::{build_path_safe, middleware::ReloadRequest};
+use crate::{build_path, middleware::ReloadRequest};
 
 pub use private::{info, load, state, unload};
 
@@ -60,7 +60,7 @@ mod private {
         let (result_sender, result_receiver) = flume::unbounded();
 
         // make sure that we are not visiting un-permitted path.
-        request.model_path = match build_path_safe(model_path, request.model_path) {
+        request.model_path = match build_path(model_path, request.model_path) {
             Ok(path) => path,
             Err(_) => return StatusCode::NOT_FOUND,
         };
@@ -124,16 +124,22 @@ mod private {
     pub async fn load(depot: &mut Depot, req: &mut Request) -> StatusCode {
         let ThreadState { sender, model_path } = depot.obtain::<ThreadState>().unwrap();
         let (result_sender, result_receiver) = flume::unbounded();
-        let mut reload: ReloadRequest = req.parse_body().await.unwrap();
+        let mut request: ReloadRequest = req.parse_body().await.unwrap();
 
         // make sure that we are not visiting un-permitted path.
-        reload.model_path = match build_path_safe(model_path, reload.model_path) {
+        request.model_path = match build_path(model_path, &request.model_path) {
             Ok(path) => path,
             Err(_) => return StatusCode::NOT_FOUND,
         };
+        for lora in request.lora.iter_mut() {
+            lora.path = match build_path(model_path, &lora.path) {
+                Ok(path) => path,
+                Err(_) => return StatusCode::NOT_FOUND,
+            }
+        }
 
         let _ = sender.send(ThreadRequest::Reload {
-            request: Box::new(reload),
+            request: Box::new(request),
             sender: Some(result_sender),
         });
         match result_receiver.recv_async().await.unwrap() {

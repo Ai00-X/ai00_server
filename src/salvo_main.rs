@@ -6,7 +6,7 @@ use std::{
 use clap::Parser;
 use salvo::{
     affix,
-    cors::{AllowOrigin, Cors,AllowHeaders},
+    cors::{AllowHeaders, AllowOrigin, Cors},
     http::Method,
     logging::Logger,
     prelude::*,
@@ -35,7 +35,7 @@ pub async fn salvo_main() {
     let args = Args::parse();
     let (sender, receiver) = flume::unbounded::<ThreadRequest>();
 
-    let (listen, request, config) = {
+    let (listen, config) = {
         let path = args
             .config
             .clone()
@@ -43,12 +43,12 @@ pub async fn salvo_main() {
         log::info!("reading config {}...", path.to_string_lossy());
         let config = load_config(path).expect("load config failed");
         let listen = config.listen.clone();
-        (listen, ReloadRequest::from(config.clone()), config)
+        (listen, config)
     };
 
     tokio::task::spawn_blocking(move || model_route(receiver));
     let _ = sender.send(ThreadRequest::Reload {
-        request: Box::new(request),
+        request: Box::new(ReloadRequest::from(config.clone())),
         sender: None,
     });
 
@@ -127,8 +127,6 @@ pub async fn salvo_main() {
     // .fallback_service(ServeDir::new(serve_path))
     // .layer(CorsLayer::permissive());
 
-
-
     let cmd = Args::command();
     let version = cmd.get_version().unwrap_or("0.0.1");
     let bin_name = cmd.get_bin_name().unwrap_or("ai00_server");
@@ -142,8 +140,7 @@ pub async fn salvo_main() {
             // this static serve should be after `swagger`
             Router::with_path("<**path>").get(StaticDir::new(serve_path).defaults(["index.html"])),
         );
-        let service = Service::new(app)
-        .hoop(cors);
+    let service = Service::new(app).hoop(cors);
     let ip_addr = args.ip.unwrap_or(listen.ip);
     let (ipv4_addr, ipv6_addr) = match ip_addr {
         IpAddr::V4(addr) => (addr, None),

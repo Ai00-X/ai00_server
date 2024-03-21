@@ -271,7 +271,7 @@ where
     let lora: Vec<_> = lora
         .into_iter()
         .map(|lora| -> Result<_> {
-            let file = File::open(&model_path)?;
+            let file = File::open(lora.path)?;
             let data = unsafe { Mmap::map(&file) }?;
             let blend = LoraBlend::full(lora.alpha);
             Ok((data, blend))

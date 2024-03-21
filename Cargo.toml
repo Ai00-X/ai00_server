@@ -48,7 +48,7 @@ zip-extract = "0.1"
 
 [dependencies.web-rwkv]
 # path = "../web-rwkv"
-version = "0.6.31"
+version = "0.6.32"
 
 [dependencies.salvo]
 default-features = true

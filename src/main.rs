@@ -23,7 +23,7 @@ mod axum_main;
 #[cfg(feature = "salvo-api")]
 mod salvo_main;
 
-pub fn build_path_safe(path: impl AsRef<Path>, name: impl AsRef<Path>) -> Result<PathBuf> {
+pub fn build_path(path: impl AsRef<Path>, name: impl AsRef<Path>) -> Result<PathBuf> {
     let path = path.as_ref();
     let name = name.as_ref();
     let permitted = path.canonicalize()?;

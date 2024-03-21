@@ -7,7 +7,7 @@ use derivative::Derivative;
 use serde::{Deserialize, Serialize};
 use web_rwkv::model::{EmbedDevice, Quant};
 
-use crate::{build_path_safe, middleware::ReloadRequest};
+use crate::{build_path, middleware::ReloadRequest};
 
 #[derive(Debug, Default, Clone, Serialize, Deserialize)]
 #[serde(default)]
@@ -36,15 +36,21 @@ impl From<Config> for ReloadRequest {
                     max_batch,
                     embed_device,
                 },
-            lora,
+            mut lora,
             tokenizer: Tokenizer {
                 path: tokenizer_path,
             },
             adapter,
             ..
         } = value;
+
+        for lora in lora.iter_mut() {
+            lora.path = build_path(&model_path, &lora.path).expect("error building path");
+        }
+        let model_path = build_path(&model_path, model_name).expect("error building path");
+
         Self {
-            model_path: build_path_safe(model_path, model_name).expect("error building path"),
+            model_path,
             lora,
             quant,
             quant_type,

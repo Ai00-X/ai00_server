@@ -2943,6 +2943,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "serde_bytes"
+version = "0.11.14"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "8b8497c313fd43ab992087548117643f6fcd935cbf36f176ffda0aacf9591734"
+dependencies = [
+ "serde",
+]
+
+[[package]]
 name = "serde_derive"
 version = "1.0.197"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -3774,9 +3783,9 @@ checksum = "af190c94f2773fdb3729c55b007a722abb5384da03bc0986df4c289bf5567e96"
 
 [[package]]
 name = "web-rwkv"
-version = "0.6.31"
+version = "0.6.32"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "b04efc5a74fa6d409b830f26b9e579f19ee67aac2695b73b0139fab1722cabb6"
+checksum = "7af17ce7526491bb7b5a7e4a850ece5f5cbf768c9184cd09da905e5a469290e0"
 dependencies = [
  "ahash 0.8.11",
  "anyhow",
@@ -3794,6 +3803,7 @@ dependencies = [
  "regex",
  "safetensors",
  "serde",
+ "serde_bytes",
  "serde_json",
  "thiserror",
  "trait-variant",

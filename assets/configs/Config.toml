@@ -24,4 +24,8 @@ domain = "local"
 ip = "0.0.0.0"   # Use IpV4
 # ip = "::"        # To enable IpV6
 port = 65530
-tls = true
+tls = false
+
+[[lora]]
+alpha = 192
+path = "asssets/models/rwkv-x060-3b.lora.st"
