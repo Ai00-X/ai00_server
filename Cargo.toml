@@ -28,6 +28,7 @@ flume = "0.11.0"
 futures-util = "0.3"
 half = "2"
 itertools = "0.12"
+jsonwebtoken = "9.1"
 log = "0.4"
 memmap2 = "0.9"
 qp-trie = "0.8"
@@ -45,11 +46,10 @@ tower = { version = "0.4.13", features = ["full"] }
 tower-http = { version = "0.5.0", features = ["full"] }
 web-rwkv-converter = "0.1.1"
 zip-extract = "0.1"
-jsonwebtoken = "9.1"
 
 [dependencies.web-rwkv]
 # path = "../web-rwkv"
-version = "0.6.32"
+version = "0.6.33"
 
 [dependencies.salvo]
 default-features = true
@@ -57,12 +57,12 @@ features = [
     "acme",
     "affix",
     "cors",
+    "jwt-auth",
     "logging",
     "oapi",
     "quinn",
     "serve-static",
     "sse",
-    "jwt-auth",
 ]
 version = "0.66"
 
