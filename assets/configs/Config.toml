@@ -22,18 +22,16 @@ Auto = {}
 acme = false
 domain = "local"
 ip = "0.0.0.0"   # Use IpV4
-# ip = "::"        # To enable IpV6
+# ip = "::"        # Use IpV6
+force_pass = true
 port = 65530
+slot = "permisionkey" # slot for jwt
 tls = false
-slot = "permisionkey"   # slot for jwt
-force_pass = true       
 
-[[listen.app_keys]]     # allow mutiple app keys, which should be app_id with secret_key pair
+[[listen.app_keys]] # allow mutiple app keys, which should be app_id with secret_key pair
 app_id = "JUSTAISERVER"
 secret_key = "JUSTSECRET_KEY"
-
 
 # [[lora]]
 # alpha = 192
 # path = "assets/models/rwkv-x060-3b.lora.st"
-
