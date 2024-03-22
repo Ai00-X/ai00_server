@@ -55,15 +55,15 @@ QQ Group for communication: 30920262
 ### 👻Other
 
 *   Based on the [web-rwkv](https://github.com/cryscan/web-rwkv) project
-*   [Model download](https://huggingface.co/cgisky/RWKV-safetensors-fp16)
+*   Model download: [V5](https://huggingface.co/cgisky/AI00_RWKV_V5) or [V6](https://huggingface.co/cgisky/ai00_rwkv_x060)
 
 ## Installation, Compilation, and Usage
 
-### 📦Direct Download and Installation
+### 📦Download Pre-built Executables
 
 1.  Directly download the latest version from [Release](https://github.com/cgisky1980/ai00_rwkv_server/releases)
     
-2.  After [downloading the model](https://huggingface.co/cgisky/RWKV-safetensors-fp16), place the model in the `assets/models/` path, for example, `assets/models/RWKV-4-World-0.4B-v1-20230529-ctx4096.st`
+2.  After [downloading the model](#👻other), place the model in the `assets/models/` path, for example, `assets/models/RWKV-x060-World-3B-v2-20240228-ctx4096.st`
 
 3.  Optionally modify [`assets/Config.toml`](./assets/Config.toml) for model configurations like model path, quantization layers, etc.
     
@@ -76,7 +76,7 @@ QQ Group for communication: 30920262
 5.  Open the browser and visit the WebUI [`http://localhost:65530`](http://localhost:65530)
     
 
-### 📜Compile from Source Code
+### 📜(Optional) Build from Source
 
 1.  [Install Rust](https://www.rust-lang.org/)
     
@@ -87,7 +87,7 @@ QQ Group for communication: 30920262
     $ cd ai00_rwkv_server
     ```
     
-3.  After [downloading the model](https://huggingface.co/cgisky/RWKV-safetensors-fp16), place the model in the `assets/models/` path, for example, `assets/models/RWKV-4-World-0.4B-v1-20230529-ctx4096.st`
+3.  After [downloading the model](#👻other), place the model in the `assets/models/` path, for example, `assets/models/RWKV-x060-World-3B-v2-20240228-ctx4096.st`
     
 4.  Compile
     
