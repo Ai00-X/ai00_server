@@ -75,12 +75,22 @@
         "doc",
         "test"
       ]
+    },
+    {
+      "login": "longzou",
+      "name": "longzou",
+      "avatar_url": "https://avatars.githubusercontent.com/u/59821454?v=4",
+      "profile": "https://github.com/longzou",
+      "contributions": [
+        "code",
+        "security"
+      ]
     }
   ],
   "contributorsPerLine": 7,
   "skipCi": true,
   "repoType": "github",
   "repoHost": "https://github.com",
-  "projectName": "ai00_rwkv_server",
-  "projectOwner": "cgisky1980"
+  "projectName": "ai00_server",
+  "projectOwner": "Ai00-X"
 }
