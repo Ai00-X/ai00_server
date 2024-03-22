@@ -111,6 +111,27 @@ pub async fn salvo_main() {
             ])
             .force_passed(listen.force_pass.unwrap_or_default());
 
+    let api_router = Router::with_hoop(auth_handler)
+        .push(Router::with_path("/adapters").get(api::adapters))
+        .push(Router::with_path("/models/info").get(api::info))
+        .push(Router::with_path("/models/load").post(api::load))
+        .push(Router::with_path("/models/unload").get(api::unload))
+        .push(Router::with_path("/models/state").get(api::state))
+        .push(Router::with_path("/models/list").get(api::models))
+        .push(Router::with_path("/files/unzip").post(api::unzip))
+        .push(Router::with_path("/files/dir").post(api::dir))
+        .push(Router::with_path("/files/ls").post(api::dir))
+        .push(Router::with_path("/files/config/load").post(api::load_config))
+        .push(Router::with_path("/files/config/save").post(api::save_config))
+        .push(Router::with_path("/oai/models").get(api::oai::models))
+        .push(Router::with_path("/oai/v1/models").get(api::oai::models))
+        .push(Router::with_path("/oai/completions").post(api::oai::completions))
+        .push(Router::with_path("/oai/v1/completions").post(api::oai::completions))
+        .push(Router::with_path("/oai/chat/completions").post(api::oai::chat_completions))
+        .push(Router::with_path("/oai/v1/chat/completions").post(api::oai::chat_completions))
+        .push(Router::with_path("/oai/embeddings").post(api::oai::embeddings))
+        .push(Router::with_path("/oai/v1/embeddings").post(api::oai::embeddings));
+
     let app = Router::new()
         //.hoop(CorsLayer::permissive())
         .hoop(Logger::new())
@@ -124,40 +145,8 @@ pub async fn salvo_main() {
         .push(
             Router::with_path("/api")
                 .push(Router::with_path("/auth/exchange").post(api::auth::exchange))
-                .push(
-                    Router::with_hoop(auth_handler)
-                        .push(Router::with_path("/adapters").get(api::adapters))
-                        .push(Router::with_path("/models/info").get(api::info))
-                        .push(Router::with_path("/models/load").post(api::load))
-                        .push(Router::with_path("/models/unload").get(api::unload))
-                        .push(Router::with_path("/models/state").get(api::state))
-                        .push(Router::with_path("/models/list").get(api::models))
-                        .push(Router::with_path("/files/unzip").post(api::unzip))
-                        .push(Router::with_path("/files/dir").post(api::dir))
-                        .push(Router::with_path("/files/ls").post(api::dir))
-                        .push(Router::with_path("/files/config/load").post(api::load_config))
-                        .push(Router::with_path("/files/config/save").post(api::save_config))
-                        .push(Router::with_path("/oai/models").get(api::oai::models))
-                        .push(Router::with_path("/oai/v1/models").get(api::oai::models))
-                        .push(Router::with_path("/oai/completions").post(api::oai::completions))
-                        .push(Router::with_path("/oai/v1/completions").post(api::oai::completions))
-                        .push(
-                            Router::with_path("/oai/chat/completions")
-                                .post(api::oai::chat_completions),
-                        )
-                        .push(
-                            Router::with_path("/oai/v1/chat/completions")
-                                .post(api::oai::chat_completions),
-                        )
-                        .push(Router::with_path("/oai/embeddings").post(api::oai::embeddings))
-                        .push(Router::with_path("/oai/v1/embeddings").post(api::oai::embeddings)),
-                ),
+                .push(api_router),
         );
-    // .push(
-    //     Router::with_path("<**path>").get(StaticDir::new(serve_path).defaults(["index.html"])),
-    // )
-    // .fallback_service(ServeDir::new(serve_path))
-    // .layer(CorsLayer::permissive());
 
     let cmd = Args::command();
     let version = cmd.get_version().unwrap_or("0.0.1");
