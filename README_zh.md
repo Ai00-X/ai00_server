@@ -45,7 +45,7 @@
 你可以从 HuggingFace 下载官方 RWKV World 系列模型，并使用提供的`convert_safetensors.py`进行转换。
 如果你不想安装 Python，也可以前往[`web-rwkv`](https://github.com/cryscan/web-rwkv/releases)下载无依赖的转换器。
 
-你可以在这里下载已经转换好的V4 模型： [模型下载](https://huggingface.co/cgisky/RWKV-safetensors-fp16)
+你可以在这里下载已经转换好的V4 模型： [V5](https://huggingface.co/cgisky/AI00_RWKV_V5) 或者 [V6](https://huggingface.co/cgisky/ai00_rwkv_x060)
 
 
 ## 安装、编译和使用
@@ -54,7 +54,7 @@
 
 1. 直接从 [Release](https://github.com/cgisky1980/ai00_rwkv_server/releases) 下载最新版本
 
-2. [下载模型](https://huggingface.co/cgisky/RWKV-safetensors-fp16)后把模型放在`assets/models/`路径，例如`assets/models/RWKV-4-World-0.4B-v1-20230529-ctx4096.st`
+2. [下载模型](https://huggingface.co/cgisky/RWKV-safetensors-fp16)后把模型放在`assets/models/`路径，例如`assets/models/RWKV-x060-World-3B-v2-20240228-ctx4096.st`
 
 3. 你可以修改 [`assets/configs/Config.toml`](./assets/configs/Config.toml) 里面的模型配置，包括模型路径、量化层数等
 
@@ -79,7 +79,7 @@
     
 
 3. [下载模型](https://huggingface.co/cgisky/RWKV-safetensors-fp16)后把模型放在
-`assets/models/`路径下，例如`assets/models/RWKV-4-World-0.4B-v1-20230529-ctx4096.st`
+`assets/models/`路径下，例如`assets/models/RWKV-x060-World-3B-v2-20240228-ctx4096.st`
 
 4. 编译
 
