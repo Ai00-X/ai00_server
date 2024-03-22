@@ -24,8 +24,17 @@ mod private {
     use crate::middleware::{AdapterList, ThreadRequest, ThreadState};
 
     /// `/api/adapters`.
-    #[handler]
+    #[endpoint]
     pub async fn adapters(depot: &mut Depot) -> Json<Vec<String>> {
+        match depot.jwt_auth_state() {
+            JwtAuthState::Authorized => {}
+            JwtAuthState::Unauthorized => {
+                return Json(vec!["Unauthorized".to_string()]);
+            }
+            JwtAuthState::Forbidden => {
+                return Json(vec!["Forbidden".to_string()]);
+            }
+        };
         let (list_sender, list_receiver) = flume::unbounded();
         let ThreadState { sender, .. } = depot.obtain::<ThreadState>().unwrap();
         let _ = sender.send(ThreadRequest::Adapter(list_sender));

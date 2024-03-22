@@ -127,6 +127,13 @@ pub enum AdapterOption {
 
 #[derive(Debug, Derivative, Clone, Serialize, Deserialize)]
 #[derivative(Default)]
+pub struct AppKey {
+    pub app_id: String,
+    pub secret_key: String,
+}
+
+#[derive(Debug, Derivative, Clone, Serialize, Deserialize)]
+#[derivative(Default)]
 pub struct ListenerOption {
     /// Ip to listen to.
     #[derivative(Default(value = "IpAddr::V4(Ipv4Addr::new(0, 0, 0, 0))"))]
@@ -138,7 +145,20 @@ pub struct ListenerOption {
     #[derivative(Default(value = "String::from(\"local\")"))]
     pub domain: String,
     /// Using acme to issue the certs if the domain is not local.
+    #[derivative(Default(value = "false"))]
     pub acme: bool,
     /// Force to enable https. When acme is true, tls must be true.
+    #[derivative(Default(value = "false"))]
     pub tls: bool,
+    /// For JWT Token encoding and decoding.    
+    #[derivative(Default(value = "String::from(\"ai00s\")"))]
+    pub slot: String,
+    /// Whether the identifier is forced to pass even if JWT Token verification fails
+    #[derivative(Default(value = "Some(false)"))]
+    pub force_pass: Option<bool>,
+    /// Token expiration time by second
+    #[derivative(Default(value = "Some(86400u32)"))]
+    pub expire_sec: Option<u32>,
+    /// AppId with SecretKey pairs
+    pub app_keys: Vec<AppKey>,
 }
