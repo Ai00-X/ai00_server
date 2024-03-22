@@ -234,7 +234,7 @@ pub async fn salvo_main() {
         let ipv6_listener = TcpListener::new(addr_v6);
         log::info!("server started at {addr} without tls");
         log::info!("server started at {addr_v6} without tls");
-        // On linux, when the IPv6 addr is unspecified, and IPv4 addr is unspecified, that will cause exception "Address in used"
+        // on Linux, when the IpV6 addr is unspecified while the IpV4 addr being unspecified, it will cause exception "address in used"
         #[cfg(not(target_os = "windows"))]
         if ipv6_addr.is_unspecified() {
             let acceptor = ipv6_listener.bind().await;
