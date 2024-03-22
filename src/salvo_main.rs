@@ -8,11 +8,13 @@ use salvo::{
     affix,
     cors::{AllowHeaders, AllowOrigin, Cors},
     http::Method,
+    jwt_auth::{ConstDecoder, HeaderFinder, QueryFinder},
     logging::Logger,
     prelude::*,
     serve_static::StaticDir,
     Router,
 };
+use serde::{Deserialize, Serialize};
 
 use crate::{
     api, load_config, load_plugin, load_web,
@@ -20,10 +22,15 @@ use crate::{
     Args,
 };
 
+#[derive(Debug, Serialize, Deserialize)]
+pub struct JwtClaims {
+    pub sid: String,
+    pub exp: i64,
+}
+
 pub async fn salvo_main() {
     use clap::CommandFactory;
     use salvo::conn::rustls::{Keycert, RustlsConfig};
-
     simple_logger::SimpleLogger::new()
         .with_level(log::LevelFilter::Warn)
         .with_module_level("ai00_server", log::LevelFilter::Info)
@@ -95,32 +102,57 @@ pub async fn salvo_main() {
         .allow_headers(AllowHeaders::any())
         .into_handler();
 
+    let auth_handler: JwtAuth<JwtClaims, _> =
+        JwtAuth::new(ConstDecoder::from_secret(config.listen.slot.as_bytes()))
+            .finders(vec![
+                Box::new(HeaderFinder::new()),
+                Box::new(QueryFinder::new("_token")),
+                // Box::new(CookieFinder::new("jwt_token")),
+            ])
+            .force_passed(listen.force_pass.unwrap_or_default());
+
     let app = Router::new()
         //.hoop(CorsLayer::permissive())
         .hoop(Logger::new())
-        .hoop(affix::inject(ThreadState {
-            sender,
-            model_path: config.model.model_path,
-        }))
-        .push(Router::with_path("/api/adapters").get(api::adapters))
-        .push(Router::with_path("/api/models/info").get(api::info))
-        .push(Router::with_path("/api/models/load").post(api::load))
-        .push(Router::with_path("/api/models/unload").get(api::unload))
-        .push(Router::with_path("/api/models/state").get(api::state))
-        .push(Router::with_path("/api/models/list").get(api::models))
-        .push(Router::with_path("/api/files/unzip").post(api::unzip))
-        .push(Router::with_path("/api/files/dir").post(api::dir))
-        .push(Router::with_path("/api/files/ls").post(api::dir))
-        .push(Router::with_path("/api/files/config/load").post(api::load_config))
-        .push(Router::with_path("/api/files/config/save").post(api::save_config))
-        .push(Router::with_path("/api/oai/models").get(api::oai::models))
-        .push(Router::with_path("/api/oai/v1/models").get(api::oai::models))
-        .push(Router::with_path("/api/oai/completions").post(api::oai::completions))
-        .push(Router::with_path("/api/oai/v1/completions").post(api::oai::completions))
-        .push(Router::with_path("/api/oai/chat/completions").post(api::oai::chat_completions))
-        .push(Router::with_path("/api/oai/v1/chat/completions").post(api::oai::chat_completions))
-        .push(Router::with_path("/api/oai/embeddings").post(api::oai::embeddings))
-        .push(Router::with_path("/api/oai/v1/embeddings").post(api::oai::embeddings));
+        .hoop(
+            affix::inject(ThreadState {
+                sender,
+                model_path: config.model.model_path,
+            })
+            .insert("listen", listen.clone()),
+        )
+        .push(
+            Router::with_path("/api")
+                .push(Router::with_path("/auth/exchange").post(api::auth::exchange))
+                .push(
+                    Router::with_hoop(auth_handler)
+                        .push(Router::with_path("/adapters").get(api::adapters))
+                        .push(Router::with_path("/models/info").get(api::info))
+                        .push(Router::with_path("/models/load").post(api::load))
+                        .push(Router::with_path("/models/unload").get(api::unload))
+                        .push(Router::with_path("/models/state").get(api::state))
+                        .push(Router::with_path("/models/list").get(api::models))
+                        .push(Router::with_path("/files/unzip").post(api::unzip))
+                        .push(Router::with_path("/files/dir").post(api::dir))
+                        .push(Router::with_path("/files/ls").post(api::dir))
+                        .push(Router::with_path("/files/config/load").post(api::load_config))
+                        .push(Router::with_path("/files/config/save").post(api::save_config))
+                        .push(Router::with_path("/oai/models").get(api::oai::models))
+                        .push(Router::with_path("/oai/v1/models").get(api::oai::models))
+                        .push(Router::with_path("/oai/completions").post(api::oai::completions))
+                        .push(Router::with_path("/oai/v1/completions").post(api::oai::completions))
+                        .push(
+                            Router::with_path("/oai/chat/completions")
+                                .post(api::oai::chat_completions),
+                        )
+                        .push(
+                            Router::with_path("/oai/v1/chat/completions")
+                                .post(api::oai::chat_completions),
+                        )
+                        .push(Router::with_path("/oai/embeddings").post(api::oai::embeddings))
+                        .push(Router::with_path("/oai/v1/embeddings").post(api::oai::embeddings)),
+                ),
+        );
     // .push(
     //     Router::with_path("<**path>").get(StaticDir::new(serve_path).defaults(["index.html"])),
     // )

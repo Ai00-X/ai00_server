@@ -22,6 +22,8 @@ use flume::Sender;
 // pub use load::{info, load, state, unload};
 
 pub mod adapter;
+#[cfg(feature = "salvo-api")]
+pub mod auth;
 pub mod file;
 pub mod loading;
 pub mod oai;
