@@ -27,7 +27,7 @@ struct AuthResponse {
     message: Option<String>,
 }
 
-/// exchange the appkey and app_secret to authorization token.
+/// Exchange the appkey and app_secret to authorization token.
 #[endpoint(
     responses(
         (status_code = 200, description = "Exchange the token successfully.", body = AuthResponse),
