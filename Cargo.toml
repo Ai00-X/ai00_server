@@ -66,26 +66,20 @@ features = [
 ]
 version = "0.66"
 
-[dependencies.axum]
-default-features = false
-features = [
-    "form",
-    "http1",
-    "http2",
-    "json",
-    "matched-path",
-    "original-uri",
-    "query",
-    "tokio",
-    "tower-log",
-]
-version = "0.7.1"
-
-[features]
-default = ["salvo-api"]
-
-axum-api = []
-salvo-api = []
+# [dependencies.axum]
+# default-features = false
+# features = [
+#     "form",
+#     "http1",
+#     "http2",
+#     "json",
+#     "matched-path",
+#     "original-uri",
+#     "query",
+#     "tokio",
+#     "tower-log",
+# ]
+# version = "0.7.1"
 
 [profile.release]
 lto = false
