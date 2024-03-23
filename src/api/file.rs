@@ -7,16 +7,12 @@ use std::{
 use anyhow::Result;
 use itertools::Itertools;
 use memmap2::Mmap;
-use salvo::{
-    macros::Extractible,
-    oapi::{ToResponse, ToSchema},
-};
+use salvo::{macros::Extractible, prelude::*};
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
 
+use crate::ThreadState;
 use crate::{check_path_permitted, config::Config};
-
-pub use private::{dir, load_config, models, save_config, unzip};
 
 const PERMITTED_PATHS: [&str; 4] = [
     "assets/models",
@@ -89,330 +85,175 @@ pub struct SaveRequest {
     config: Config,
 }
 
-#[cfg(feature = "axum-api")]
-mod private {
-    use anyhow::Result;
-    use axum::{extract::State, http::StatusCode, response::IntoResponse, Json};
+async fn dir_inner(
+    _depot: &mut Depot,
+    Json(request): Json<FileInfoRequest>,
+) -> Result<(StatusCode, Vec<FileInfo>), StatusCode> {
+    match std::fs::read_dir(request.path) {
+        Ok(path) => {
+            let files = path
+                .filter_map(|x| x.ok())
+                .filter(|x| x.path().is_file())
+                .filter_map(|x| {
+                    let path = x.path();
+                    let meta = x.metadata().ok()?;
 
-    use super::*;
-    use crate::ThreadState;
+                    let name = x.file_name().to_string_lossy().into();
+                    let sha = request
+                        .is_sha
+                        .then(|| compute_sha(path, &meta).ok())
+                        .flatten()
+                        .unwrap_or_default();
 
-    /// `/api/files/dir`, `/api/files/ls`.
-    pub async fn dir(
-        _: State<ThreadState>,
-        Json(request): Json<FileInfoRequest>,
-    ) -> impl IntoResponse {
-        if let Err(err) = check_path(&request.path) {
-            log::error!("check path failed: {}", err);
-            return Err(StatusCode::FORBIDDEN);
-        }
-        match std::fs::read_dir(request.path) {
-            Ok(dir) => {
-                let files = dir
-                    .filter_map(|x| x.ok())
-                    .filter(|x| x.path().is_file())
-                    .filter_map(|x| {
-                        let path = x.path();
-                        let meta = x.metadata().ok()?;
-
-                        let name = x.file_name().to_string_lossy().into();
-                        let sha = request
-                            .is_sha
-                            .then(|| compute_sha(path, &meta).ok())
-                            .flatten()
-                            .unwrap_or_default();
-
-                        Some(FileInfo {
-                            name,
-                            size: meta.len(),
-                            sha,
-                        })
+                    Some(FileInfo {
+                        name,
+                        size: meta.len(),
+                        sha,
                     })
-                    .collect_vec();
-                Ok((StatusCode::OK, Json(files)))
-            }
-            Err(err) => {
-                log::error!("failed to read directory: {}", err);
-                Err(StatusCode::NOT_FOUND)
-            }
+                })
+                .collect_vec();
+            Ok((StatusCode::OK, files))
         }
-    }
-
-    /// `/api/models/list`.
-    pub async fn models(
-        State(ThreadState { sender, model_path }): State<ThreadState>,
-    ) -> impl IntoResponse {
-        let request = FileInfoRequest {
-            path: model_path.clone(),
-            is_sha: true,
-        };
-        dir(State(ThreadState { sender, model_path }), Json(request)).await
-    }
-
-    /// `/api/files/unzip`.
-    pub async fn unzip(_: State<ThreadState>, Json(request): Json<UnzipRequest>) -> StatusCode {
-        if let Err(err) = check_path(&request.path) {
-            log::error!("check path failed: {}", err);
-            return StatusCode::FORBIDDEN;
-        }
-        if let Err(err) = check_path_permitted(&request.output, &UNZIP_PATHS) {
-            log::error!("check path failed: {}", err);
-            return StatusCode::FORBIDDEN;
-        }
-
-        let unzip = move || -> Result<()> {
-            if Path::new(&request.output).exists() {
-                std::fs::remove_dir_all(&request.output)?;
-            }
-            std::fs::create_dir_all(&request.output)?;
-
-            let file = File::open(&request.path)?;
-            let map = unsafe { Mmap::map(&file)? };
-            zip_extract::extract(Cursor::new(&map), &request.output, false)?;
-
-            Ok(())
-        };
-
-        match unzip() {
-            Ok(_) => StatusCode::OK,
-            Err(err) => {
-                log::error!("failed to unzip: {}", err);
-                StatusCode::NOT_FOUND
-            }
-        }
-    }
-
-    /// `/api/files/config/load`.
-    pub async fn load_config(
-        _: State<ThreadState>,
-        Json(request): Json<LoadRequest>,
-    ) -> impl IntoResponse {
-        if let Err(err) = check_path(&request.path) {
-            log::error!("check path failed: {}", err);
-            return Err(StatusCode::FORBIDDEN);
-        }
-        match crate::load_config(request.path) {
-            Ok(config) => Ok((StatusCode::OK, Json(config))),
-            Err(err) => {
-                log::error!("failed to load config: {}", err);
-                Err(StatusCode::NOT_FOUND)
-            }
-        }
-    }
-
-    /// `/api/files/config/save`.
-    pub async fn save_config(
-        _: State<ThreadState>,
-        Json(request): Json<SaveRequest>,
-    ) -> StatusCode {
-        if let Err(err) = check_path(&request.path) {
-            log::error!("check path failed: {}", err);
-            return StatusCode::FORBIDDEN;
-        }
-
-        let write = || -> Result<()> {
-            let mut file = File::create(&request.path)?;
-            let buf = toml::to_string(&request.config)?.into_bytes();
-            file.write_all(&buf)?;
-            Ok(())
-        };
-
-        match request.path.extension() {
-            Some(ext) if ext == "toml" => match write() {
-                Ok(_) => StatusCode::OK,
-                Err(err) => {
-                    log::error!("failed to save config: {err}");
-                    StatusCode::INTERNAL_SERVER_ERROR
-                }
-            },
-            _ => {
-                log::error!(
-                    "failed to save config: file path {} is not toml",
-                    request.path.to_string_lossy()
-                );
-                StatusCode::FORBIDDEN
-            }
+        Err(err) => {
+            log::error!("failed to read directory: {}", err);
+            Err(StatusCode::NOT_FOUND)
         }
     }
 }
 
-#[cfg(feature = "salvo-api")]
-mod private {
-    use salvo::prelude::*;
-
-    use super::*;
-    use crate::ThreadState;
-
-    async fn dir_inner(
-        _depot: &mut Depot,
-        Json(request): Json<FileInfoRequest>,
-    ) -> Result<(StatusCode, Vec<FileInfo>), StatusCode> {
-        match std::fs::read_dir(request.path) {
-            Ok(path) => {
-                let files = path
-                    .filter_map(|x| x.ok())
-                    .filter(|x| x.path().is_file())
-                    .filter_map(|x| {
-                        let path = x.path();
-                        let meta = x.metadata().ok()?;
-
-                        let name = x.file_name().to_string_lossy().into();
-                        let sha = request
-                            .is_sha
-                            .then(|| compute_sha(path, &meta).ok())
-                            .flatten()
-                            .unwrap_or_default();
-
-                        Some(FileInfo {
-                            name,
-                            size: meta.len(),
-                            sha,
-                        })
-                    })
-                    .collect_vec();
-                Ok((StatusCode::OK, files))
-            }
-            Err(err) => {
-                log::error!("failed to read directory: {}", err);
-                Err(StatusCode::NOT_FOUND)
-            }
-        }
-    }
-
-    #[handler]
-    pub async fn dir(depot: &mut Depot, req: &mut Request, res: &mut Response) {
-        let request = match req.parse_json::<FileInfoRequest>().await {
-            Ok(t) => t,
-            Err(err) => {
-                res.status_code(StatusCode::INTERNAL_SERVER_ERROR);
-                res.render(Text::Plain(err.to_string()));
-                return;
-            }
-        };
-        if let Err(err) = check_path(&request.path) {
-            log::error!("check path failed: {}", err);
-            res.status_code(StatusCode::FORBIDDEN);
-            res.render("ERROR");
+#[handler]
+pub async fn dir(depot: &mut Depot, req: &mut Request, res: &mut Response) {
+    let request = match req.parse_json::<FileInfoRequest>().await {
+        Ok(t) => t,
+        Err(err) => {
+            res.status_code(StatusCode::INTERNAL_SERVER_ERROR);
+            res.render(Text::Plain(err.to_string()));
             return;
         }
-
-        match dir_inner(depot, Json(request)).await {
-            Ok((status, files)) => {
-                res.status_code(status);
-                res.render(Json(files));
-            }
-            Err(status) => {
-                res.status_code(status);
-                res.render("ERROR");
-            }
-        }
+    };
+    if let Err(err) = check_path(&request.path) {
+        log::error!("check path failed: {}", err);
+        res.status_code(StatusCode::FORBIDDEN);
+        res.render("ERROR");
+        return;
     }
 
-    /// `/api/models/list`.
-    #[handler]
-    pub async fn models(depot: &mut Depot, res: &mut Response) {
-        let ThreadState { model_path, .. } = depot.obtain::<ThreadState>().unwrap();
-        let request = FileInfoRequest {
-            path: model_path.clone(),
-            is_sha: true,
-        };
-        match dir_inner(depot, Json(request)).await {
-            Ok((status, files)) => {
-                res.status_code(status);
-                res.render(Json(files));
-            }
-            Err(status) => {
-                res.status_code(status);
-                res.render("ERROR");
-            }
+    match dir_inner(depot, Json(request)).await {
+        Ok((status, files)) => {
+            res.status_code(status);
+            res.render(Json(files));
+        }
+        Err(status) => {
+            res.status_code(status);
+            res.render("ERROR");
         }
     }
+}
 
-    #[handler]
-    pub async fn unzip(_depot: &mut Depot, request: UnzipRequest) -> StatusCode {
-        if let Err(err) = check_path(&request.path) {
-            log::error!("check path failed: {}", err);
-            return StatusCode::FORBIDDEN;
+/// `/api/models/list`.
+#[handler]
+pub async fn models(depot: &mut Depot, res: &mut Response) {
+    let ThreadState { model_path, .. } = depot.obtain::<ThreadState>().unwrap();
+    let request = FileInfoRequest {
+        path: model_path.clone(),
+        is_sha: true,
+    };
+    match dir_inner(depot, Json(request)).await {
+        Ok((status, files)) => {
+            res.status_code(status);
+            res.render(Json(files));
         }
-        if let Err(err) = check_path_permitted(&request.output, &UNZIP_PATHS) {
-            log::error!("check path failed: {}", err);
-            return StatusCode::FORBIDDEN;
+        Err(status) => {
+            res.status_code(status);
+            res.render("ERROR");
         }
+    }
+}
 
-        let unzip_inner = move || -> Result<()> {
-            if Path::new(&request.output).exists() {
-                std::fs::remove_dir_all(&request.output)?;
-            }
-            std::fs::create_dir_all(&request.output)?;
+#[handler]
+pub async fn unzip(_depot: &mut Depot, request: UnzipRequest) -> StatusCode {
+    if let Err(err) = check_path(&request.path) {
+        log::error!("check path failed: {}", err);
+        return StatusCode::FORBIDDEN;
+    }
+    if let Err(err) = check_path_permitted(&request.output, &UNZIP_PATHS) {
+        log::error!("check path failed: {}", err);
+        return StatusCode::FORBIDDEN;
+    }
 
-            let file = File::open(&request.path)?;
-            let map = unsafe { Mmap::map(&file)? };
-            zip_extract::extract(Cursor::new(&map), &request.output, false)?;
+    let unzip_inner = move || -> Result<()> {
+        if Path::new(&request.output).exists() {
+            std::fs::remove_dir_all(&request.output)?;
+        }
+        std::fs::create_dir_all(&request.output)?;
 
-            Ok(())
-        };
+        let file = File::open(&request.path)?;
+        let map = unsafe { Mmap::map(&file)? };
+        zip_extract::extract(Cursor::new(&map), &request.output, false)?;
 
-        match unzip_inner() {
+        Ok(())
+    };
+
+    match unzip_inner() {
+        Ok(_) => StatusCode::OK,
+        Err(err) => {
+            log::error!("failed to unzip: {}", err);
+            StatusCode::NOT_FOUND
+        }
+    }
+}
+
+/// `/api/files/config/load`.
+#[handler]
+pub async fn load_config(_depot: &mut Depot, request: LoadRequest, response: &mut Response) {
+    if let Err(err) = check_path(&request.path) {
+        log::error!("check path failed: {}", err);
+        response.status_code(StatusCode::FORBIDDEN);
+        response.render("FORBIDDEN");
+    }
+    match crate::load_config(request.path) {
+        Ok(config) => {
+            response.status_code(StatusCode::OK);
+            response.render(Json(config));
+        }
+        Err(err) => {
+            log::error!("failed to load config: {}", err);
+            // Err(StatusCode::NOT_FOUND)
+            response.status_code(StatusCode::NOT_FOUND);
+            response.render("NOT_FOUND");
+        }
+    }
+}
+
+/// `/api/files/config/save`.
+#[handler]
+pub async fn save_config(_depot: &mut Depot, request: SaveRequest) -> StatusCode {
+    if let Err(err) = check_path(&request.path) {
+        log::error!("check path failed: {}", err);
+        return StatusCode::FORBIDDEN;
+    }
+
+    let write = || -> Result<()> {
+        let mut file = File::create(&request.path)?;
+        let buf = toml::to_string(&request.config)?.into_bytes();
+        file.write_all(&buf)?;
+        Ok(())
+    };
+
+    match request.path.extension() {
+        Some(ext) if ext == "toml" => match write() {
             Ok(_) => StatusCode::OK,
             Err(err) => {
-                log::error!("failed to unzip: {}", err);
-                StatusCode::NOT_FOUND
+                log::error!("failed to save config: {err}");
+                StatusCode::INTERNAL_SERVER_ERROR
             }
-        }
-    }
-
-    /// `/api/files/config/load`.
-    #[handler]
-    pub async fn load_config(_depot: &mut Depot, request: LoadRequest, response: &mut Response) {
-        if let Err(err) = check_path(&request.path) {
-            log::error!("check path failed: {}", err);
-            response.status_code(StatusCode::FORBIDDEN);
-            response.render("FORBIDDEN");
-        }
-        match crate::load_config(request.path) {
-            Ok(config) => {
-                response.status_code(StatusCode::OK);
-                response.render(Json(config));
-            }
-            Err(err) => {
-                log::error!("failed to load config: {}", err);
-                // Err(StatusCode::NOT_FOUND)
-                response.status_code(StatusCode::NOT_FOUND);
-                response.render("NOT_FOUND");
-            }
-        }
-    }
-
-    /// `/api/files/config/save`.
-    #[handler]
-    pub async fn save_config(_depot: &mut Depot, request: SaveRequest) -> StatusCode {
-        if let Err(err) = check_path(&request.path) {
-            log::error!("check path failed: {}", err);
-            return StatusCode::FORBIDDEN;
-        }
-
-        let write = || -> Result<()> {
-            let mut file = File::create(&request.path)?;
-            let buf = toml::to_string(&request.config)?.into_bytes();
-            file.write_all(&buf)?;
-            Ok(())
-        };
-
-        match request.path.extension() {
-            Some(ext) if ext == "toml" => match write() {
-                Ok(_) => StatusCode::OK,
-                Err(err) => {
-                    log::error!("failed to save config: {err}");
-                    StatusCode::INTERNAL_SERVER_ERROR
-                }
-            },
-            _ => {
-                log::error!(
-                    "failed to save config: file path {} is not toml",
-                    request.path.to_string_lossy()
-                );
-                StatusCode::FORBIDDEN
-            }
+        },
+        _ => {
+            log::error!(
+                "failed to save config: file path {} is not toml",
+                request.path.to_string_lossy()
+            );
+            StatusCode::FORBIDDEN
         }
     }
 }

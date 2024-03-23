@@ -1,5 +1,5 @@
 use anyhow::Result;
-use jsonwebtoken::EncodingKey;
+use jsonwebtoken::{EncodingKey, Header};
 use salvo::{
     http::cookie::time::{Duration, OffsetDateTime},
     oapi::extract::JsonBody,
@@ -7,7 +7,7 @@ use salvo::{
 };
 use serde::{Deserialize, Serialize};
 
-use crate::{config::ListenerOption, salvo_main::JwtClaims};
+use crate::{config::ListenerOption, JwtClaims};
 
 #[derive(Serialize, Deserialize, Debug, ToParameters, ToSchema)]
 #[salvo(extract(
@@ -27,7 +27,7 @@ struct AuthResponse {
     message: Option<String>,
 }
 
-/// Exchange the appkey and app_secret to authorization token.
+/// Exchange `appkey` and `app_secret` with the authorization token.
 #[endpoint(
     responses(
         (status_code = 200, description = "Exchange the token successfully.", body = AuthResponse),
@@ -51,7 +51,7 @@ pub fn exchange(depot: &mut Depot, req: JsonBody<AppKeyRequest>, res: &mut Respo
             exp: exp.unix_timestamp(),
         };
         match jsonwebtoken::encode(
-            &jsonwebtoken::Header::default(),
+            &Header::default(),
             &claim,
             &EncodingKey::from_secret(listen_option.slot.clone().as_bytes()),
         ) {

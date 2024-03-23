@@ -1,19 +1,21 @@
-use std::{collections::HashMap, sync::Arc};
+use std::{collections::HashMap, sync::Arc, time::Duration};
 
 use futures_util::StreamExt;
 use itertools::Itertools;
 use regex::Regex;
-use salvo::oapi::{ToResponse, ToSchema};
+use salvo::{oapi::extract::JsonBody, prelude::*, sse::SseEvent, Depot, Writer};
 use serde::{Deserialize, Serialize};
 use tokio::sync::RwLock;
 
-use super::SamplerParams;
+use super::*;
 use crate::{
-    middleware::{Array, FinishReason, GenerateRequest, TokenCounter, MAX_TOKENS},
+    api::request_info,
+    middleware::{
+        Array, FinishReason, GenerateRequest, ThreadRequest, ThreadState, Token, TokenCounter,
+        MAX_TOKENS,
+    },
     sampler::Sampler,
 };
-
-pub use private::chat_completions;
 
 #[derive(Debug, Default, Clone, PartialEq, Eq, Hash, Serialize, Deserialize, ToSchema)]
 pub enum Role {
@@ -175,266 +177,117 @@ struct PartialChatResponse {
     choices: Vec<PartialChatChoice>,
 }
 
-#[cfg(feature = "axum-api")]
-mod private {
-    use std::time::Duration;
+async fn respond_one(depot: &mut Depot, request: ChatRequest, res: &mut Response) {
+    let ThreadState { sender, .. } = depot.obtain::<ThreadState>().unwrap();
+    let info = request_info(sender.clone(), Duration::from_secs(1)).await;
+    let model_name = info.reload.model_path.to_string_lossy().into_owned();
 
-    use anyhow::Result;
-    use axum::{
-        extract::State,
-        response::{sse::Event, IntoResponse, Response, Sse},
-        Json,
-    };
-    use futures_util::Stream;
+    let (token_sender, token_receiver) = flume::unbounded();
+    let request = Box::new(request.into());
+    let _ = sender.send(ThreadRequest::Generate {
+        request,
+        tokenizer: info.tokenizer,
+        sender: token_sender,
+    });
 
-    use super::*;
-    use crate::{
-        api::request_info,
-        middleware::{ThreadRequest, ThreadState, Token, TokenCounter},
-    };
+    let mut token_counter = TokenCounter::default();
+    let mut finish_reason = FinishReason::Null;
+    let mut text = String::new();
+    let mut stream = token_receiver.into_stream();
 
-    async fn respond_one(
-        State(ThreadState { sender, .. }): State<ThreadState>,
-        Json(request): Json<ChatRequest>,
-    ) -> Json<ChatResponse> {
-        let info = request_info(sender.clone(), Duration::from_secs(1)).await;
-        let model_name = info.reload.model_path.to_string_lossy().into_owned();
-
-        let (token_sender, token_receiver) = flume::unbounded();
-        let request = Box::new(request.into());
-        let _ = sender.send(ThreadRequest::Generate {
-            request,
-            tokenizer: info.tokenizer,
-            sender: token_sender,
-        });
-
-        let mut token_counter = TokenCounter::default();
-        let mut finish_reason = FinishReason::Null;
-        let mut text = String::new();
-        let mut stream = token_receiver.into_stream();
-
-        while let Some(token) = stream.next().await {
-            match token {
-                Token::Start => {}
-                Token::Content(token) => {
-                    text += &token;
-                }
-                Token::Stop(reason, counter) => {
-                    finish_reason = reason;
-                    token_counter = counter;
-                    break;
-                }
-                _ => unreachable!(),
+    while let Some(token) = stream.next().await {
+        match token {
+            Token::Start => {}
+            Token::Content(token) => {
+                text += &token;
             }
-        }
-
-        Json(ChatResponse {
-            object: "chat.completion".into(),
-            model: model_name,
-            choices: vec![ChatChoice {
-                message: ChatRecord {
-                    role: Role::Assistant,
-                    content: text.trim().into(),
-                },
-                index: 0,
-                finish_reason,
-            }],
-            counter: token_counter,
-        })
-    }
-
-    async fn respond_stream(
-        State(ThreadState { sender, .. }): State<ThreadState>,
-        Json(request): Json<ChatRequest>,
-    ) -> Sse<impl Stream<Item = Result<Event>>> {
-        let info = request_info(sender.clone(), Duration::from_secs(1)).await;
-        let model_name = info.reload.model_path.to_string_lossy().into_owned();
-
-        let (token_sender, token_receiver) = flume::unbounded();
-        let request = Box::new(request.into());
-        let _ = sender.send(ThreadRequest::Generate {
-            request,
-            tokenizer: info.tokenizer,
-            sender: token_sender,
-        });
-
-        let mut start_token = true;
-        let stream = token_receiver.into_stream().map(move |token| {
-            let choice = match token {
-                Token::Start => PartialChatChoice {
-                    delta: PartialChatRecord::Role(Role::Assistant),
-                    ..Default::default()
-                },
-                Token::Content(token) => {
-                    let token = match start_token {
-                        true => token.trim_start().into(),
-                        false => token,
-                    };
-                    start_token = false;
-                    PartialChatChoice {
-                        delta: PartialChatRecord::Content(token),
-                        ..Default::default()
-                    }
-                }
-                Token::Stop(finish_reason, _) => PartialChatChoice {
-                    finish_reason,
-                    ..Default::default()
-                },
-                Token::Done => return Ok(Event::default().data("[DONE]")),
-                _ => unreachable!(),
-            };
-
-            let json = serde_json::to_string(&PartialChatResponse {
-                object: "chat.completion.chunk".into(),
-                model: model_name.clone(),
-                choices: vec![choice],
-            })?;
-            Ok(Event::default().data(json))
-        });
-
-        Sse::new(stream)
-    }
-
-    /// `/api/oai/chat/completions`, `/api/oai/v1/chat/completions`.
-    pub async fn chat_completions(
-        state: State<ThreadState>,
-        Json(request): Json<ChatRequest>,
-    ) -> Response {
-        match request.stream {
-            true => respond_stream(state, Json(request)).await.into_response(),
-            false => respond_one(state, Json(request)).await.into_response(),
+            Token::Stop(reason, counter) => {
+                finish_reason = reason;
+                token_counter = counter;
+                break;
+            }
+            _ => unreachable!(),
         }
     }
+
+    let json = Json(ChatResponse {
+        object: "chat.completion".into(),
+        model: model_name,
+        choices: vec![ChatChoice {
+            message: ChatRecord {
+                role: Role::Assistant,
+                content: text.trim().into(),
+            },
+            index: 0,
+            finish_reason,
+        }],
+        counter: token_counter,
+    });
+    res.render(json);
 }
 
-#[cfg(feature = "salvo-api")]
-mod private {
-    use std::time::Duration;
+async fn respond_stream(depot: &mut Depot, request: ChatRequest, res: &mut Response) {
+    let ThreadState { sender, .. } = depot.obtain::<ThreadState>().unwrap();
+    let info = request_info(sender.clone(), Duration::from_secs(1)).await;
+    let model_name = info.reload.model_path.to_string_lossy().into_owned();
 
-    use salvo::{oapi::extract::JsonBody, prelude::*, sse::SseEvent, Depot, Writer};
+    let (token_sender, token_receiver) = flume::unbounded();
+    let request = Box::new(request.into());
+    let _ = sender.send(ThreadRequest::Generate {
+        request,
+        tokenizer: info.tokenizer,
+        sender: token_sender,
+    });
 
-    use super::*;
-    use crate::{
-        api::request_info,
-        middleware::{FinishReason, ThreadRequest, ThreadState, Token, TokenCounter},
-    };
-
-    async fn respond_one(depot: &mut Depot, request: ChatRequest, res: &mut Response) {
-        let ThreadState { sender, .. } = depot.obtain::<ThreadState>().unwrap();
-        let info = request_info(sender.clone(), Duration::from_secs(1)).await;
-        let model_name = info.reload.model_path.to_string_lossy().into_owned();
-
-        let (token_sender, token_receiver) = flume::unbounded();
-        let request = Box::new(request.into());
-        let _ = sender.send(ThreadRequest::Generate {
-            request,
-            tokenizer: info.tokenizer,
-            sender: token_sender,
-        });
-
-        let mut token_counter = TokenCounter::default();
-        let mut finish_reason = FinishReason::Null;
-        let mut text = String::new();
-        let mut stream = token_receiver.into_stream();
-
-        while let Some(token) = stream.next().await {
-            match token {
-                Token::Start => {}
-                Token::Content(token) => {
-                    text += &token;
+    let mut start_token = true;
+    let stream = token_receiver.into_stream().map(move |token| {
+        let choice = match token {
+            Token::Start => PartialChatChoice {
+                delta: PartialChatRecord::Role(Role::Assistant),
+                ..Default::default()
+            },
+            Token::Content(token) => {
+                let token = match start_token {
+                    true => token.trim_start().into(),
+                    false => token,
+                };
+                start_token = false;
+                PartialChatChoice {
+                    delta: PartialChatRecord::Content(token),
+                    ..Default::default()
                 }
-                Token::Stop(reason, counter) => {
-                    finish_reason = reason;
-                    token_counter = counter;
-                    break;
-                }
-                _ => unreachable!(),
             }
-        }
-
-        let json = Json(ChatResponse {
-            object: "chat.completion".into(),
-            model: model_name,
-            choices: vec![ChatChoice {
-                message: ChatRecord {
-                    role: Role::Assistant,
-                    content: text.trim().into(),
-                },
-                index: 0,
+            Token::Stop(finish_reason, _) => PartialChatChoice {
                 finish_reason,
-            }],
-            counter: token_counter,
-        });
-        res.render(json);
-    }
+                ..Default::default()
+            },
+            Token::Done => return Ok(SseEvent::default().text("[DONE]")),
+            _ => unreachable!(),
+        };
 
-    async fn respond_stream(depot: &mut Depot, request: ChatRequest, res: &mut Response) {
-        let ThreadState { sender, .. } = depot.obtain::<ThreadState>().unwrap();
-        let info = request_info(sender.clone(), Duration::from_secs(1)).await;
-        let model_name = info.reload.model_path.to_string_lossy().into_owned();
+        match serde_json::to_string(&PartialChatResponse {
+            object: "chat.completion.chunk".into(),
+            model: model_name.clone(),
+            choices: vec![choice],
+        }) {
+            Ok(json_text) => Ok(SseEvent::default().text(json_text)),
+            Err(err) => Err(err),
+        }
+    });
+    salvo::sse::stream(res, stream);
+}
 
-        let (token_sender, token_receiver) = flume::unbounded();
-        let request = Box::new(request.into());
-        let _ = sender.send(ThreadRequest::Generate {
-            request,
-            tokenizer: info.tokenizer,
-            sender: token_sender,
-        });
-
-        let mut start_token = true;
-        let stream = token_receiver.into_stream().map(move |token| {
-            let choice = match token {
-                Token::Start => PartialChatChoice {
-                    delta: PartialChatRecord::Role(Role::Assistant),
-                    ..Default::default()
-                },
-                Token::Content(token) => {
-                    let token = match start_token {
-                        true => token.trim_start().into(),
-                        false => token,
-                    };
-                    start_token = false;
-                    PartialChatChoice {
-                        delta: PartialChatRecord::Content(token),
-                        ..Default::default()
-                    }
-                }
-                Token::Stop(finish_reason, _) => PartialChatChoice {
-                    finish_reason,
-                    ..Default::default()
-                },
-                Token::Done => return Ok(SseEvent::default().text("[DONE]")),
-                _ => unreachable!(),
-            };
-
-            match serde_json::to_string(&PartialChatResponse {
-                object: "chat.completion.chunk".into(),
-                model: model_name.clone(),
-                choices: vec![choice],
-            }) {
-                Ok(json_text) => Ok(SseEvent::default().text(json_text)),
-                Err(err) => Err(err),
-            }
-        });
-        salvo::sse::stream(res, stream);
-    }
-
-    /// Generate chat completions with context.
-    #[endpoint(
+/// Generate chat completions with context.
+#[endpoint(
         responses(
             (status_code = 200, description = "Generate one response if `stream` is false.", body = ChatResponse),
             (status_code = 201, description = "Generate SSE response if `stream` is true. `StatusCode` should be 200.", body = PartialChatResponse)
         )
     )]
-    pub async fn chat_completions(
-        depot: &mut Depot,
-        req: JsonBody<ChatRequest>,
-        res: &mut Response,
-    ) {
-        let request = req.0;
-        match request.stream {
-            true => respond_stream(depot, request, res).await,
-            false => respond_one(depot, request, res).await,
-        }
+pub async fn chat_completions(depot: &mut Depot, req: JsonBody<ChatRequest>, res: &mut Response) {
+    let request = req.0;
+    match request.stream {
+        true => respond_stream(depot, request, res).await,
+        false => respond_one(depot, request, res).await,
     }
 }
