@@ -1,3 +1,4 @@
+use std::path::PathBuf;
 use std::time::Duration;
 
 use futures_util::StreamExt;
@@ -85,12 +86,9 @@ pub async fn save(depot: &mut Depot, req: &mut Request) -> StatusCode {
     if request.model_path.to_str().unwrap().contains("..") {
         return StatusCode::NOT_FOUND;
     }
-    
-    
-    request.model_path = model_path.join(request.model_path);
-    
-    
- 
+
+    let joined_path = model_path.join(&request.model_path);
+    request.model_path = PathBuf::from(joined_path);
 
     let _ = sender.send(ThreadRequest::Save {
         request,
