@@ -9,7 +9,7 @@ use std::{
     time::Duration,
 };
 
-use anyhow::Result;
+use anyhow::{bail, Result};
 use derivative::Derivative;
 use flume::{Receiver, Sender};
 use half::f16;
@@ -225,7 +225,7 @@ struct Prefab {
 
 #[derive(Debug, Clone, Copy)]
 enum LoadType {
-    Model,
+    SafeTensors,
     Prefab,
 }
 
@@ -303,7 +303,7 @@ where
     let data = unsafe { Mmap::map(&file) }?;
 
     let model = match load_type {
-        LoadType::Model => {
+        LoadType::SafeTensors => {
             let model = SafeTensors::deserialize(&data)?;
 
             let quant = (0..quant).map(|layer| (layer, quant_type)).collect();
@@ -425,14 +425,13 @@ pub async fn model_route(receiver: Receiver<ThreadRequest>) -> Result<()> {
                         let file = File::open(&request.model_path)?;
                         let data = unsafe { Mmap::map(&file)? };
 
-                        // try to deserialize as `safetensors`, if failed, treat it as a prefab
                         let (info, load_type) = {
-                            match SafeTensors::deserialize(&data) {
-                                Ok(model) => (Loader::info(&model)?, LoadType::Model),
-                                Err(_) => (
-                                    cbor4ii::serde::from_slice::<Prefab>(&data)?.info,
-                                    LoadType::Prefab,
-                                ),
+                            let st = SafeTensors::deserialize(&data);
+                            let prefab = cbor4ii::serde::from_slice::<Prefab>(&data);
+                            match (st, prefab) {
+                                (Ok(model), _) => (Loader::info(&model)?, LoadType::SafeTensors),
+                                (_, Ok(prefab)) => (prefab.info, LoadType::Prefab),
+                                _ => bail!("failed to read model info"),
                             }
                         };
                         log::info!("{:#?}", info);
