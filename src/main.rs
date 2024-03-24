@@ -31,14 +31,15 @@ mod run;
 mod sampler;
 
 pub fn build_path(path: impl AsRef<Path>, name: impl AsRef<Path>) -> Result<PathBuf> {
-    let path = path.as_ref();
+    let permitted = path.as_ref();
     let name = name.as_ref();
-    let permitted = path.canonicalize()?;
-    let path = match name.is_absolute() || name.starts_with(path) {
-        true => name.canonicalize()?,
-        false => permitted.join(name).canonicalize()?,
+    if name.ancestors().any(|p| p.ends_with(Path::new(".."))) {
+        bail!("cannot have \"..\" in names");
+    }
+    let path = match name.is_absolute() || name.starts_with(permitted) {
+        true => name.into(),
+        false => permitted.join(name),
     };
-    log::info!("{:?}", path);
     match path.starts_with(permitted) {
         true => Ok(path),
         false => bail!("path not permitted"),
