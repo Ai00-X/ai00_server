@@ -11,7 +11,7 @@ pub mod oai;
 
 pub use adapter::adapters;
 pub use file::{dir, load_config, models, save_config, unzip};
-pub use model::{info, load, state, unload};
+pub use model::{info, load, save, state, unload};
 
 use crate::middleware::{RuntimeInfo, ThreadRequest};
 
