@@ -21,6 +21,7 @@ name = "converter"
 [dependencies]
 anyhow = "1"
 bytemuck = "1"
+cbor4ii = { version = "0.3.2", features = ["serde1"] }
 clap = { version = "4.3", features = ["derive"] }
 derivative = "2.2.0"
 fastrand = "2"
@@ -49,7 +50,7 @@ zip-extract = "0.1"
 
 [dependencies.web-rwkv]
 # path = "../web-rwkv"
-version = "0.6.33"
+version = "0.6.34"
 
 [dependencies.salvo]
 default-features = true

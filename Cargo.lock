@@ -91,6 +91,7 @@ version = "0.3.23"
 dependencies = [
  "anyhow",
  "bytemuck",
+ "cbor4ii",
  "clap",
  "derivative",
  "fastrand",
@@ -508,6 +509,15 @@ dependencies = [
  "cc",
  "libc",
  "pkg-config",
+]
+
+[[package]]
+name = "cbor4ii"
+version = "0.3.2"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "59b4c883b9cc4757b061600d39001d4d0232bece4a3174696cf8f58a14db107d"
+dependencies = [
+ "serde",
 ]
 
 [[package]]
@@ -3756,9 +3766,9 @@ checksum = "af190c94f2773fdb3729c55b007a722abb5384da03bc0986df4c289bf5567e96"
 
 [[package]]
 name = "web-rwkv"
-version = "0.6.33"
+version = "0.6.34"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "b7e53b6b2c13c2d8ef0dded9221a60e19d4443d7270bbab9bbd0724a77446c3c"
+checksum = "d35b0a8ea28bd689d4b5c607d08bcd7db876854bfe50349f3b26b7a8f2bcaab0"
 dependencies = [
  "ahash 0.8.11",
  "anyhow",

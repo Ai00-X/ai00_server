@@ -4,6 +4,8 @@ use std::{
     collections::HashSet,
     convert::Infallible,
     future::Future,
+    io::Write,
+    path::PathBuf,
     pin::Pin,
     sync::Arc,
     time::{Duration, Instant},
@@ -13,6 +15,7 @@ use anyhow::Result;
 use flume::{Receiver, Sender};
 use itertools::Itertools;
 use qp_trie::Trie;
+use serde::Serialize;
 use tokio::sync::{Mutex, RwLock};
 use web_rwkv::{
     model::{
@@ -263,6 +266,9 @@ pub trait Runner {
     fn num_batch(&self) -> usize;
     fn tokenizer(&self) -> Arc<Tokenizer>;
 
+    /// Serialize the model into the given path.
+    fn serialize_model(&self, path: PathBuf) -> Result<()>;
+
     /// Queue an inference task.
     fn queue(
         &self,
@@ -284,7 +290,7 @@ pub struct Runtime<M, S, B>
 where
     B: BackedState,
     S: ModelState<BackedState = B>,
-    M: Model<State = S>,
+    M: Model<State = S> + Serialize,
     StateBuilder: Build<B, Error = Infallible>,
 {
     model: M,
@@ -301,7 +307,7 @@ impl<M, S, B> Runtime<M, S, B>
 where
     B: BackedState,
     S: ModelState<BackedState = B>,
-    M: Model<State = S>,
+    M: Model<State = S> + Serialize,
     StateBuilder: Build<B, Error = Infallible>,
 {
     pub fn new(
@@ -332,6 +338,25 @@ where
             state_chunk_size,
             _penalty_free_tokens,
         }
+    }
+
+    fn serialize_model(&self, path: PathBuf) -> Result<()> {
+        use cbor4ii::{core::enc::Write, serde::Serializer};
+        use std::fs::File;
+
+        struct FileWriter(File);
+        impl Write for FileWriter {
+            type Error = std::io::Error;
+            fn push(&mut self, input: &[u8]) -> Result<(), Self::Error> {
+                self.0.write_all(input)
+            }
+        }
+
+        let file = FileWriter(File::create(path)?);
+        let mut serializer = Serializer::new(file);
+        self.model.serialize(&mut serializer)?;
+
+        Ok(())
     }
 
     /// Search for the longest common prefix in the memory cache and checkout the state from that point.
@@ -783,7 +808,7 @@ impl<M, S, B> Runner for Runtime<M, S, B>
 where
     B: BackedState + Send + Sync,
     S: ModelState<BackedState = B> + Send + Sync,
-    M: Model<State = S> + Send + Sync,
+    M: Model<State = S> + Serialize + Send + Sync,
     StateBuilder: Build<B, Error = Infallible>,
 {
     #[inline]
@@ -799,6 +824,11 @@ where
     #[inline]
     fn tokenizer(&self) -> Arc<Tokenizer> {
         self.tokenizer.clone()
+    }
+
+    #[inline]
+    fn serialize_model(&self, path: PathBuf) -> Result<()> {
+        Runtime::serialize_model(self, path)
     }
 
     #[inline]
