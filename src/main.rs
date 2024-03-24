@@ -187,6 +187,7 @@ async fn main() {
     let api_router = Router::with_hoop(auth_handler)
         .push(Router::with_path("/adapters").get(api::adapters))
         .push(Router::with_path("/models/info").get(api::info))
+        .push(Router::with_path("/models/save").post(api::save))
         .push(Router::with_path("/models/load").post(api::load))
         .push(Router::with_path("/models/unload").get(api::unload))
         .push(Router::with_path("/models/state").get(api::state))
