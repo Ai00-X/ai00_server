@@ -81,7 +81,16 @@ pub async fn save(depot: &mut Depot, req: &mut Request) -> StatusCode {
     let mut request: SaveRequest = req.parse_body().await.unwrap();
 
     // make sure that we are not visiting un-permitted path.
+    //确保request.model_path 不含 ..
+    if request.model_path.to_str().unwrap().contains("..") {
+        return StatusCode::NOT_FOUND;
+    }
+    
+    
     request.model_path = model_path.join(request.model_path);
+    
+    
+ 
 
     let _ = sender.send(ThreadRequest::Save {
         request,
