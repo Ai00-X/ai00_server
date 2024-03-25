@@ -240,7 +240,7 @@ async fn main() {
     let ip_addr = args.ip.unwrap_or(listen.ip);
     let (ipv4_addr, ipv6_addr) = match ip_addr {
         IpAddr::V4(addr) => (addr, None),
-        IpAddr::V6(addr) => (Ipv4Addr::new(0, 0, 0, 0), Some(addr)),
+        IpAddr::V6(addr) => (Ipv4Addr::UNSPECIFIED, Some(addr)),
     };
     let port = args.port.unwrap_or(listen.port);
     let (acme, tls) = match listen.domain.as_str() {
@@ -253,15 +253,19 @@ async fn main() {
         let listener = TcpListener::new(addr)
             .acme()
             .cache_path("assets/certs")
-            .add_domain(listen.domain)
+            .add_domain(&listen.domain)
             .quinn(addr);
         if let Some(ipv6_addr) = ipv6_addr {
-            if ipv6_addr.is_unspecified() && ipv4_addr.is_unspecified() {
-                panic!("both IpV4 and IpV6 addresses are unspecified");
-            }
             let addr_v6 = SocketAddr::new(IpAddr::V6(ipv6_addr), port);
-            let acceptor = listener.join(TcpListener::new(addr_v6)).bind().await;
-            log::info!("server started at {addr} with acme and tls");
+            let ipv6_listener = TcpListener::new(addr_v6)
+                .acme()
+                .cache_path("assets/certs")
+                .add_domain(&listen.domain)
+                .quinn(addr_v6);
+            #[cfg(not(target_os = "windows"))]
+            let accepter = ipv6_listener.bind().await;
+            #[cfg(target_os = "windows")]
+            let acceptor = listener.join(ipv6_listener).bind().await;
             log::info!("server started at {addr_v6} with acme and tls");
             salvo::server::Server::new(acceptor).serve(service).await;
         } else {
@@ -293,7 +297,6 @@ async fn main() {
                 .join(listener)
                 .bind()
                 .await;
-            log::info!("server started at {addr} with tls");
             log::info!("server started at {addr_v6} with tls");
             salvo::server::Server::new(acceptor).serve(service).await;
         } else {
@@ -307,7 +310,6 @@ async fn main() {
     } else if let Some(ipv6_addr) = ipv6_addr {
         let addr_v6 = SocketAddr::new(IpAddr::V6(ipv6_addr), port);
         let ipv6_listener = TcpListener::new(addr_v6);
-        log::info!("server started at {addr} without tls");
         log::info!("server started at {addr_v6} without tls");
         // on Linux, when the IpV6 addr is unspecified while the IpV4 addr being unspecified, it will cause exception "address in used"
         #[cfg(not(target_os = "windows"))]
