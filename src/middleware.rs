@@ -33,7 +33,7 @@ use web_rwkv::{
 };
 
 use crate::{
-    config::AdapterOption,
+    config::{AdapterOption, BnfOption},
     run::{GenerateContext, Runner, Runtime, SlotResult, Tokens},
     sampler::{nucleus::NucleusSampler, Sampler},
 };
@@ -207,6 +207,8 @@ pub struct ReloadRequest {
     pub embed_device: EmbedDevice,
     /// Path to the tokenizer.
     pub tokenizer_path: PathBuf,
+    /// BNF options.
+    pub bnf: BnfOption,
     /// Adapter selection.
     pub adapter: AdapterOption,
 }
