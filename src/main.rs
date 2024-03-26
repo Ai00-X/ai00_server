@@ -263,7 +263,7 @@ async fn main() {
                 .add_domain(&listen.domain)
                 .quinn(addr_v6);
             #[cfg(not(target_os = "windows"))]
-            let accepter = ipv6_listener.bind().await;
+            let acceptor = ipv6_listener.bind().await;
             #[cfg(target_os = "windows")]
             let acceptor = listener.join(ipv6_listener).bind().await;
             log::info!("server started at {addr_v6} with acme and tls");
