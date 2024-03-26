@@ -12,6 +12,7 @@ use std::{
 };
 
 use anyhow::Result;
+use bnf_sampler::vocabulary::Vocabulary;
 use flume::{Receiver, Sender};
 use itertools::Itertools;
 use qp_trie::Trie;
@@ -296,6 +297,7 @@ where
     model: M,
     state: S,
     tokenizer: Arc<Tokenizer>,
+    vocab: Arc<Vocabulary>,
     slots: Mutex<Vec<SlotState>>,
     backed: Mutex<Trie<Tokens, CachedItem<B>>>,
     max_runtime_batch: usize,
@@ -311,7 +313,8 @@ where
     StateBuilder: Build<B, Error = Infallible>,
 {
     pub fn new(
-        tokenizer: Tokenizer,
+        tokenizer: Arc<Tokenizer>,
+        vocab: Arc<Vocabulary>,
         model: M,
         state: S,
         max_runtime_batch: usize,
@@ -331,7 +334,8 @@ where
         Self {
             model,
             state,
-            tokenizer: Arc::new(tokenizer),
+            tokenizer,
+            vocab,
             slots: Mutex::new(slots),
             backed: Mutex::new(Trie::new()),
             max_runtime_batch,

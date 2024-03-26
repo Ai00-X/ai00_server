@@ -10,6 +10,7 @@ use std::{
 };
 
 use anyhow::{bail, Result};
+use bnf_sampler::vocabulary::Vocabulary;
 use derivative::Derivative;
 use flume::{Receiver, Sender};
 use half::f16;
@@ -270,12 +271,16 @@ async fn create_context(adapter: AdapterOption, info: &ModelInfo) -> Result<Cont
     Ok(context)
 }
 
-fn load_tokenizer(path: impl AsRef<Path>) -> Result<Tokenizer> {
+fn load_tokenizer(path: impl AsRef<Path>) -> Result<Arc<Tokenizer>> {
     let file = File::open(path)?;
     let mut reader = BufReader::new(file);
     let mut contents = String::new();
     reader.read_to_string(&mut contents)?;
-    Ok(Tokenizer::new(&contents)?)
+    Ok(Tokenizer::new(&contents)?.into())
+}
+
+fn load_vocab(path: impl AsRef<Path>) -> Result<Arc<Vocabulary>> {
+    todo!()
 }
 
 async fn load_model<M, S>(
@@ -441,6 +446,7 @@ pub async fn model_route(receiver: Receiver<ThreadRequest>) -> Result<()> {
 
                         let context = create_context(request.adapter, &info).await?;
                         let tokenizer = load_tokenizer(&request.tokenizer_path)?;
+                        let vocab = load_vocab(&request.bnf.path)?;
                         log::info!("{:#?}", context.adapter.get_info());
 
                         let mut env = env.write().await;
@@ -456,6 +462,7 @@ pub async fn model_route(receiver: Receiver<ThreadRequest>) -> Result<()> {
                                 .await?;
                                 Box::new(Runtime::new(
                                     tokenizer,
+                                    vocab,
                                     model,
                                     state,
                                     request.max_runtime_batch,
@@ -471,6 +478,7 @@ pub async fn model_route(receiver: Receiver<ThreadRequest>) -> Result<()> {
                                 .await?;
                                 Box::new(Runtime::new(
                                     tokenizer,
+                                    vocab,
                                     model,
                                     state,
                                     request.max_runtime_batch,
@@ -486,6 +494,7 @@ pub async fn model_route(receiver: Receiver<ThreadRequest>) -> Result<()> {
                                 .await?;
                                 Box::new(Runtime::new(
                                     tokenizer,
+                                    vocab,
                                     model,
                                     state,
                                     request.max_runtime_batch,
