@@ -90,6 +90,7 @@ name = "ai00_server"
 version = "0.3.23"
 dependencies = [
  "anyhow",
+ "bit-set",
  "bnf_sampler",
  "bytemuck",
  "cbor4ii",

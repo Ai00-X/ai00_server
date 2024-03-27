@@ -1,7 +1,7 @@
 use std::{
     borrow::Borrow,
     cmp::Ordering,
-    collections::{HashMap, HashSet},
+    collections::HashSet,
     convert::Infallible,
     future::Future,
     io::Write,
@@ -12,7 +12,7 @@ use std::{
 };
 
 use anyhow::Result;
-use bnf_sampler::{grammar::Grammar, sampler::Sampler as BnfSampler, vocabulary::Vocabulary};
+use bnf_sampler::{grammar::Grammar, sampler::AcceptTokenResult, vocabulary::Vocabulary};
 use flume::{Receiver, Sender};
 use itertools::Itertools;
 use qp_trie::Trie;
@@ -25,8 +25,9 @@ use web_rwkv::{
     tokenizer::Tokenizer,
 };
 
-use crate::middleware::{
-    Environment, FinishReason, GenerateRequest, ReloadRequest, Token, TokenCounter,
+use crate::{
+    middleware::{Environment, FinishReason, GenerateRequest, ReloadRequest, Token, TokenCounter},
+    sampler::bnf::BnfSampler,
 };
 
 const PENALTY_FREE_LIST: [&str; 5] = ["\n", ",", ".", "\u{002c}", "\u{002f}"];
@@ -230,7 +231,7 @@ pub struct GenerateContext {
     /// Tokens that are output by the model.
     pub model_tokens: Vec<u16>,
     /// Compiled BNF schema, if any.
-    pub bnf_sampler: Option<Arc<BnfSampler>>,
+    pub bnf_sampler: Option<Arc<RwLock<BnfSampler>>>,
     /// Generate request provided by the caller.
     pub request: GenerateRequest,
     /// To send back generated tokens.
@@ -307,7 +308,6 @@ where
     vocab: Arc<Vocabulary>,
     slots: Mutex<Vec<SlotState>>,
     backed: Mutex<Trie<Tokens, CachedItem<B>>>,
-    bnf: Mutex<HashMap<String, CachedItem<BnfSampler>>>,
     reload: ReloadRequest,
     _penalty_free_tokens: HashSet<u16>,
 }
@@ -344,7 +344,6 @@ where
             vocab: Arc::new(vocab),
             slots: Mutex::new(slots),
             backed: Mutex::new(Trie::new()),
-            bnf: Mutex::new(HashMap::new()),
             reload,
             _penalty_free_tokens,
         }
@@ -406,25 +405,17 @@ where
     }
 
     /// Compile and cache the given schema into a BNF sampler.
-    async fn compile_bnf_schema(&self, schema: String) -> Result<Arc<BnfSampler>> {
-        let mut cache = self.bnf.lock().await;
-        let cached = match cache.remove(&schema) {
-            Some(cached) => CachedItem::renew(cached),
-            None => {
-                let grammar = Grammar::new(&schema, self.vocab.clone(), GRAMMAR_ARENA_CAPACITY)?;
-                let start_nonterminal = self.reload.bnf.start_nonterminal.clone();
-                let sampler = BnfSampler::new(
-                    grammar,
-                    start_nonterminal,
-                    self.vocab.clone(),
-                    SAMPLER_ARENA_CAPACITY,
-                    self.reload.bnf.enable_bytes_cache,
-                )?;
-                CachedItem::new(sampler)
-            }
-        };
-        cache.insert(schema, cached.clone());
-        Ok(cached.item)
+    async fn compile_bnf_schema(&self, schema: String) -> Result<BnfSampler> {
+        let grammar = Grammar::new(&schema, self.vocab.clone(), GRAMMAR_ARENA_CAPACITY)?;
+        let start_nonterminal = self.reload.bnf.start_nonterminal.clone();
+        let sampler = bnf_sampler::sampler::Sampler::new(
+            grammar,
+            start_nonterminal,
+            self.vocab.clone(),
+            SAMPLER_ARENA_CAPACITY,
+            self.reload.bnf.enable_bytes_cache,
+        )?;
+        BnfSampler::new(sampler)
     }
 
     /// Queue an inference task.
@@ -440,7 +431,7 @@ where
         // compile the BNF schema.
         let bnf_sampler = if let Some(schema) = context.request.bnf_schema.clone() {
             match self.compile_bnf_schema(schema).await {
-                Ok(bnf_sampler) => Some(bnf_sampler),
+                Ok(bnf_sampler) => Some(Arc::new(RwLock::new(bnf_sampler))),
                 Err(err) => return SlotResult::Error(err.to_string()),
             }
         } else {
@@ -650,6 +641,7 @@ where
                 Payload::Busy(context) => match output {
                     ModelOutput::None => None,
                     ModelOutput::Last(data) => Some((
+                        context.bnf_sampler.clone(),
                         context.request.sampler.clone(),
                         context.request.bias.clone(),
                         data,
@@ -660,10 +652,17 @@ where
             })
             .map(|bundle| async move {
                 match bundle {
-                    Some((sampler, bias, mut data)) => {
+                    Some((bnf, sampler, bias, mut data)) => {
                         sampler.read().await.transform(&mut data);
                         for (token, bias) in bias.iter() {
                             data[*token as usize] += *bias
+                        }
+                        if let Some(bnf) = bnf {
+                            let bnf = bnf.read().await;
+                            data.iter_mut()
+                                .enumerate()
+                                .filter(|&(token, _)| !bnf.current_token_ids().contains(token))
+                                .for_each(|(_, logits)| *logits = f32::MIN)
                         }
                         Some(data)
                     }
@@ -783,6 +782,21 @@ where
                 done = true;
             };
 
+            // update the BNF state
+            let mut exhausted = false;
+            if let Some(bnf) = context.bnf_sampler.clone() {
+                let mut bnf = bnf.write().await;
+                match bnf.accept_a_token(Some(token as u32))? {
+                    AcceptTokenResult::Continue => {}
+                    AcceptTokenResult::End => exhausted = true,
+                    AcceptTokenResult::Failed => {
+                        log::warn!("slot {batch} bnf failure");
+                        exhausted = true;
+                    }
+                }
+                bnf.update()?;
+            }
+
             // here we detect if there is a stop word in our buffer
             let ((head, tail), stop_matched) = context
                 .request
@@ -820,7 +834,7 @@ where
 
             if context.sender.is_disconnected() {
                 done = true;
-            } else if stop_matched {
+            } else if exhausted || stop_matched {
                 let output = String::from_utf8_lossy(head);
                 let _ = context.sender.send(Token::Content(output.into()));
                 finish(FinishReason::Stop);
@@ -839,11 +853,6 @@ where
 
     /// Keep the items in the cache less then [`MAX_CACHE_ITEMS`].
     async fn maintain_cache(&self) {
-        self.maintain_backed_cache().await;
-        self.maintain_bnf_cache().await;
-    }
-
-    async fn maintain_backed_cache(&self) {
         let mut cache = self.backed.lock().await;
         if cache.count() <= MAX_CACHE_ITEMS {
             return;
@@ -856,26 +865,6 @@ where
             .skip(MAX_CACHE_ITEMS)
         {
             removing.push(tokens.to_owned());
-        }
-
-        for tokens in removing.into_iter() {
-            cache.remove(&tokens);
-        }
-    }
-
-    async fn maintain_bnf_cache(&self) {
-        let mut cache = self.bnf.lock().await;
-        if cache.len() <= MAX_CACHE_ITEMS {
-            return;
-        }
-
-        let mut removing = vec![];
-        for (schema, _) in cache
-            .iter()
-            .sorted_unstable_by_key(|(_, item)| item.instant.elapsed())
-            .skip(MAX_CACHE_ITEMS)
-        {
-            removing.push(schema.to_owned());
         }
 
         for tokens in removing.into_iter() {

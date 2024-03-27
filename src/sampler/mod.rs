@@ -1,3 +1,4 @@
+pub mod bnf;
 pub mod mirostat;
 pub mod nucleus;
 
