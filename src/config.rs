@@ -128,6 +128,7 @@ pub struct BnfOption {
     /// Enable the cache that accelerates the expansion of certain short schemas.
     #[derivative(Default(value = "true"))]
     pub enable_bytes_cache: bool,
+    /// The initial nonterminal of the BNF schemas.
     #[derivative(Default(value = "\"start\".into()"))]
     pub start_nonterminal: String,
 }

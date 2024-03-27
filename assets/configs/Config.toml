@@ -15,6 +15,10 @@ turbo = true                                             # Whether to use altern
 [tokenizer]
 path = "assets/tokenizer/rwkv_vocab_v20230424.json" # Path to the tokenizer.
 
+[bnf]
+enable_bytes_cache = true   # Enable the cache that accelerates the expansion of certain short schemas.
+start_nonterminal = "start" # The initial nonterminal of the BNF schemas.
+
 [adapter]
 Auto = {}
 
