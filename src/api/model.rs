@@ -1,4 +1,4 @@
-use std::time::Duration;
+use std::{ops::Deref, time::Duration};
 
 use futures_util::StreamExt;
 use salvo::prelude::*;
@@ -22,6 +22,7 @@ pub async fn info(depot: &mut Depot) -> Json<InfoResponse> {
     let ThreadState { sender, .. } = depot.obtain::<ThreadState>().unwrap();
     let RuntimeInfo { reload, model, .. } =
         request_info(sender.to_owned(), Duration::from_millis(500)).await;
+    let reload = reload.deref().clone();
     Json(InfoResponse { reload, model })
 }
 
@@ -35,6 +36,7 @@ pub async fn state(depot: &mut Depot, res: &mut Response) {
 
     let stream = info_receiver.into_stream().map(|_info| {
         let RuntimeInfo { reload, model, .. } = _info;
+        let reload = reload.deref().clone();
         match serde_json::to_string(&InfoResponse { reload, model }) {
             Ok(json) => SseEvent::default().json(json),
             Err(err) => Err(err),

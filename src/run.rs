@@ -12,7 +12,7 @@ use std::{
 };
 
 use anyhow::Result;
-use bnf_sampler::{sampler::Sampler as BnfSampler, vocabulary::Vocabulary};
+use bnf_sampler::{grammar::Grammar, sampler::Sampler as BnfSampler, vocabulary::Vocabulary};
 use flume::{Receiver, Sender};
 use itertools::Itertools;
 use qp_trie::Trie;
@@ -25,11 +25,15 @@ use web_rwkv::{
     tokenizer::Tokenizer,
 };
 
-use crate::middleware::{Environment, FinishReason, GenerateRequest, Token, TokenCounter};
+use crate::middleware::{
+    Environment, FinishReason, GenerateRequest, ReloadRequest, Token, TokenCounter,
+};
 
 const PENALTY_FREE_LIST: [&str; 5] = ["\n", ",", ".", "\u{002c}", "\u{002f}"];
 const PROMPT_CACHE_TOKENS: usize = 32;
 const MAX_CACHE_ITEMS: usize = 256;
+const SAMPLER_ARENA_CAPACITY: usize = 1048576;
+const GRAMMAR_ARENA_CAPACITY: usize = 1024;
 
 #[derive(Debug)]
 pub enum SlotResult {
@@ -40,7 +44,7 @@ pub enum SlotResult {
     /// There is no idle slot left.
     Failure(Box<GenerateContext>),
     /// An error occurred.
-    Error,
+    Error(String),
 }
 
 #[derive(Debug)]
@@ -225,6 +229,8 @@ pub struct GenerateContext {
     pub buffer: Vec<u8>,
     /// Tokens that are output by the model.
     pub model_tokens: Vec<u16>,
+    /// Compiled BNF schema, if any.
+    pub bnf_sampler: Option<Arc<BnfSampler>>,
     /// Generate request provided by the caller.
     pub request: GenerateRequest,
     /// To send back generated tokens.
@@ -266,6 +272,7 @@ pub trait Runner {
     fn info(&self) -> &ModelInfo;
     fn num_batch(&self) -> usize;
     fn tokenizer(&self) -> Arc<Tokenizer>;
+    fn reload_request(&self) -> Arc<ReloadRequest>;
 
     /// Serialize the model into the given path.
     fn serialize_model(&self, path: PathBuf) -> Result<()>;
@@ -301,8 +308,7 @@ where
     slots: Mutex<Vec<SlotState>>,
     backed: Mutex<Trie<Tokens, CachedItem<B>>>,
     bnf: Mutex<HashMap<String, CachedItem<BnfSampler>>>,
-    max_runtime_batch: usize,
-    state_chunk_size: usize,
+    reload: Arc<ReloadRequest>,
     _penalty_free_tokens: HashSet<u16>,
 }
 
@@ -318,8 +324,7 @@ where
         vocab: Vocabulary,
         model: M,
         state: S,
-        max_runtime_batch: usize,
-        state_chunk_size: usize,
+        reload: ReloadRequest,
     ) -> Self {
         let slots = (0..state.num_batch())
             .map(|_| SlotState::default())
@@ -340,10 +345,14 @@ where
             slots: Mutex::new(slots),
             backed: Mutex::new(Trie::new()),
             bnf: Mutex::new(HashMap::new()),
-            max_runtime_batch,
-            state_chunk_size,
+            reload: Arc::new(reload),
             _penalty_free_tokens,
         }
+    }
+
+    #[inline]
+    pub fn reload_request(&self) -> Arc<ReloadRequest> {
+        self.reload.clone()
     }
 
     fn serialize_model(&self, path: PathBuf) -> Result<()> {
@@ -383,7 +392,7 @@ where
                 let context = self.model.context();
                 let info = self.model.info();
                 let backed = StateBuilder::new(context, info)
-                    .with_chunk_size(self.state_chunk_size)
+                    .with_chunk_size(self.reload.state_chunk_size)
                     .build()
                     .unwrap();
                 CachedItem::new(backed)
@@ -399,7 +408,23 @@ where
     /// Compile and cache the given schema into a BNF sampler.
     async fn compile_bnf_schema(&self, schema: String) -> Result<Arc<BnfSampler>> {
         let mut cache = self.bnf.lock().await;
-        todo!()
+        let cached = match cache.remove(&schema) {
+            Some(cached) => CachedItem::renew(cached),
+            None => {
+                let grammar = Grammar::new(&schema, self.vocab.clone(), GRAMMAR_ARENA_CAPACITY)?;
+                let start_nonterminal = self.reload.bnf.start_nonterminal.clone();
+                let sampler = BnfSampler::new(
+                    grammar,
+                    start_nonterminal,
+                    self.vocab.clone(),
+                    SAMPLER_ARENA_CAPACITY,
+                    self.reload.bnf.enable_bytes_cache,
+                )?;
+                CachedItem::new(sampler)
+            }
+        };
+        cache.insert(schema, cached.clone());
+        Ok(cached.item)
     }
 
     /// Queue an inference task.
@@ -409,7 +434,17 @@ where
         // we must ensure that there is at least one token as the suffix, otherwise the whole slot will loop forever as there is no input
         let (last, tokens) = match [context.prefix, context.suffix].concat().split_last() {
             Some((last, tokens)) => (*last, tokens.to_vec()),
-            None => return SlotResult::Error,
+            None => return SlotResult::Error("empty task is not queued".into()),
+        };
+
+        // compile the BNF schema.
+        let bnf_sampler = if let Some(schema) = context.request.bnf_schema.clone() {
+            match self.compile_bnf_schema(schema).await {
+                Ok(bnf_sampler) => Some(bnf_sampler),
+                Err(err) => return SlotResult::Error(err.to_string()),
+            }
+        } else {
+            None
         };
 
         // find the best idle slot by:
@@ -439,6 +474,7 @@ where
                 GenerateContext {
                     prefix: Default::default(),
                     suffix: Tokens([tokens, vec![last]].concat()),
+                    bnf_sampler,
                     ..context
                 }
                 .into(),
@@ -454,6 +490,7 @@ where
                     GenerateContext {
                         prefix: Tokens(tokens[..len].to_vec()),
                         suffix: Tokens(tokens[len..].to_vec()),
+                        bnf_sampler,
                         ..context
                     }
                     .into(),
@@ -481,6 +518,7 @@ where
                     GenerateContext {
                         prefix: Tokens(tokens[..len].to_vec()),
                         suffix: Tokens(tokens[len..].to_vec()),
+                        bnf_sampler,
                         ..context
                     }
                     .into(),
@@ -498,6 +536,7 @@ where
                     GenerateContext {
                         prefix: Tokens(tokens[..len].to_vec()),
                         suffix: Tokens(tokens[len..].to_vec()),
+                        bnf_sampler,
                         ..context
                     }
                     .into(),
@@ -554,7 +593,7 @@ where
             .iter()
             .filter(|x| matches!(x, Payload::Busy(_)))
             .count();
-        let remain = self.max_runtime_batch - self.max_runtime_batch.min(occupancy);
+        let remain = self.reload.max_runtime_batch - self.reload.max_runtime_batch.min(occupancy);
         let batches = slots
             .iter()
             .enumerate()
@@ -865,6 +904,11 @@ where
     #[inline]
     fn tokenizer(&self) -> Arc<Tokenizer> {
         self.tokenizer.clone()
+    }
+
+    #[inline]
+    fn reload_request(&self) -> Arc<ReloadRequest> {
+        self.reload_request()
     }
 
     #[inline]

@@ -127,7 +127,9 @@ pub struct Tokenizer {
 pub struct BnfOption {
     /// Enable the cache that accelerates the expansion of certain short schemas.
     #[derivative(Default(value = "true"))]
-    pub bytes_cache: bool,
+    pub enable_bytes_cache: bool,
+    #[derivative(Default(value = "\"start\".into()"))]
+    pub start_nonterminal: String,
 }
 
 #[derive(Debug, Default, Clone, Copy, Serialize, Deserialize)]
