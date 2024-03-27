@@ -61,6 +61,7 @@ pub enum FinishReason {
     ContentFilter,
     /// API response still in progress or incomplete.
     #[default]
+    #[serde(untagged)]
     Null,
 }
 
