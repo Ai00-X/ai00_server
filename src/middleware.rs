@@ -145,7 +145,7 @@ impl Environment {
 
 #[derive(Debug, Clone)]
 pub struct RuntimeInfo {
-    pub reload: Arc<ReloadRequest>,
+    pub reload: ReloadRequest,
     pub model: ModelInfo,
     pub tokenizer: Arc<Tokenizer>,
 }
@@ -425,7 +425,7 @@ pub async fn model_route(receiver: Receiver<ThreadRequest>) -> Result<()> {
                     tokio::spawn(async move {
                         let env = &(*env.read().await);
                         if let Environment::Loaded { runtime } = env {
-                            let reload = runtime.reload_request();
+                            let reload = runtime.reload().clone();
                             let model = runtime.info().clone();
                             let tokenizer = runtime.tokenizer();
                             let _ = sender.send(RuntimeInfo {

@@ -272,7 +272,7 @@ pub trait Runner {
     fn info(&self) -> &ModelInfo;
     fn num_batch(&self) -> usize;
     fn tokenizer(&self) -> Arc<Tokenizer>;
-    fn reload_request(&self) -> Arc<ReloadRequest>;
+    fn reload(&self) -> &ReloadRequest;
 
     /// Serialize the model into the given path.
     fn serialize_model(&self, path: PathBuf) -> Result<()>;
@@ -308,7 +308,7 @@ where
     slots: Mutex<Vec<SlotState>>,
     backed: Mutex<Trie<Tokens, CachedItem<B>>>,
     bnf: Mutex<HashMap<String, CachedItem<BnfSampler>>>,
-    reload: Arc<ReloadRequest>,
+    reload: ReloadRequest,
     _penalty_free_tokens: HashSet<u16>,
 }
 
@@ -345,14 +345,14 @@ where
             slots: Mutex::new(slots),
             backed: Mutex::new(Trie::new()),
             bnf: Mutex::new(HashMap::new()),
-            reload: Arc::new(reload),
+            reload,
             _penalty_free_tokens,
         }
     }
 
     #[inline]
-    pub fn reload_request(&self) -> Arc<ReloadRequest> {
-        self.reload.clone()
+    pub fn reload(&self) -> &ReloadRequest {
+        &self.reload
     }
 
     fn serialize_model(&self, path: PathBuf) -> Result<()> {
@@ -907,8 +907,8 @@ where
     }
 
     #[inline]
-    fn reload_request(&self) -> Arc<ReloadRequest> {
-        self.reload_request()
+    fn reload(&self) -> &ReloadRequest {
+        self.reload()
     }
 
     #[inline]
