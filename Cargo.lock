@@ -99,13 +99,14 @@ dependencies = [
  "flume",
  "futures-util",
  "half",
- "itertools 0.12.1",
+ "itertools",
  "jsonwebtoken",
  "log",
  "memmap2",
  "qp-trie",
  "rayon",
  "regex",
+ "rustc-hash",
  "safetensors",
  "salvo",
  "serde",
@@ -401,14 +402,14 @@ dependencies = [
 
 [[package]]
 name = "bnf_sampler"
-version = "0.3.5"
+version = "0.3.6"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "404d764fa72ef3bb7d1ce436fb8ce7039785c2874a636241d28b1d488994f771"
+checksum = "667013af94cdd3653bc2e1975f22173c5161a9ad47a9b4ea86e8c220b7da5727"
 dependencies = [
  "anyhow",
  "bit-set",
  "bnf",
- "itertools 0.11.0",
+ "itertools",
  "lazy_static",
  "memchr",
  "mimalloc",
@@ -1564,15 +1565,6 @@ checksum = "21859b667d66a4c1dacd9df0863b3efb65785474255face87f5bca39dd8407c0"
 dependencies = [
  "memchr",
  "serde",
-]
-
-[[package]]
-name = "itertools"
-version = "0.11.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "b1c173a5686ce8bfa551b3563d0c2170bf24ca44da99c7ca4bfdab5418c3fe57"
-dependencies = [
- "either",
 ]
 
 [[package]]
@@ -3847,7 +3839,7 @@ dependencies = [
  "gpp",
  "half",
  "instant",
- "itertools 0.12.1",
+ "itertools",
  "lazy_static",
  "log",
  "regex",

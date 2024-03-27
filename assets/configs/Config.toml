@@ -15,11 +15,6 @@ turbo = true                                             # Whether to use altern
 [tokenizer]
 path = "assets/tokenizer/rwkv_vocab_v20230424.json" # Path to the tokenizer.
 
-[bnf]
-arena_capacity = 1048576
-bytes_cache = true
-path = "assets/tokenizer/rwkv_vocab_v20230424.txt"
-
 [adapter]
 Auto = {}
 

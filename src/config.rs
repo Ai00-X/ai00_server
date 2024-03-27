@@ -125,12 +125,6 @@ pub struct Tokenizer {
 #[derivative(Default)]
 #[serde(default)]
 pub struct BnfOption {
-    /// Path to the vocab txt file.
-    #[derivative(Default(value = "\"assets/tokenizer/rwkv_vocab_v20230424.txt\".into()"))]
-    pub path: PathBuf,
-    /// The initial capacity for the arena for expanding.
-    #[derivative(Default(value = "1048576"))]
-    pub arena_capacity: usize,
     /// Enable the cache that accelerates the expansion of certain short schemas.
     #[derivative(Default(value = "true"))]
     pub bytes_cache: bool,

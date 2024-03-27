@@ -1,7 +1,7 @@
 use std::{
     borrow::Borrow,
     cmp::Ordering,
-    collections::HashSet,
+    collections::{HashMap, HashSet},
     convert::Infallible,
     future::Future,
     io::Write,
@@ -12,7 +12,7 @@ use std::{
 };
 
 use anyhow::Result;
-use bnf_sampler::vocabulary::Vocabulary;
+use bnf_sampler::{sampler::Sampler as BnfSampler, vocabulary::Vocabulary};
 use flume::{Receiver, Sender};
 use itertools::Itertools;
 use qp_trie::Trie;
@@ -232,31 +232,31 @@ pub struct GenerateContext {
 }
 
 #[derive(Debug)]
-struct CachedItem<B: BackedState> {
-    backed: Arc<B>,
+struct CachedItem<T> {
+    item: Arc<T>,
     instant: Instant,
 }
 
-impl<B: BackedState> CachedItem<B> {
-    pub fn new(backed: B) -> Self {
+impl<T> CachedItem<T> {
+    pub fn new(backed: T) -> Self {
         Self {
-            backed: Arc::new(backed),
+            item: Arc::new(backed),
             instant: Instant::now(),
         }
     }
 
-    pub fn renew(item: CachedItem<B>) -> Self {
+    pub fn renew(cached: CachedItem<T>) -> Self {
         Self {
-            backed: item.backed,
+            item: cached.item,
             instant: Instant::now(),
         }
     }
 }
 
-impl<B: BackedState> Clone for CachedItem<B> {
+impl<T> Clone for CachedItem<T> {
     fn clone(&self) -> Self {
         Self {
-            backed: self.backed.clone(),
+            item: self.item.clone(),
             instant: self.instant,
         }
     }
@@ -283,7 +283,7 @@ pub trait Runner {
     ) -> Pin<Box<dyn Future<Output = Result<()>> + 'a>>;
 
     /// Keep the items in the cache less then [`MAX_CACHE_ITEMS`].
-    fn limit_cache(&self) -> Pin<Box<dyn Future<Output = ()> + Send + '_>>;
+    fn maintain_cache(&self) -> Pin<Box<dyn Future<Output = ()> + Send + '_>>;
 }
 
 #[derive(Debug)]
@@ -300,6 +300,7 @@ where
     vocab: Arc<Vocabulary>,
     slots: Mutex<Vec<SlotState>>,
     backed: Mutex<Trie<Tokens, CachedItem<B>>>,
+    bnf: Mutex<HashMap<String, CachedItem<BnfSampler>>>,
     max_runtime_batch: usize,
     state_chunk_size: usize,
     _penalty_free_tokens: HashSet<u16>,
@@ -313,8 +314,8 @@ where
     StateBuilder: Build<B, Error = Infallible>,
 {
     pub fn new(
-        tokenizer: Arc<Tokenizer>,
-        vocab: Arc<Vocabulary>,
+        tokenizer: Tokenizer,
+        vocab: Vocabulary,
         model: M,
         state: S,
         max_runtime_batch: usize,
@@ -334,10 +335,11 @@ where
         Self {
             model,
             state,
-            tokenizer,
-            vocab,
+            tokenizer: Arc::new(tokenizer),
+            vocab: Arc::new(vocab),
             slots: Mutex::new(slots),
             backed: Mutex::new(Trie::new()),
+            bnf: Mutex::new(HashMap::new()),
             max_runtime_batch,
             state_chunk_size,
             _penalty_free_tokens,
@@ -391,7 +393,13 @@ where
             let key = Tokens(prefix.clone());
             cache.insert(key, reload.clone());
         }
-        (prefix, reload.backed)
+        (prefix, reload.item)
+    }
+
+    /// Compile and cache the given schema into a BNF sampler.
+    async fn compile_bnf_schema(&self, schema: String) -> Result<Arc<BnfSampler>> {
+        let mut cache = self.bnf.lock().await;
+        todo!()
     }
 
     /// Queue an inference task.
@@ -503,7 +511,6 @@ where
     /// This critical section synchronizes `slots` and fills `payloads`.
     async fn prepare(&self, payloads: &mut [Payload]) {
         let mut slots = self.slots.lock().await;
-        let mut cache = self.backed.lock().await;
 
         // sync payloads and slots: kill dead payloads
         for (slot, payload) in slots.iter().zip_eq(payloads.iter_mut()) {
@@ -530,8 +537,13 @@ where
                 let _ = context.sender.send(Token::Embed(embed));
             }
 
+            let mut cache = self.backed.lock().await;
             cache.insert(context.prefix.clone(), CachedItem::new(backed));
-            log::info!("backed slot {} of length {}", batch, context.prefix.len());
+            log::info!(
+                "backed completed slot {} of length {}",
+                batch,
+                context.prefix.len()
+            );
 
             assert!(matches!(slots[batch], SlotState::Busy));
             slots[batch] = SlotState::Idle(context.prefix, Instant::now());
@@ -787,7 +799,12 @@ where
     }
 
     /// Keep the items in the cache less then [`MAX_CACHE_ITEMS`].
-    async fn limit_cache(&self) {
+    async fn maintain_cache(&self) {
+        self.maintain_backed_cache().await;
+        self.maintain_bnf_cache().await;
+    }
+
+    async fn maintain_backed_cache(&self) {
         let mut cache = self.backed.lock().await;
         if cache.count() <= MAX_CACHE_ITEMS {
             return;
@@ -800,6 +817,26 @@ where
             .skip(MAX_CACHE_ITEMS)
         {
             removing.push(tokens.to_owned());
+        }
+
+        for tokens in removing.into_iter() {
+            cache.remove(&tokens);
+        }
+    }
+
+    async fn maintain_bnf_cache(&self) {
+        let mut cache = self.bnf.lock().await;
+        if cache.len() <= MAX_CACHE_ITEMS {
+            return;
+        }
+
+        let mut removing = vec![];
+        for (schema, _) in cache
+            .iter()
+            .sorted_unstable_by_key(|(_, item)| item.instant.elapsed())
+            .skip(MAX_CACHE_ITEMS)
+        {
+            removing.push(schema.to_owned());
         }
 
         for tokens in removing.into_iter() {
@@ -852,8 +889,8 @@ where
     }
 
     #[inline]
-    fn limit_cache(&self) -> Pin<Box<dyn Future<Output = ()> + Send + '_>> {
-        Box::pin(self.limit_cache())
+    fn maintain_cache(&self) -> Pin<Box<dyn Future<Output = ()> + Send + '_>> {
+        Box::pin(self.maintain_cache())
     }
 }
 
@@ -865,7 +902,7 @@ pub async fn run(receiver: Receiver<()>, env: Arc<RwLock<Environment>>) {
         tokio::spawn(async move {
             loop {
                 if let Environment::Loaded { runtime, .. } = &*env.read().await {
-                    runtime.limit_cache().await;
+                    runtime.maintain_cache().await;
                 }
                 tokio::time::sleep(Duration::from_secs(1)).await;
             }

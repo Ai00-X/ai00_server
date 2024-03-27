@@ -10,12 +10,14 @@ use std::{
 };
 
 use anyhow::{bail, Result};
-use bnf_sampler::vocabulary::Vocabulary;
+use bnf_sampler::{utils::U8ArrayWrapper, vocabulary::Vocabulary};
 use derivative::Derivative;
 use flume::{Receiver, Sender};
 use half::f16;
 use itertools::Itertools;
 use memmap2::Mmap;
+use qp_trie::Trie;
+use rustc_hash::FxHashMap;
 use safetensors::SafeTensors;
 
 use salvo::oapi::{ToResponse, ToSchema};
@@ -165,6 +167,8 @@ pub struct GenerateRequest {
     pub stop: Vec<String>,
     /// Bias added to tokens before sampling.
     pub bias: Arc<HashMap<u16, f32>>,
+    /// Optional BNF schema for formatted generation.
+    pub bnf_schema: Option<String>,
     /// Sampler parameters.
     #[derivative(
         Debug = "ignore",
@@ -271,16 +275,30 @@ async fn create_context(adapter: AdapterOption, info: &ModelInfo) -> Result<Cont
     Ok(context)
 }
 
-fn load_tokenizer(path: impl AsRef<Path>) -> Result<Arc<Tokenizer>> {
+fn load_tokenizer(path: impl AsRef<Path>) -> Result<Tokenizer> {
     let file = File::open(path)?;
     let mut reader = BufReader::new(file);
     let mut contents = String::new();
     reader.read_to_string(&mut contents)?;
-    Ok(Tokenizer::new(&contents)?.into())
+    Ok(Tokenizer::new(&contents)?)
 }
 
-fn load_vocab(path: impl AsRef<Path>) -> Result<Arc<Vocabulary>> {
-    todo!()
+fn load_vocab(tokenizer: &Tokenizer) -> Vocabulary {
+    let vocab = tokenizer.bytes_to_token_index();
+    let token_to_id: Trie<_, _> = vocab
+        .iter()
+        .map(|(k, v)| (U8ArrayWrapper(k.clone().into_boxed_slice()), *v as u32))
+        .collect();
+    let id_to_token: FxHashMap<_, _> = vocab.iter().map(|(k, v)| (*v as u32, k.clone())).collect();
+    let id_to_token_string: FxHashMap<_, _> = vocab
+        .iter()
+        .map(|(k, v)| (*v as u32, String::from_utf8_lossy(k).to_string()))
+        .collect();
+    Vocabulary {
+        token_to_id,
+        id_to_token,
+        id_to_token_string,
+    }
 }
 
 async fn load_model<M, S>(
@@ -446,7 +464,7 @@ pub async fn model_route(receiver: Receiver<ThreadRequest>) -> Result<()> {
 
                         let context = create_context(request.adapter, &info).await?;
                         let tokenizer = load_tokenizer(&request.tokenizer_path)?;
-                        let vocab = load_vocab(&request.bnf.path)?;
+                        let vocab = load_vocab(&tokenizer);
                         log::info!("{:#?}", context.adapter.get_info());
 
                         let mut env = env.write().await;
