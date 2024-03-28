@@ -10,11 +10,14 @@ use std::{
 };
 
 use anyhow::{bail, Result};
+use bnf_sampler::{utils::U8ArrayWrapper, vocabulary::Vocabulary};
 use derivative::Derivative;
 use flume::{Receiver, Sender};
 use half::f16;
 use itertools::Itertools;
 use memmap2::Mmap;
+use qp_trie::Trie;
+use rustc_hash::FxHashMap;
 use safetensors::SafeTensors;
 
 use salvo::oapi::{ToResponse, ToSchema};
@@ -33,7 +36,7 @@ use web_rwkv::{
 };
 
 use crate::{
-    config::AdapterOption,
+    config::{AdapterOption, BnfOption},
     run::{GenerateContext, Runner, Runtime, SlotResult, Tokens},
     sampler::{nucleus::NucleusSampler, Sampler},
 };
@@ -117,7 +120,6 @@ pub enum ThreadRequest {
 pub enum Environment {
     Loaded {
         runtime: Box<dyn Runner + Send + Sync>,
-        reload: Box<ReloadRequest>,
     },
     #[default]
     None,
@@ -134,7 +136,7 @@ impl Environment {
                     log::info!("failed to queue task");
                     queue.push(*context);
                 }
-                SlotResult::Error => log::warn!("empty task is not queued"),
+                SlotResult::Error(reason) => log::warn!("queue task failed: {}", reason),
             },
             Environment::None => queue.push(context),
         };
@@ -165,6 +167,8 @@ pub struct GenerateRequest {
     pub stop: Vec<String>,
     /// Bias added to tokens before sampling.
     pub bias: Arc<HashMap<u16, f32>>,
+    /// Optional BNF schema for formatted generation.
+    pub bnf_schema: Option<String>,
     /// Sampler parameters.
     #[derivative(
         Debug = "ignore",
@@ -208,6 +212,8 @@ pub struct ReloadRequest {
     pub embed_device: EmbedDevice,
     /// Path to the tokenizer.
     pub tokenizer_path: PathBuf,
+    /// BNF options.
+    pub bnf: BnfOption,
     /// Adapter selection.
     pub adapter: AdapterOption,
 }
@@ -277,9 +283,27 @@ fn load_tokenizer(path: impl AsRef<Path>) -> Result<Tokenizer> {
     Ok(Tokenizer::new(&contents)?)
 }
 
+fn load_vocab(tokenizer: &Tokenizer) -> Vocabulary {
+    let vocab = tokenizer.bytes_to_token_index();
+    let token_to_id: Trie<_, _> = vocab
+        .iter()
+        .map(|(k, v)| (U8ArrayWrapper(k.clone().into_boxed_slice()), *v as u32))
+        .collect();
+    let id_to_token: FxHashMap<_, _> = vocab.iter().map(|(k, v)| (*v as u32, k.clone())).collect();
+    let id_to_token_string: FxHashMap<_, _> = vocab
+        .iter()
+        .map(|(k, v)| (*v as u32, String::from_utf8_lossy(k).to_string()))
+        .collect();
+    Vocabulary {
+        token_to_id,
+        id_to_token,
+        id_to_token_string,
+    }
+}
+
 async fn load_model<M, S>(
     context: &Context,
-    request: ReloadRequest,
+    request: &ReloadRequest,
     load_type: LoadType,
 ) -> Result<(M, S)>
 where
@@ -298,7 +322,7 @@ where
         turbo,
         embed_device,
         ..
-    } = request;
+    } = request.clone();
 
     let file = File::open(model_path)?;
     let data = unsafe { Mmap::map(&file) }?;
@@ -401,8 +425,8 @@ pub async fn model_route(receiver: Receiver<ThreadRequest>) -> Result<()> {
                     let env = env.clone();
                     tokio::spawn(async move {
                         let env = &(*env.read().await);
-                        if let Environment::Loaded { runtime, reload } = env {
-                            let reload = reload.as_ref().clone();
+                        if let Environment::Loaded { runtime } = env {
+                            let reload = runtime.reload().clone();
                             let model = runtime.info().clone();
                             let tokenizer = runtime.tokenizer();
                             let _ = sender.send(RuntimeInfo {
@@ -440,6 +464,7 @@ pub async fn model_route(receiver: Receiver<ThreadRequest>) -> Result<()> {
 
                         let context = create_context(request.adapter, &info).await?;
                         let tokenizer = load_tokenizer(&request.tokenizer_path)?;
+                        let vocab = load_vocab(&tokenizer);
                         log::info!("{:#?}", context.adapter.get_info());
 
                         let mut env = env.write().await;
@@ -447,53 +472,25 @@ pub async fn model_route(receiver: Receiver<ThreadRequest>) -> Result<()> {
 
                         let runtime: Box<dyn Runner + Send + Sync> = match info.version {
                             ModelVersion::V4 => {
-                                let (model, state) = load_model::<v4::Model<f16>, _>(
-                                    &context,
-                                    request.clone(),
-                                    load_type,
-                                )
-                                .await?;
-                                Box::new(Runtime::new(
-                                    tokenizer,
-                                    model,
-                                    state,
-                                    request.max_runtime_batch,
-                                    request.state_chunk_size,
-                                ))
+                                type M<'a> = v4::Model<'a, f16>;
+                                let (model, state) =
+                                    load_model::<M, _>(&context, &request, load_type).await?;
+                                Box::new(Runtime::new(tokenizer, vocab, model, state, request))
                             }
                             ModelVersion::V5 => {
-                                let (model, state) = load_model::<v5::Model<f16>, _>(
-                                    &context,
-                                    request.clone(),
-                                    load_type,
-                                )
-                                .await?;
-                                Box::new(Runtime::new(
-                                    tokenizer,
-                                    model,
-                                    state,
-                                    request.max_runtime_batch,
-                                    request.state_chunk_size,
-                                ))
+                                type M<'a> = v5::Model<'a, f16>;
+                                let (model, state) =
+                                    load_model::<M, _>(&context, &request, load_type).await?;
+                                Box::new(Runtime::new(tokenizer, vocab, model, state, request))
                             }
                             ModelVersion::V6 => {
-                                let (model, state) = load_model::<v6::Model<f16>, _>(
-                                    &context,
-                                    request.clone(),
-                                    load_type,
-                                )
-                                .await?;
-                                Box::new(Runtime::new(
-                                    tokenizer,
-                                    model,
-                                    state,
-                                    request.max_runtime_batch,
-                                    request.state_chunk_size,
-                                ))
+                                type M<'a> = v6::Model<'a, f16>;
+                                let (model, state) =
+                                    load_model::<M, _>(&context, &request, load_type).await?;
+                                Box::new(Runtime::new(tokenizer, vocab, model, state, request))
                             }
                         };
-                        let reload = Box::new(request);
-                        *env = Environment::Loaded { runtime, reload };
+                        *env = Environment::Loaded { runtime };
 
                         let _ = sender.send(());
                         anyhow::Ok(())
@@ -543,6 +540,7 @@ pub async fn model_route(receiver: Receiver<ThreadRequest>) -> Result<()> {
                         model_text: Default::default(),
                         buffer: Default::default(),
                         model_tokens: Default::default(),
+                        bnf_sampler: None,
                         request,
                         sender: token_sender,
                     };

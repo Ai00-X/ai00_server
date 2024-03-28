@@ -15,6 +15,7 @@ pub struct Config {
     pub model: Model,
     pub lora: Vec<Lora>,
     pub tokenizer: Tokenizer,
+    pub bnf: BnfOption,
     pub adapter: AdapterOption,
     pub listen: ListenerOption,
 }
@@ -41,6 +42,7 @@ impl TryFrom<Config> for ReloadRequest {
             tokenizer: Tokenizer {
                 path: tokenizer_path,
             },
+            bnf,
             adapter,
             ..
         } = value;
@@ -62,6 +64,7 @@ impl TryFrom<Config> for ReloadRequest {
             max_batch,
             embed_device,
             tokenizer_path,
+            bnf,
             adapter,
         })
     }
@@ -72,14 +75,13 @@ impl TryFrom<Config> for ReloadRequest {
 #[serde(default)]
 pub struct Model {
     /// Path to the folder containing all models.
-    #[derivative(Default(value = "String::from(\"assets/models\").into()"))]
+    #[derivative(Default(value = "\"assets/models\".into()"))]
     pub model_path: PathBuf,
     /// Name of the model.
     pub model_name: PathBuf,
     /// Specify layers that needs to be quantized.
     pub quant: usize,
     /// Quantization type (Int8 or NF4).
-    #[derivative(Default(value = "Quant::Int8"))]
     pub quant_type: Quant,
     /// Whether to use alternative GEMM kernel to speed-up long prompts.
     #[derivative(Default(value = "true"))]
@@ -111,10 +113,24 @@ pub struct Lora {
     pub alpha: f32,
 }
 
-#[derive(Debug, Default, Clone, Serialize, Deserialize)]
+#[derive(Debug, Derivative, Clone, Serialize, Deserialize)]
+#[derivative(Default)]
 #[serde(default)]
 pub struct Tokenizer {
+    #[derivative(Default(value = "\"assets/tokenizer/rwkv_vocab_v20230424.json\".into()"))]
     pub path: PathBuf,
+}
+
+#[derive(Debug, Derivative, Clone, Serialize, Deserialize)]
+#[derivative(Default)]
+#[serde(default)]
+pub struct BnfOption {
+    /// Enable the cache that accelerates the expansion of certain short schemas.
+    #[derivative(Default(value = "true"))]
+    pub enable_bytes_cache: bool,
+    /// The initial nonterminal of the BNF schemas.
+    #[derivative(Default(value = "\"start\".into()"))]
+    pub start_nonterminal: String,
 }
 
 #[derive(Debug, Default, Clone, Copy, Serialize, Deserialize)]
@@ -125,8 +141,7 @@ pub enum AdapterOption {
     Manual(usize),
 }
 
-#[derive(Debug, Derivative, Clone, Serialize, Deserialize)]
-#[derivative(Default)]
+#[derive(Debug, Default, Clone, Serialize, Deserialize)]
 pub struct AppKey {
     pub app_id: String,
     pub secret_key: String,

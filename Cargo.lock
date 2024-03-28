@@ -90,6 +90,8 @@ name = "ai00_server"
 version = "0.3.23"
 dependencies = [
  "anyhow",
+ "bit-set",
+ "bnf_sampler",
  "bytemuck",
  "cbor4ii",
  "clap",
@@ -105,6 +107,7 @@ dependencies = [
  "qp-trie",
  "rayon",
  "regex",
+ "rustc-hash",
  "safetensors",
  "salvo",
  "serde",
@@ -383,6 +386,38 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "3078c7629b62d3f0439517fa394996acacc5cbc91c5a20d8c658e77abd503a71"
 dependencies = [
  "generic-array",
+]
+
+[[package]]
+name = "bnf"
+version = "0.5.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "14c09ea5795b3dd735ff47c4b8adf64c46e3ce056fa3c4880b865a352e4c40a2"
+dependencies = [
+ "getrandom",
+ "nom",
+ "rand",
+ "serde",
+ "serde_json",
+]
+
+[[package]]
+name = "bnf_sampler"
+version = "0.3.6"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "667013af94cdd3653bc2e1975f22173c5161a9ad47a9b4ea86e8c220b7da5727"
+dependencies = [
+ "anyhow",
+ "bit-set",
+ "bnf",
+ "itertools",
+ "lazy_static",
+ "memchr",
+ "mimalloc",
+ "nohash-hasher",
+ "qp-trie",
+ "regex",
+ "rustc-hash",
 ]
 
 [[package]]
@@ -1631,6 +1666,16 @@ dependencies = [
 ]
 
 [[package]]
+name = "libmimalloc-sys"
+version = "0.1.35"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "3979b5c37ece694f1f5e51e7ecc871fdb0f517ed04ee45f88d15d6d553cb9664"
+dependencies = [
+ "cc",
+ "libc",
+]
+
+[[package]]
 name = "linux-raw-sys"
 version = "0.4.13"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1689,6 +1734,15 @@ dependencies = [
  "log",
  "objc",
  "paste",
+]
+
+[[package]]
+name = "mimalloc"
+version = "0.1.39"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "fa01922b5ea280a911e323e4d2fd24b7fe5cc4042e0d2cda3c40775cdc4bdc9c"
+dependencies = [
+ "libmimalloc-sys",
 ]
 
 [[package]]
@@ -1816,6 +1870,12 @@ dependencies = [
  "cfg_aliases",
  "libc",
 ]
+
+[[package]]
+name = "nohash-hasher"
+version = "0.2.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "2bf50223579dc7cdcfb3bfcacf7069ff68243f8c363f62ffa99cf000a6b9c451"
 
 [[package]]
 name = "nom"

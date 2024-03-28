@@ -31,6 +31,8 @@ pub struct CompletionRequest {
     #[serde(default)]
     #[serde(alias = "logit_bias")]
     bias: HashMap<u16, f32>,
+    #[serde(default)]
+    bnf_schema: Option<String>,
     #[serde(flatten)]
     sampler: SamplerParams,
 }
@@ -43,6 +45,7 @@ impl Default for CompletionRequest {
             stop: Array::default(),
             stream: false,
             bias: HashMap::new(),
+            bnf_schema: Default::default(),
             sampler: Default::default(),
         }
     }
@@ -60,6 +63,7 @@ impl From<CompletionRequest> for GenerateRequest {
             stop,
             sampler,
             bias,
+            bnf_schema,
             ..
         } = value;
 
@@ -75,6 +79,7 @@ impl From<CompletionRequest> for GenerateRequest {
             stop,
             sampler,
             bias,
+            bnf_schema,
             ..Default::default()
         }
     }

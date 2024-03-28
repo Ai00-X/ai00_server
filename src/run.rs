@@ -12,6 +12,7 @@ use std::{
 };
 
 use anyhow::Result;
+use bnf_sampler::{grammar::Grammar, sampler::AcceptTokenResult, vocabulary::Vocabulary};
 use flume::{Receiver, Sender};
 use itertools::Itertools;
 use qp_trie::Trie;
@@ -24,11 +25,16 @@ use web_rwkv::{
     tokenizer::Tokenizer,
 };
 
-use crate::middleware::{Environment, FinishReason, GenerateRequest, Token, TokenCounter};
+use crate::{
+    middleware::{Environment, FinishReason, GenerateRequest, ReloadRequest, Token, TokenCounter},
+    sampler::{bnf::BnfSampler, Transformer},
+};
 
 const PENALTY_FREE_LIST: [&str; 5] = ["\n", ",", ".", "\u{002c}", "\u{002f}"];
 const PROMPT_CACHE_TOKENS: usize = 32;
 const MAX_CACHE_ITEMS: usize = 256;
+const SAMPLER_ARENA_CAPACITY: usize = 1048576;
+const GRAMMAR_ARENA_CAPACITY: usize = 1024;
 
 #[derive(Debug)]
 pub enum SlotResult {
@@ -39,7 +45,7 @@ pub enum SlotResult {
     /// There is no idle slot left.
     Failure(Box<GenerateContext>),
     /// An error occurred.
-    Error,
+    Error(String),
 }
 
 #[derive(Debug)]
@@ -224,6 +230,8 @@ pub struct GenerateContext {
     pub buffer: Vec<u8>,
     /// Tokens that are output by the model.
     pub model_tokens: Vec<u16>,
+    /// Compiled BNF schema, if any.
+    pub bnf_sampler: Option<Arc<RwLock<BnfSampler>>>,
     /// Generate request provided by the caller.
     pub request: GenerateRequest,
     /// To send back generated tokens.
@@ -231,31 +239,31 @@ pub struct GenerateContext {
 }
 
 #[derive(Debug)]
-struct CachedItem<B: BackedState> {
-    backed: Arc<B>,
+struct CachedItem<T> {
+    item: Arc<T>,
     instant: Instant,
 }
 
-impl<B: BackedState> CachedItem<B> {
-    pub fn new(backed: B) -> Self {
+impl<T> CachedItem<T> {
+    pub fn new(backed: T) -> Self {
         Self {
-            backed: Arc::new(backed),
+            item: Arc::new(backed),
             instant: Instant::now(),
         }
     }
 
-    pub fn renew(item: CachedItem<B>) -> Self {
+    pub fn renew(cached: CachedItem<T>) -> Self {
         Self {
-            backed: item.backed,
+            item: cached.item,
             instant: Instant::now(),
         }
     }
 }
 
-impl<B: BackedState> Clone for CachedItem<B> {
+impl<T> Clone for CachedItem<T> {
     fn clone(&self) -> Self {
         Self {
-            backed: self.backed.clone(),
+            item: self.item.clone(),
             instant: self.instant,
         }
     }
@@ -265,6 +273,7 @@ pub trait Runner {
     fn info(&self) -> &ModelInfo;
     fn num_batch(&self) -> usize;
     fn tokenizer(&self) -> Arc<Tokenizer>;
+    fn reload(&self) -> &ReloadRequest;
 
     /// Serialize the model into the given path.
     fn serialize_model(&self, path: PathBuf) -> Result<()>;
@@ -282,7 +291,7 @@ pub trait Runner {
     ) -> Pin<Box<dyn Future<Output = Result<()>> + 'a>>;
 
     /// Keep the items in the cache less then [`MAX_CACHE_ITEMS`].
-    fn limit_cache(&self) -> Pin<Box<dyn Future<Output = ()> + Send + '_>>;
+    fn maintain_cache(&self) -> Pin<Box<dyn Future<Output = ()> + Send + '_>>;
 }
 
 #[derive(Debug)]
@@ -296,10 +305,10 @@ where
     model: M,
     state: S,
     tokenizer: Arc<Tokenizer>,
+    vocab: Arc<Vocabulary>,
     slots: Mutex<Vec<SlotState>>,
     backed: Mutex<Trie<Tokens, CachedItem<B>>>,
-    max_runtime_batch: usize,
-    state_chunk_size: usize,
+    reload: ReloadRequest,
     _penalty_free_tokens: HashSet<u16>,
 }
 
@@ -312,10 +321,10 @@ where
 {
     pub fn new(
         tokenizer: Tokenizer,
+        vocab: Vocabulary,
         model: M,
         state: S,
-        max_runtime_batch: usize,
-        state_chunk_size: usize,
+        reload: ReloadRequest,
     ) -> Self {
         let slots = (0..state.num_batch())
             .map(|_| SlotState::default())
@@ -332,12 +341,17 @@ where
             model,
             state,
             tokenizer: Arc::new(tokenizer),
+            vocab: Arc::new(vocab),
             slots: Mutex::new(slots),
             backed: Mutex::new(Trie::new()),
-            max_runtime_batch,
-            state_chunk_size,
+            reload,
             _penalty_free_tokens,
         }
+    }
+
+    #[inline]
+    pub fn reload(&self) -> &ReloadRequest {
+        &self.reload
     }
 
     fn serialize_model(&self, path: PathBuf) -> Result<()> {
@@ -377,7 +391,7 @@ where
                 let context = self.model.context();
                 let info = self.model.info();
                 let backed = StateBuilder::new(context, info)
-                    .with_chunk_size(self.state_chunk_size)
+                    .with_chunk_size(self.reload.state_chunk_size)
                     .build()
                     .unwrap();
                 CachedItem::new(backed)
@@ -387,7 +401,21 @@ where
             let key = Tokens(prefix.clone());
             cache.insert(key, reload.clone());
         }
-        (prefix, reload.backed)
+        (prefix, reload.item)
+    }
+
+    /// Compile and cache the given schema into a BNF sampler.
+    async fn compile_bnf_schema(&self, schema: String) -> Result<BnfSampler> {
+        let grammar = Grammar::new(&schema, self.vocab.clone(), GRAMMAR_ARENA_CAPACITY)?;
+        let start_nonterminal = self.reload.bnf.start_nonterminal.clone();
+        let sampler = bnf_sampler::sampler::Sampler::new(
+            grammar,
+            start_nonterminal,
+            self.vocab.clone(),
+            SAMPLER_ARENA_CAPACITY,
+            self.reload.bnf.enable_bytes_cache,
+        )?;
+        Ok(BnfSampler::new(sampler))
     }
 
     /// Queue an inference task.
@@ -397,7 +425,17 @@ where
         // we must ensure that there is at least one token as the suffix, otherwise the whole slot will loop forever as there is no input
         let (last, tokens) = match [context.prefix, context.suffix].concat().split_last() {
             Some((last, tokens)) => (*last, tokens.to_vec()),
-            None => return SlotResult::Error,
+            None => return SlotResult::Error("empty task is not queued".into()),
+        };
+
+        // compile the BNF schema.
+        let bnf_sampler = if let Some(schema) = context.request.bnf_schema.clone() {
+            match self.compile_bnf_schema(schema).await {
+                Ok(bnf_sampler) => Some(Arc::new(RwLock::new(bnf_sampler))),
+                Err(err) => return SlotResult::Error(err.to_string()),
+            }
+        } else {
+            None
         };
 
         // find the best idle slot by:
@@ -427,6 +465,7 @@ where
                 GenerateContext {
                     prefix: Default::default(),
                     suffix: Tokens([tokens, vec![last]].concat()),
+                    bnf_sampler,
                     ..context
                 }
                 .into(),
@@ -442,6 +481,7 @@ where
                     GenerateContext {
                         prefix: Tokens(tokens[..len].to_vec()),
                         suffix: Tokens(tokens[len..].to_vec()),
+                        bnf_sampler,
                         ..context
                     }
                     .into(),
@@ -469,6 +509,7 @@ where
                     GenerateContext {
                         prefix: Tokens(tokens[..len].to_vec()),
                         suffix: Tokens(tokens[len..].to_vec()),
+                        bnf_sampler,
                         ..context
                     }
                     .into(),
@@ -486,6 +527,7 @@ where
                     GenerateContext {
                         prefix: Tokens(tokens[..len].to_vec()),
                         suffix: Tokens(tokens[len..].to_vec()),
+                        bnf_sampler,
                         ..context
                     }
                     .into(),
@@ -499,7 +541,6 @@ where
     /// This critical section synchronizes `slots` and fills `payloads`.
     async fn prepare(&self, payloads: &mut [Payload]) {
         let mut slots = self.slots.lock().await;
-        let mut cache = self.backed.lock().await;
 
         // sync payloads and slots: kill dead payloads
         for (slot, payload) in slots.iter().zip_eq(payloads.iter_mut()) {
@@ -526,8 +567,13 @@ where
                 let _ = context.sender.send(Token::Embed(embed));
             }
 
+            let mut cache = self.backed.lock().await;
             cache.insert(context.prefix.clone(), CachedItem::new(backed));
-            log::info!("backed slot {} of length {}", batch, context.prefix.len());
+            log::info!(
+                "backed completed slot {} of length {}",
+                batch,
+                context.prefix.len()
+            );
 
             assert!(matches!(slots[batch], SlotState::Busy));
             slots[batch] = SlotState::Idle(context.prefix, Instant::now());
@@ -538,7 +584,7 @@ where
             .iter()
             .filter(|x| matches!(x, Payload::Busy(_)))
             .count();
-        let remain = self.max_runtime_batch - self.max_runtime_batch.min(occupancy);
+        let remain = self.reload.max_runtime_batch - self.reload.max_runtime_batch.min(occupancy);
         let batches = slots
             .iter()
             .enumerate()
@@ -595,6 +641,7 @@ where
                 Payload::Busy(context) => match output {
                     ModelOutput::None => None,
                     ModelOutput::Last(data) => Some((
+                        context.bnf_sampler.clone(),
                         context.request.sampler.clone(),
                         context.request.bias.clone(),
                         data,
@@ -605,10 +652,14 @@ where
             })
             .map(|bundle| async move {
                 match bundle {
-                    Some((sampler, bias, mut data)) => {
+                    Some((bnf, sampler, bias, mut data)) => {
                         sampler.read().await.transform(&mut data);
                         for (token, bias) in bias.iter() {
                             data[*token as usize] += *bias
+                        }
+                        if let Some(bnf) = bnf {
+                            let bnf = bnf.read().await;
+                            bnf.transform(&mut data);
                         }
                         Some(data)
                     }
@@ -728,6 +779,20 @@ where
                 done = true;
             };
 
+            // update the BNF state
+            let mut exhausted = false;
+            if let Some(bnf) = context.bnf_sampler.clone() {
+                let mut bnf = bnf.write().await;
+                match bnf.update(token) {
+                    AcceptTokenResult::Continue => {}
+                    AcceptTokenResult::End => exhausted = true,
+                    AcceptTokenResult::Failed => {
+                        log::warn!("slot {batch} bnf failure");
+                        exhausted = true;
+                    }
+                }
+            }
+
             // here we detect if there is a stop word in our buffer
             let ((head, tail), stop_matched) = context
                 .request
@@ -765,7 +830,7 @@ where
 
             if context.sender.is_disconnected() {
                 done = true;
-            } else if stop_matched {
+            } else if exhausted || stop_matched {
                 let output = String::from_utf8_lossy(head);
                 let _ = context.sender.send(Token::Content(output.into()));
                 finish(FinishReason::Stop);
@@ -783,7 +848,7 @@ where
     }
 
     /// Keep the items in the cache less then [`MAX_CACHE_ITEMS`].
-    async fn limit_cache(&self) {
+    async fn maintain_cache(&self) {
         let mut cache = self.backed.lock().await;
         if cache.count() <= MAX_CACHE_ITEMS {
             return;
@@ -827,6 +892,11 @@ where
     }
 
     #[inline]
+    fn reload(&self) -> &ReloadRequest {
+        self.reload()
+    }
+
+    #[inline]
     fn serialize_model(&self, path: PathBuf) -> Result<()> {
         Runtime::serialize_model(self, path)
     }
@@ -848,8 +918,8 @@ where
     }
 
     #[inline]
-    fn limit_cache(&self) -> Pin<Box<dyn Future<Output = ()> + Send + '_>> {
-        Box::pin(self.limit_cache())
+    fn maintain_cache(&self) -> Pin<Box<dyn Future<Output = ()> + Send + '_>> {
+        Box::pin(self.maintain_cache())
     }
 }
 
@@ -861,7 +931,7 @@ pub async fn run(receiver: Receiver<()>, env: Arc<RwLock<Environment>>) {
         tokio::spawn(async move {
             loop {
                 if let Environment::Loaded { runtime, .. } = &*env.read().await {
-                    runtime.limit_cache().await;
+                    runtime.maintain_cache().await;
                 }
                 tokio::time::sleep(Duration::from_secs(1)).await;
             }

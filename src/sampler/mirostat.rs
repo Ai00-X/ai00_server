@@ -63,6 +63,10 @@ impl MirostatSampler {
 }
 
 impl Sampler for MirostatSampler {
+    fn init(&mut self, _model_tokens: &[u16]) {}
+
+    fn transform(&self, _output: &mut [f32]) {}
+
     fn sample(&mut self, probs: &[f32]) -> u16 {
         let sorted = probs
             .iter()
