@@ -27,7 +27,7 @@ use web_rwkv::{
 
 use crate::{
     middleware::{Environment, FinishReason, GenerateRequest, ReloadRequest, Token, TokenCounter},
-    sampler::bnf::BnfSampler,
+    sampler::{bnf::BnfSampler, Transformer},
 };
 
 const PENALTY_FREE_LIST: [&str; 5] = ["\n", ",", ".", "\u{002c}", "\u{002f}"];
@@ -415,7 +415,7 @@ where
             SAMPLER_ARENA_CAPACITY,
             self.reload.bnf.enable_bytes_cache,
         )?;
-        BnfSampler::new(sampler)
+        Ok(BnfSampler::new(sampler))
     }
 
     /// Queue an inference task.
@@ -659,10 +659,7 @@ where
                         }
                         if let Some(bnf) = bnf {
                             let bnf = bnf.read().await;
-                            data.iter_mut()
-                                .enumerate()
-                                .filter(|&(token, _)| !bnf.current_token_ids().contains(token))
-                                .for_each(|(_, logits)| *logits = f32::MIN)
+                            bnf.transform(&mut data);
                         }
                         Some(data)
                     }
@@ -786,7 +783,7 @@ where
             let mut exhausted = false;
             if let Some(bnf) = context.bnf_sampler.clone() {
                 let mut bnf = bnf.write().await;
-                match bnf.accept_a_token(Some(token as u32))? {
+                match bnf.update(token) {
                     AcceptTokenResult::Continue => {}
                     AcceptTokenResult::End => exhausted = true,
                     AcceptTokenResult::Failed => {
@@ -794,7 +791,6 @@ where
                         exhausted = true;
                     }
                 }
-                bnf.update()?;
             }
 
             // here we detect if there is a stop word in our buffer
