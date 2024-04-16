@@ -3,7 +3,7 @@ use std::time::Duration;
 use futures_util::StreamExt;
 use salvo::prelude::*;
 use serde::Serialize;
-use web_rwkv::model::ModelInfo;
+use web_rwkv::runtime::model::ModelInfo;
 
 use super::*;
 use crate::{

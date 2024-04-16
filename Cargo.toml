@@ -52,8 +52,8 @@ web-rwkv-converter = "0.1.1"
 zip-extract = "0.1"
 
 [dependencies.web-rwkv]
-# path = "../web-rwkv"
-version = "0.6.36"
+path = "../web-rwkv"
+# version = "0.7.1"
 
 [dependencies.salvo]
 default-features = true

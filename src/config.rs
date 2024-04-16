@@ -5,7 +5,7 @@ use std::{
 
 use derivative::Derivative;
 use serde::{Deserialize, Serialize};
-use web_rwkv::model::{EmbedDevice, Quant};
+use web_rwkv::runtime::model::{EmbedDevice, Quant};
 
 use crate::{build_path, middleware::ReloadRequest};
 
@@ -31,9 +31,7 @@ impl TryFrom<Config> for ReloadRequest {
                     model_path,
                     quant,
                     quant_type,
-                    turbo,
                     token_chunk_size,
-                    state_chunk_size,
                     max_runtime_batch,
                     max_batch,
                     embed_device,
@@ -57,9 +55,7 @@ impl TryFrom<Config> for ReloadRequest {
             lora,
             quant,
             quant_type,
-            turbo,
             token_chunk_size,
-            state_chunk_size,
             max_runtime_batch,
             max_batch,
             embed_device,
@@ -83,15 +79,9 @@ pub struct Model {
     pub quant: usize,
     /// Quantization type (Int8 or NF4).
     pub quant_type: Quant,
-    /// Whether to use alternative GEMM kernel to speed-up long prompts.
-    #[derivative(Default(value = "true"))]
-    pub turbo: bool,
     /// Maximum tokens to be processed in parallel at once.
     #[derivative(Default(value = "128"))]
     pub token_chunk_size: usize,
-    /// The chunk size of layers in model state.
-    #[derivative(Default(value = "4"))]
-    pub state_chunk_size: usize,
     /// Maximum number of batches that are active at once.
     #[derivative(Default(value = "8"))]
     pub max_runtime_batch: usize,
