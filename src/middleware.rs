@@ -382,7 +382,7 @@ async fn load_runtime(
                     Runtime::new(context, builder, reload, tokenizer, vocab).await
                 }
                 ModelVersion::V5 => {
-                    let seed: Seed<_, v5::Model> = Seed::<_, _>::new(&context);
+                    let seed: Seed<_, v5::Model> = Seed::new(&context);
                     let model = seed.deserialize(&mut deserializer)?;
                     let builder = v5::ModelJobBuilder::new(model, reload.max_batch);
                     Runtime::new(context, builder, reload, tokenizer, vocab).await
