@@ -13,12 +13,13 @@ use flume::{Receiver, Sender};
 use half::f16;
 use itertools::Itertools;
 use qp_trie::Trie;
+use serde::Serialize;
 use tokio::sync::{Mutex, RwLock};
 use web_rwkv::{
     context::Context,
     runtime::{
         infer::{InferChunk, InferInfo, InferInput, InferInputBatch, InferOption, InferOutput},
-        model::{ModelInfo, ModelRuntime, ModelState},
+        model::{ModelInfo, ModelRuntime, State},
         softmax::softmax,
         Job, JobBuilder, JobRuntime, Submission,
     },
@@ -262,11 +263,39 @@ impl<T> Clone for CachedItem<T> {
     }
 }
 
+struct Model<M>(M);
+
+trait ModelSerialize {
+    fn serialize(&self, file: std::fs::File) -> Result<()>;
+}
+
+impl<M: Serialize> ModelSerialize for Model<M> {
+    fn serialize(&self, file: std::fs::File) -> Result<()> {
+        use cbor4ii::{core::enc::Write, serde::Serializer};
+        use std::{fs::File, io::Write as _};
+
+        struct FileWriter(File);
+        impl Write for FileWriter {
+            type Error = std::io::Error;
+            fn push(&mut self, input: &[u8]) -> Result<(), Self::Error> {
+                self.0.write_all(input)
+            }
+        }
+
+        let file = FileWriter(file);
+        let mut serializer = Serializer::new(file);
+        self.0.serialize(&mut serializer)?;
+
+        Ok(())
+    }
+}
+
 pub struct Runtime {
     context: Context,
     reload: ReloadRequest,
     info: ModelInfo,
-    state: Box<dyn ModelState + Send + Sync>,
+    state: Box<dyn State + Send + Sync>,
+    model: Box<dyn ModelSerialize + Send + Sync>,
     runtime: JobRuntime<InferInput, InferOutput<f16>>,
     tokenizer: Arc<Tokenizer>,
     vocab: Arc<Vocabulary>,
@@ -291,7 +320,8 @@ impl Runtime {
             .collect();
 
         let info = builder.info();
-        let state = builder.state();
+        let state = Box::new(builder.state());
+        let model = Box::new(Model(builder.model()));
         let runtime = JobRuntime::new(builder).await;
 
         Self {
@@ -299,6 +329,7 @@ impl Runtime {
             reload,
             info,
             state,
+            model,
             runtime,
             tokenizer: Arc::new(tokenizer),
             vocab: Arc::new(vocab),
@@ -327,8 +358,9 @@ impl Runtime {
         self.tokenizer.clone()
     }
 
-    pub fn serialize_model(&self, _path: PathBuf) -> Result<()> {
-        todo!()
+    pub fn serialize_model(&self, path: PathBuf) -> Result<()> {
+        let file = std::fs::File::create(path)?;
+        self.model.serialize(file)
     }
 
     /// Search for the longest common prefix in the memory cache and checkout the state from that point.

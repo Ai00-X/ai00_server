@@ -17,7 +17,7 @@ use qp_trie::Trie;
 use rustc_hash::FxHashMap;
 use safetensors::SafeTensors;
 use salvo::oapi::{ToResponse, ToSchema};
-use serde::{Deserialize, Serialize};
+use serde::{de::DeserializeSeed, Deserialize, Serialize};
 use tokio::{fs::File, io::BufReader};
 use tokio::{
     io::AsyncReadExt,
@@ -32,6 +32,7 @@ use web_rwkv::{
         },
         v4, v5, v6,
     },
+    tensor::serialization::Seed,
     tokenizer::Tokenizer,
     wgpu::{Backends, PowerPreference},
 };
@@ -365,7 +366,35 @@ async fn load_runtime(
                 }
             }
         }
-        LoadType::Prefab => todo!(),
+        LoadType::Prefab => {
+            use cbor4ii::{core::utils::SliceReader, serde::Deserializer};
+
+            let reader = SliceReader::new(&data);
+            let mut deserializer = Deserializer::new(reader);
+
+            let context = context.clone();
+            let reload = reload.clone();
+            match info.version {
+                ModelVersion::V4 => {
+                    let seed: Seed<_, v4::Model> = Seed::new(&context);
+                    let model = seed.deserialize(&mut deserializer)?;
+                    let builder = v4::ModelJobBuilder::new(model, reload.max_batch);
+                    Runtime::new(context, builder, reload, tokenizer, vocab).await
+                }
+                ModelVersion::V5 => {
+                    let seed: Seed<_, v5::Model> = Seed::<_, _>::new(&context);
+                    let model = seed.deserialize(&mut deserializer)?;
+                    let builder = v5::ModelJobBuilder::new(model, reload.max_batch);
+                    Runtime::new(context, builder, reload, tokenizer, vocab).await
+                }
+                ModelVersion::V6 => {
+                    let seed: Seed<_, v6::Model> = Seed::new(&context);
+                    let model = seed.deserialize(&mut deserializer)?;
+                    let builder = v6::ModelJobBuilder::new(model, reload.max_batch);
+                    Runtime::new(context, builder, reload, tokenizer, vocab).await
+                }
+            }
+        }
     };
 
     Ok(runtime)
