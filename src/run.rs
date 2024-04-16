@@ -294,8 +294,8 @@ pub struct Runtime {
     context: Context,
     reload: ReloadRequest,
     info: ModelInfo,
-    state: Box<dyn State + Send + Sync>,
-    model: Box<dyn ModelSerialize + Send + Sync>,
+    state: Arc<dyn State + Send + Sync>,
+    model: Arc<dyn ModelSerialize + Send + Sync>,
     runtime: JobRuntime<InferInput, InferOutput<f16>>,
     tokenizer: Arc<Tokenizer>,
     vocab: Arc<Vocabulary>,
@@ -320,8 +320,8 @@ impl Runtime {
             .collect();
 
         let info = builder.info();
-        let state = Box::new(builder.state());
-        let model = Box::new(Model(builder.model()));
+        let state = Arc::new(builder.state());
+        let model = Arc::new(Model(builder.model()));
         let runtime = JobRuntime::new(builder).await;
 
         Self {
@@ -358,9 +358,13 @@ impl Runtime {
         self.tokenizer.clone()
     }
 
-    pub fn serialize_model(&self, path: PathBuf) -> Result<()> {
-        let file = std::fs::File::create(path)?;
-        self.model.serialize(file)
+    pub async fn serialize_model(&self, path: PathBuf) -> Result<()> {
+        let model = self.model.clone();
+        let handle = tokio::task::spawn_blocking(move || {
+            let file = std::fs::File::create(path)?;
+            model.serialize(file)
+        });
+        handle.await?
     }
 
     /// Search for the longest common prefix in the memory cache and checkout the state from that point.

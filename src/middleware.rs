@@ -560,7 +560,7 @@ pub async fn model_route(receiver: Receiver<ThreadRequest>) -> Result<()> {
                         let env = &(*env.read().await);
                         if let Environment::Loaded(runtime) = env {
                             log::info!("serializing model into {:?}", &request.model_path);
-                            let _ = match runtime.serialize_model(request.model_path) {
+                            let _ = match runtime.serialize_model(request.model_path).await {
                                 Ok(()) => sender.send(true),
                                 Err(err) => {
                                     log::error!("{}", err);
