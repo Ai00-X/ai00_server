@@ -312,8 +312,8 @@ impl Runtime {
         vocab: Vocabulary,
     ) -> Self
     where
-        J: Job<Input = InferChunk, Output = InferOutput<f16>>,
-        B: JobBuilder<J, Seed = InferInfo> + ModelRuntime,
+        J: Job<Info = InferInfo, Input = InferChunk, Output = InferOutput<f16>>,
+        B: JobBuilder<J, Info = InferInfo> + ModelRuntime,
     {
         let slots = (0..reload.max_batch)
             .map(|_| SlotState::default())
