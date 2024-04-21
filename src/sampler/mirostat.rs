@@ -45,10 +45,13 @@ impl MirostatSampler {
         let mut num = 0.0;
         let mut den = 0.0;
         for i in 0..self.params.threshold {
-            let b = probs[i] / probs[i + 1];
-            let t = (i + 2) as f32 / (i + 1) as f32;
-            num += b.ln() * t.ln();
-            den += t.ln().powi(2);
+            if probs[i] < 0.0625 / probs.len() as f32 {
+                break;
+            }
+            let b = probs[i].ln() - probs[i + 1].ln();
+            let t = ((i + 2) as f32).ln() - ((i + 1) as f32).ln();
+            num += b * t;
+            den += t * t;
         }
         num / den
     }
@@ -58,7 +61,7 @@ impl MirostatSampler {
         let tau = self.state.max_surprise;
         let eps = s - 1.0;
         let k = (eps * 2.0_f32.powf(tau) / (1.0 - n.powf(-eps))).powf(1.0 / s);
-        k.round() as usize
+        k.ceil().clamp(0.0, n - 1.0) as usize
     }
 }
 
@@ -80,8 +83,7 @@ impl Sampler for MirostatSampler {
         let sorted_probs = sorted.iter().map(|x| x.2).collect_vec();
 
         let s = self.estimate_s(&sorted_probs);
-        let k = self.compute_k(&sorted_probs, s) + 1;
-        let k = k.min(probs.len() - 1);
+        let k = self.compute_k(&sorted_probs, s);
 
         let sum = sorted.get(k).map(|&(_, cum, _)| cum).unwrap_or_default();
         let rand = fastrand::f32() * sum;
