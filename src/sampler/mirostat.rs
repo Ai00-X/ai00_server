@@ -102,16 +102,16 @@ impl Sampler for MirostatSampler {
             .iter()
             .map(|&x| (x, -x.log2()))
             .enumerate()
-            .sorted_unstable_by(|(_, (_, x)), (_, (_, y))| x.total_cmp(y))
-            .filter(|&(_, (_, x))| x <= self.state.max_surprise)
-            .map(|(id, (x, _))| (id, x))
-            .collect_vec();
+            .sorted_unstable_by(|(_, (_, x)), (_, (_, y))| x.total_cmp(y));
+        let k = sorted
+            .clone()
+            .find_position(|&(_, (_, x))| x > self.state.max_surprise)
+            .map(|(k, _)| (k + 1).min(probs.len() - 1))
+            .unwrap_or_default();
+        let sorted = sorted.take(k).map(|(id, (x, _))| (id, x)).collect_vec();
 
         // normalize the probs
         let sum: f32 = sorted.iter().map(|(_, x)| x).sum();
-        if sum == 0.0 {
-            return 0;
-        }
         let sorted = sorted
             .into_iter()
             .map(|(id, x)| (id, x / sum))
@@ -125,7 +125,7 @@ impl Sampler for MirostatSampler {
         let (token, _, prob) = sorted
             .into_iter()
             .find_or_first(|&(_, cum, _)| rand <= cum)
-            .unwrap_or_default();
+            .unwrap();
 
         let token_surprise = -prob.log2();
         let error_surprise = token_surprise - self.params.tau;
