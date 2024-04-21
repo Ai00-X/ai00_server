@@ -32,6 +32,7 @@ pub struct MirostatSampler {
     pub state: MirostatState,
 }
 
+#[allow(unused)]
 impl MirostatSampler {
     pub fn new(params: MirostatParams) -> Self {
         let state = MirostatState {
@@ -71,28 +72,62 @@ impl Sampler for MirostatSampler {
     fn transform(&self, _output: &mut [f32]) {}
 
     fn sample(&mut self, probs: &[f32]) -> u16 {
+        // let sorted = probs
+        //     .iter()
+        //     .enumerate()
+        //     .sorted_unstable_by(|(_, x), (_, y)| x.total_cmp(y).reverse())
+        //     .scan((0, 0.0, 0.0), |(_, cum, _), (id, x)| {
+        //         *cum += x;
+        //         Some((id, *cum, *x))
+        //     })
+        //     .collect_vec();
+        // let sorted_probs = sorted.iter().map(|x| x.2).collect_vec();
+
+        // let s = self.estimate_s(&sorted_probs);
+        // let k = self.compute_k(&sorted_probs, s);
+
+        // let sum = sorted.get(k).map(|&(_, cum, _)| cum).unwrap_or_default();
+        // let rand = fastrand::f32() * sum;
+        // let (token, _, prob) = sorted
+        //     .into_iter()
+        //     .find_or_first(|&(_, cum, _)| rand <= cum)
+        //     .unwrap_or_default();
+
+        // let token_surprise = (1.0 / prob).log2();
+        // let error_surprise = token_surprise - self.params.tau;
+        // self.state.max_surprise -= self.params.rate * error_surprise;
+
+        // sort the surprise values and truncate
         let sorted = probs
             .iter()
+            .map(|&x| (x, -x.log2()))
             .enumerate()
-            .sorted_unstable_by(|(_, x), (_, y)| x.total_cmp(y).reverse())
+            .sorted_unstable_by(|(_, (_, x)), (_, (_, y))| x.total_cmp(y))
+            .filter(|&(_, (_, x))| x <= self.state.max_surprise)
+            .map(|(id, (x, _))| (id, x))
+            .collect_vec();
+
+        // normalize the probs
+        let sum: f32 = sorted.iter().map(|(_, x)| x).sum();
+        if sum == 0.0 {
+            return 0;
+        }
+        let sorted = sorted
+            .into_iter()
+            .map(|(id, x)| (id, x / sum))
             .scan((0, 0.0, 0.0), |(_, cum, _), (id, x)| {
                 *cum += x;
-                Some((id, *cum, *x))
+                Some((id, *cum, x))
             })
             .collect_vec();
-        let sorted_probs = sorted.iter().map(|x| x.2).collect_vec();
 
-        let s = self.estimate_s(&sorted_probs);
-        let k = self.compute_k(&sorted_probs, s);
-
-        let sum = sorted.get(k).map(|&(_, cum, _)| cum).unwrap_or_default();
-        let rand = fastrand::f32() * sum;
+        let rand = fastrand::f32();
         let (token, _, prob) = sorted
             .into_iter()
             .find_or_first(|&(_, cum, _)| rand <= cum)
             .unwrap_or_default();
 
-        let token_surprise = (1.0 / prob).log2();
+        let token_surprise = -prob.log2();
         let error_surprise = token_surprise - self.params.tau;
         self.state.max_surprise -= self.params.rate * error_surprise;
 
