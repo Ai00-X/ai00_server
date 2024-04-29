@@ -11,7 +11,7 @@ license = "MIT OR Apache-2.0"
 name = "ai00_server"
 repository = "https://github.com/cgisky1980/ai00_rwkv_server"
 rust-version = "1.75"
-version = "0.4.1"
+version = "0.4.2"
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
@@ -53,7 +53,7 @@ zip-extract = "0.1"
 
 [dependencies.web-rwkv]
 # path = "../web-rwkv"
-version = "0.7.5"
+version = "0.7.6"
 
 [dependencies.salvo]
 default-features = true

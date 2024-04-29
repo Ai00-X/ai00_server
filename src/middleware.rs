@@ -10,7 +10,6 @@ use anyhow::{bail, Result};
 use bnf_sampler::{utils::U8ArrayWrapper, vocabulary::Vocabulary};
 use derivative::Derivative;
 use flume::{Receiver, Sender};
-use half::f16;
 use itertools::Itertools;
 use memmap2::Mmap;
 use qp_trie::Trie;
@@ -250,6 +249,7 @@ fn list_adapters() -> AdapterList {
     let instance = Instance::new();
     let list = instance
         .enumerate_adapters(backends)
+        .into_iter()
         .map(|adapter| adapter.get_info())
         .map(|info| format!("{} ({:?})", info.name, info.backend))
         .collect();
@@ -265,7 +265,7 @@ async fn create_context(adapter: AdapterOption, info: &ModelInfo) -> Result<Cont
         AdapterOption::Manual(selection) => instance.select_adapter(backends, selection),
     }?;
     let context = ContextBuilder::new(adapter)
-        .with_auto_limits(info)
+        .auto_limits(info)
         .build()
         .await?;
     Ok(context)
@@ -305,11 +305,7 @@ async fn load_runtime(
 ) -> Result<Runtime> {
     let ReloadRequest {
         model_path,
-        lora,
-        quant,
-        quant_type,
         max_batch,
-        embed_device,
         tokenizer_path,
         ..
     } = reload.clone();
@@ -320,80 +316,82 @@ async fn load_runtime(
     let file = File::open(model_path).await?;
     let data = unsafe { Mmap::map(&file) }?;
 
-    let runtime = match load {
-        LoadType::SafeTensors => {
-            let model = SafeTensors::deserialize(&data)?;
-            let quant = (0..quant).map(|layer| (layer, quant_type)).collect();
-            let lora = {
-                let mut x = Vec::with_capacity(lora.len());
-                for lora in lora.into_iter() {
-                    let file = File::open(lora.path).await?;
-                    let data = unsafe { Mmap::map(&file) }?;
-                    let blend = LoraBlend::full(lora.alpha);
-                    x.push((data, blend))
-                }
-                x
-            };
-            let lora: Vec<_> = lora
-                .iter()
-                .map(|(data, blend)| -> Result<_> {
-                    let data = SafeTensors::deserialize(data)?;
-                    let blend = blend.clone();
-                    Ok(Lora { data, blend })
-                })
-                .try_collect()?;
+    async fn load_model<M>(
+        context: &Context,
+        load: LoadType,
+        data: &[u8],
+        reload: &ReloadRequest,
+    ) -> Result<M>
+    where
+        for<'a> ModelBuilder<SafeTensors<'a>>: Build<M>,
+        for<'de> Seed<'de, Context, M>: DeserializeSeed<'de, Value = M>,
+    {
+        match load {
+            LoadType::SafeTensors => {
+                let ReloadRequest {
+                    lora,
+                    quant,
+                    quant_type,
+                    embed_device,
+                    ..
+                } = reload.clone();
 
-            let builder = ModelBuilder::new(context, model)
-                .with_quant(quant)
-                .with_num_batch(max_batch)
-                .with_embed_device(embed_device);
-            let builder = lora.into_iter().fold(builder, |b, x| b.add_lora(x));
+                let model = SafeTensors::deserialize(data)?;
+                let quant = (0..quant).map(|layer| (layer, quant_type)).collect();
+                let lora = {
+                    let mut x = Vec::with_capacity(lora.len());
+                    for lora in lora.into_iter() {
+                        let file = File::open(lora.path).await?;
+                        let data = unsafe { Mmap::map(&file) }?;
+                        let blend = LoraBlend::full(lora.alpha);
+                        x.push((data, blend))
+                    }
+                    x
+                };
+                let lora: Vec<_> = lora
+                    .iter()
+                    .map(|(data, blend)| -> Result<_> {
+                        let data = SafeTensors::deserialize(data)?;
+                        let blend = blend.clone();
+                        Ok(Lora { data, blend })
+                    })
+                    .try_collect()?;
 
-            let context = context.clone();
-            let reload = reload.clone();
-            match info.version {
-                ModelVersion::V4 => {
-                    let builder = Build::<v4::ModelJobBuilder<f16>>::build(builder).await?;
-                    Runtime::new(context, builder, reload, tokenizer, vocab).await
-                }
-                ModelVersion::V5 => {
-                    let builder = Build::<v5::ModelJobBuilder<f16>>::build(builder).await?;
-                    Runtime::new(context, builder, reload, tokenizer, vocab).await
-                }
-                ModelVersion::V6 => {
-                    let builder = Build::<v6::ModelJobBuilder<f16>>::build(builder).await?;
-                    Runtime::new(context, builder, reload, tokenizer, vocab).await
-                }
+                let builder = ModelBuilder::new(context, model)
+                    .quant(quant)
+                    .embed_device(embed_device);
+                let builder = lora.into_iter().fold(builder, |b, x| b.lora(x));
+                Build::<M>::build(builder).await
+            }
+            LoadType::Prefab => {
+                use cbor4ii::{core::utils::SliceReader, serde::Deserializer};
+
+                let reader = SliceReader::new(data);
+                let mut deserializer = Deserializer::new(reader);
+
+                let seed: Seed<Context, M> = Seed::new(context);
+                Ok(seed.deserialize(&mut deserializer)?)
             }
         }
-        LoadType::Prefab => {
-            use cbor4ii::{core::utils::SliceReader, serde::Deserializer};
+    }
 
-            let reader = SliceReader::new(&data);
-            let mut deserializer = Deserializer::new(reader);
-
-            let context = context.clone();
-            let reload = reload.clone();
-            match info.version {
-                ModelVersion::V4 => {
-                    let seed: Seed<_, v4::Model> = Seed::new(&context);
-                    let model = seed.deserialize(&mut deserializer)?;
-                    let builder = v4::ModelJobBuilder::new(model, reload.max_batch);
-                    Runtime::new(context, builder, reload, tokenizer, vocab).await
-                }
-                ModelVersion::V5 => {
-                    let seed: Seed<_, v5::Model> = Seed::new(&context);
-                    let model = seed.deserialize(&mut deserializer)?;
-                    let builder = v5::ModelJobBuilder::new(model, reload.max_batch);
-                    Runtime::new(context, builder, reload, tokenizer, vocab).await
-                }
-                ModelVersion::V6 => {
-                    let seed: Seed<_, v6::Model> = Seed::new(&context);
-                    let model = seed.deserialize(&mut deserializer)?;
-                    let builder = v6::ModelJobBuilder::new(model, reload.max_batch);
-                    Runtime::new(context, builder, reload, tokenizer, vocab).await
-                }
-            }
+    let context = context.clone();
+    let reload = reload.clone();
+    let runtime = match info.version {
+        ModelVersion::V4 => {
+            let model = load_model::<v4::Model>(&context, load, &data, &reload).await?;
+            let builder = v4::ModelJobBuilder::new(model, max_batch);
+            Runtime::new(context, builder, reload, tokenizer, vocab).await
+        }
+        ModelVersion::V5 => {
+            let model = load_model::<v5::Model>(&context, load, &data, &reload).await?;
+            let builder = v5::ModelJobBuilder::new(model, max_batch);
+            Runtime::new(context, builder, reload, tokenizer, vocab).await
+        }
+        ModelVersion::V6 => {
+            let model = load_model::<v6::Model>(&context, load, &data, &reload).await?;
+            let builder = v6::ModelJobBuilder::new(model, max_batch);
+            Runtime::new(context, builder, reload, tokenizer, vocab).await
         }
     };
 
