@@ -90,5 +90,5 @@ if __name__ == "__main__":
     convert_file(args.input, args.output,
                  rename={"time_faaaa": "time_first", "time_maa": "time_mix",
                          "lora_A": "lora.0", "lora_B": "lora.1"},
-                 transpose_names=["time_mix_w1", "time_mix_w2", "time_decay_w1", "time_decay_w2", "lora.0"])
+                 transpose_names=["time_mix_w1", "time_mix_w2", "time_decay_w1", "time_decay_w2", "time_state", "lora.0"])
     print(f"Saved to {args.output}")

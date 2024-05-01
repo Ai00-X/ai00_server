@@ -297,6 +297,7 @@ pub struct Runtime {
     state: Arc<dyn State + Send + Sync>,
     model: Arc<dyn ModelSerialize + Send + Sync>,
     runtime: JobRuntime<InferInput, InferOutput<f16>>,
+    init_state: Option<TensorCpu<f32>>,
     tokenizer: Arc<Tokenizer>,
     vocab: Arc<Vocabulary>,
     slots: Mutex<Vec<SlotState>>,
@@ -308,6 +309,7 @@ impl Runtime {
         context: Context,
         builder: B,
         reload: ReloadRequest,
+        init_state: Option<TensorCpu<f32>>,
         tokenizer: Tokenizer,
         vocab: Vocabulary,
     ) -> Self
@@ -331,6 +333,7 @@ impl Runtime {
             state,
             model,
             runtime,
+            init_state,
             tokenizer: Arc::new(tokenizer),
             vocab: Arc::new(vocab),
             slots: Mutex::new(slots),
@@ -381,7 +384,7 @@ impl Runtime {
         let prefix = prefix[0..len].to_vec();
         let reload = match cache.remove(prefix[..].as_token_slice()) {
             Some(reload) => CachedItem::renew(reload),
-            None => CachedItem::new(self.state.init()),
+            None => CachedItem::new(self.init_state.clone().unwrap_or_else(|| self.state.init())),
         };
         if len > 0 {
             let key = Tokens(prefix.clone());
@@ -643,6 +646,7 @@ impl Runtime {
                         if let Some(bnf) = bnf {
                             bnf.read().await.transform(&mut data);
                         }
+                        data[0] = f32::MIN;
 
                         let data = data.into_iter().map(f16::from_f32).collect_vec();
                         (batch, data)

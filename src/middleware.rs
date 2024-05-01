@@ -10,7 +10,6 @@ use anyhow::{bail, Result};
 use bnf_sampler::{utils::U8ArrayWrapper, vocabulary::Vocabulary};
 use derivative::Derivative;
 use flume::{Receiver, Sender};
-use half::f16;
 use itertools::Itertools;
 use memmap2::Mmap;
 use qp_trie::Trie;
@@ -24,7 +23,7 @@ use tokio::{
     sync::{Mutex, RwLock},
 };
 use web_rwkv::{
-    context::{Context, ContextBuilder, Instance},
+    context::{Context, ContextBuilder, InstanceExt},
     runtime::{
         loader::{Loader, Lora, LoraBlend},
         model::{
@@ -247,9 +246,10 @@ pub struct ThreadState {
 
 fn list_adapters() -> AdapterList {
     let backends = Backends::all();
-    let instance = Instance::new();
+    let instance = web_rwkv::wgpu::Instance::default();
     let list = instance
         .enumerate_adapters(backends)
+        .into_iter()
         .map(|adapter| adapter.get_info())
         .map(|info| format!("{} ({:?})", info.name, info.backend))
         .collect();
@@ -258,14 +258,18 @@ fn list_adapters() -> AdapterList {
 
 async fn create_context(adapter: AdapterOption, info: &ModelInfo) -> Result<Context> {
     let backends = Backends::all();
-    let instance = Instance::new();
+    let instance = web_rwkv::wgpu::Instance::default();
     let adapter = match adapter {
         AdapterOption::Auto => instance.adapter(PowerPreference::HighPerformance).await,
         AdapterOption::Economical => instance.adapter(PowerPreference::LowPower).await,
-        AdapterOption::Manual(selection) => instance.select_adapter(backends, selection),
+        AdapterOption::Manual(selection) => Ok(instance
+            .enumerate_adapters(backends)
+            .into_iter()
+            .nth(selection)
+            .ok_or(web_rwkv::context::CreateEnvironmentError::RequestAdapterFailed)?),
     }?;
     let context = ContextBuilder::new(adapter)
-        .with_auto_limits(info)
+        .auto_limits(info)
         .build()
         .await?;
     Ok(context)
@@ -323,6 +327,13 @@ async fn load_runtime(
     let runtime = match load {
         LoadType::SafeTensors => {
             let model = SafeTensors::deserialize(&data)?;
+            let init_state = match info.version {
+                ModelVersion::V4 => None,
+                ModelVersion::V5 => v5::read_state(context, model).await.ok(),
+                ModelVersion::V6 => v6::read_state(context, model).await.ok(),
+            };
+
+            let model = SafeTensors::deserialize(&data)?;
             let quant = (0..quant).map(|layer| (layer, quant_type)).collect();
             let lora = {
                 let mut x = Vec::with_capacity(lora.len());
@@ -344,25 +355,27 @@ async fn load_runtime(
                 .try_collect()?;
 
             let builder = ModelBuilder::new(context, model)
-                .with_quant(quant)
-                .with_num_batch(max_batch)
-                .with_embed_device(embed_device);
-            let builder = lora.into_iter().fold(builder, |b, x| b.add_lora(x));
+                .quant(quant)
+                .embed_device(embed_device);
+            let builder = lora.into_iter().fold(builder, |b, x| b.lora(x));
 
             let context = context.clone();
             let reload = reload.clone();
             match info.version {
                 ModelVersion::V4 => {
-                    let builder = Build::<v4::ModelJobBuilder<f16>>::build(builder).await?;
-                    Runtime::new(context, builder, reload, tokenizer, vocab).await
+                    let model = Build::<v4::Model>::build(builder).await?;
+                    let builder = v4::ModelRuntime::new(model, max_batch);
+                    Runtime::new(context, builder, reload, init_state, tokenizer, vocab).await
                 }
                 ModelVersion::V5 => {
-                    let builder = Build::<v5::ModelJobBuilder<f16>>::build(builder).await?;
-                    Runtime::new(context, builder, reload, tokenizer, vocab).await
+                    let model = Build::<v5::Model>::build(builder).await?;
+                    let builder = v5::ModelRuntime::new(model, max_batch);
+                    Runtime::new(context, builder, reload, init_state, tokenizer, vocab).await
                 }
                 ModelVersion::V6 => {
-                    let builder = Build::<v6::ModelJobBuilder<f16>>::build(builder).await?;
-                    Runtime::new(context, builder, reload, tokenizer, vocab).await
+                    let model = Build::<v6::Model>::build(builder).await?;
+                    let builder = v6::ModelRuntime::new(model, max_batch);
+                    Runtime::new(context, builder, reload, init_state, tokenizer, vocab).await
                 }
             }
         }
@@ -378,20 +391,20 @@ async fn load_runtime(
                 ModelVersion::V4 => {
                     let seed: Seed<_, v4::Model> = Seed::new(&context);
                     let model = seed.deserialize(&mut deserializer)?;
-                    let builder = v4::ModelJobBuilder::new(model, reload.max_batch);
-                    Runtime::new(context, builder, reload, tokenizer, vocab).await
+                    let builder = v4::ModelRuntime::new(model, reload.max_batch);
+                    Runtime::new(context, builder, reload, None, tokenizer, vocab).await
                 }
                 ModelVersion::V5 => {
                     let seed: Seed<_, v5::Model> = Seed::new(&context);
                     let model = seed.deserialize(&mut deserializer)?;
-                    let builder = v5::ModelJobBuilder::new(model, reload.max_batch);
-                    Runtime::new(context, builder, reload, tokenizer, vocab).await
+                    let builder = v5::ModelRuntime::new(model, reload.max_batch);
+                    Runtime::new(context, builder, reload, None, tokenizer, vocab).await
                 }
                 ModelVersion::V6 => {
                     let seed: Seed<_, v6::Model> = Seed::new(&context);
                     let model = seed.deserialize(&mut deserializer)?;
-                    let builder = v6::ModelJobBuilder::new(model, reload.max_batch);
-                    Runtime::new(context, builder, reload, tokenizer, vocab).await
+                    let builder = v6::ModelRuntime::new(model, reload.max_batch);
+                    Runtime::new(context, builder, reload, None, tokenizer, vocab).await
                 }
             }
         }
