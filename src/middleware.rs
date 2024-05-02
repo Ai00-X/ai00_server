@@ -6,7 +6,7 @@ use std::{
     time::Duration,
 };
 
-use anyhow::{bail, Result};
+use anyhow::{anyhow, bail, Result};
 use bnf_sampler::{utils::U8ArrayWrapper, vocabulary::Vocabulary};
 use derivative::Derivative;
 use flume::{Receiver, Sender};
@@ -23,7 +23,7 @@ use tokio::{
     sync::{Mutex, RwLock},
 };
 use web_rwkv::{
-    context::{Context, ContextBuilder, Instance},
+    context::{Context, ContextBuilder, InstanceExt},
     runtime::{
         loader::{Loader, Lora, LoraBlend},
         model::{
@@ -31,7 +31,7 @@ use web_rwkv::{
         },
         v4, v5, v6,
     },
-    tensor::serialization::Seed,
+    tensor::{serialization::Seed, TensorCpu},
     tokenizer::Tokenizer,
     wgpu::{Backends, PowerPreference},
 };
@@ -246,7 +246,7 @@ pub struct ThreadState {
 
 fn list_adapters() -> AdapterList {
     let backends = Backends::all();
-    let instance = Instance::new();
+    let instance = web_rwkv::wgpu::Instance::default();
     let list = instance
         .enumerate_adapters(backends)
         .into_iter()
@@ -258,11 +258,15 @@ fn list_adapters() -> AdapterList {
 
 async fn create_context(adapter: AdapterOption, info: &ModelInfo) -> Result<Context> {
     let backends = Backends::all();
-    let instance = Instance::new();
+    let instance = web_rwkv::wgpu::Instance::default();
     let adapter = match adapter {
         AdapterOption::Auto => instance.adapter(PowerPreference::HighPerformance).await,
         AdapterOption::Economical => instance.adapter(PowerPreference::LowPower).await,
-        AdapterOption::Manual(selection) => instance.select_adapter(backends, selection),
+        AdapterOption::Manual(selection) => Ok(instance
+            .enumerate_adapters(backends)
+            .into_iter()
+            .nth(selection)
+            .ok_or(web_rwkv::context::CreateEnvironmentError::RequestAdapterFailed)?),
     }?;
     let context = ContextBuilder::new(adapter)
         .auto_limits(info)
@@ -297,6 +301,28 @@ fn load_vocab(tokenizer: &Tokenizer) -> Vocabulary {
     }
 }
 
+async fn load_init_state(
+    context: &Context,
+    info: &ModelInfo,
+    model: SafeTensors<'_>,
+) -> Option<TensorCpu<f32>> {
+    let state = match info.version {
+        ModelVersion::V4 => Err(anyhow!("v4 does not support init state yet")),
+        ModelVersion::V5 => v5::read_state(context, info, model).await,
+        ModelVersion::V6 => v6::read_state(context, info, model).await,
+    };
+    match state {
+        Ok(state) => {
+            log::info!("initial state loaded");
+            Some(state)
+        }
+        Err(err) => {
+            log::warn!("initial state not loaded: {}", err);
+            None
+        }
+    }
+}
+
 async fn load_runtime(
     context: &Context,
     reload: &ReloadRequest,
@@ -305,7 +331,11 @@ async fn load_runtime(
 ) -> Result<Runtime> {
     let ReloadRequest {
         model_path,
+        lora,
+        quant,
+        quant_type,
         max_batch,
+        embed_device,
         tokenizer_path,
         ..
     } = reload.clone();
@@ -316,82 +346,85 @@ async fn load_runtime(
     let file = File::open(model_path).await?;
     let data = unsafe { Mmap::map(&file) }?;
 
-    async fn load_model<M>(
-        context: &Context,
-        load: LoadType,
-        data: &[u8],
-        reload: &ReloadRequest,
-    ) -> Result<M>
-    where
-        for<'a> ModelBuilder<SafeTensors<'a>>: Build<M>,
-        for<'de> Seed<'de, Context, M>: DeserializeSeed<'de, Value = M>,
-    {
-        match load {
-            LoadType::SafeTensors => {
-                let ReloadRequest {
-                    lora,
-                    quant,
-                    quant_type,
-                    embed_device,
-                    ..
-                } = reload.clone();
+    let runtime = match load {
+        LoadType::SafeTensors => {
+            let model = SafeTensors::deserialize(&data)?;
+            let init_state = load_init_state(context, &info, model).await;
 
-                let model = SafeTensors::deserialize(data)?;
-                let quant = (0..quant).map(|layer| (layer, quant_type)).collect();
-                let lora = {
-                    let mut x = Vec::with_capacity(lora.len());
-                    for lora in lora.into_iter() {
-                        let file = File::open(lora.path).await?;
-                        let data = unsafe { Mmap::map(&file) }?;
-                        let blend = LoraBlend::full(lora.alpha);
-                        x.push((data, blend))
-                    }
-                    x
-                };
-                let lora: Vec<_> = lora
-                    .iter()
-                    .map(|(data, blend)| -> Result<_> {
-                        let data = SafeTensors::deserialize(data)?;
-                        let blend = blend.clone();
-                        Ok(Lora { data, blend })
-                    })
-                    .try_collect()?;
+            let model = SafeTensors::deserialize(&data)?;
+            let quant = (0..quant).map(|layer| (layer, quant_type)).collect();
+            let lora = {
+                let mut x = Vec::with_capacity(lora.len());
+                for lora in lora.into_iter() {
+                    let file = File::open(lora.path).await?;
+                    let data = unsafe { Mmap::map(&file) }?;
+                    let blend = LoraBlend::full(lora.alpha);
+                    x.push((data, blend))
+                }
+                x
+            };
+            let lora: Vec<_> = lora
+                .iter()
+                .map(|(data, blend)| -> Result<_> {
+                    let data = SafeTensors::deserialize(data)?;
+                    let blend = blend.clone();
+                    Ok(Lora { data, blend })
+                })
+                .try_collect()?;
 
-                let builder = ModelBuilder::new(context, model)
-                    .quant(quant)
-                    .embed_device(embed_device);
-                let builder = lora.into_iter().fold(builder, |b, x| b.lora(x));
-                Build::<M>::build(builder).await
-            }
-            LoadType::Prefab => {
-                use cbor4ii::{core::utils::SliceReader, serde::Deserializer};
+            let builder = ModelBuilder::new(context, model)
+                .quant(quant)
+                .embed_device(embed_device);
+            let builder = lora.into_iter().fold(builder, |b, x| b.lora(x));
 
-                let reader = SliceReader::new(data);
-                let mut deserializer = Deserializer::new(reader);
-
-                let seed: Seed<Context, M> = Seed::new(context);
-                Ok(seed.deserialize(&mut deserializer)?)
+            let context = context.clone();
+            let reload = reload.clone();
+            match info.version {
+                ModelVersion::V4 => {
+                    let model = Build::<v4::Model>::build(builder).await?;
+                    let builder = v4::ModelRuntime::new(model, max_batch);
+                    Runtime::new(context, builder, reload, init_state, tokenizer, vocab).await
+                }
+                ModelVersion::V5 => {
+                    let model = Build::<v5::Model>::build(builder).await?;
+                    let builder = v5::ModelRuntime::new(model, max_batch);
+                    Runtime::new(context, builder, reload, init_state, tokenizer, vocab).await
+                }
+                ModelVersion::V6 => {
+                    let model = Build::<v6::Model>::build(builder).await?;
+                    let builder = v6::ModelRuntime::new(model, max_batch);
+                    Runtime::new(context, builder, reload, init_state, tokenizer, vocab).await
+                }
             }
         }
-    }
+        LoadType::Prefab => {
+            use cbor4ii::{core::utils::SliceReader, serde::Deserializer};
 
-    let context = context.clone();
-    let reload = reload.clone();
-    let runtime = match info.version {
-        ModelVersion::V4 => {
-            let model = load_model::<v4::Model>(&context, load, &data, &reload).await?;
-            let builder = v4::ModelJobBuilder::new(model, max_batch);
-            Runtime::new(context, builder, reload, tokenizer, vocab).await
-        }
-        ModelVersion::V5 => {
-            let model = load_model::<v5::Model>(&context, load, &data, &reload).await?;
-            let builder = v5::ModelJobBuilder::new(model, max_batch);
-            Runtime::new(context, builder, reload, tokenizer, vocab).await
-        }
-        ModelVersion::V6 => {
-            let model = load_model::<v6::Model>(&context, load, &data, &reload).await?;
-            let builder = v6::ModelJobBuilder::new(model, max_batch);
-            Runtime::new(context, builder, reload, tokenizer, vocab).await
+            let reader = SliceReader::new(&data);
+            let mut deserializer = Deserializer::new(reader);
+
+            let context = context.clone();
+            let reload = reload.clone();
+            match info.version {
+                ModelVersion::V4 => {
+                    let seed: Seed<_, v4::Model> = Seed::new(&context);
+                    let model = seed.deserialize(&mut deserializer)?;
+                    let builder = v4::ModelRuntime::new(model, reload.max_batch);
+                    Runtime::new(context, builder, reload, None, tokenizer, vocab).await
+                }
+                ModelVersion::V5 => {
+                    let seed: Seed<_, v5::Model> = Seed::new(&context);
+                    let model = seed.deserialize(&mut deserializer)?;
+                    let builder = v5::ModelRuntime::new(model, reload.max_batch);
+                    Runtime::new(context, builder, reload, None, tokenizer, vocab).await
+                }
+                ModelVersion::V6 => {
+                    let seed: Seed<_, v6::Model> = Seed::new(&context);
+                    let model = seed.deserialize(&mut deserializer)?;
+                    let builder = v6::ModelRuntime::new(model, reload.max_batch);
+                    Runtime::new(context, builder, reload, None, tokenizer, vocab).await
+                }
+            }
         }
     };
 

@@ -1,6 +1,6 @@
 [model]
 embed_device = "Cpu"                                       # Device to put the embed tensor ("Cpu" or "Gpu").
-max_batch = 16                                             # The maximum batches that are cached on GPU.
+max_batch = 8                                              # The maximum batches that are cached on GPU.
 max_runtime_batch = 8                                      # The maximum batches that can be scheduled for inference at the same time.
 model_name = "RWKV-x060-World-3B-v2.1-20240417-ctx4096.st" # Name of the model.
 model_path = "assets/models"                               # Path to the folder containing all models.

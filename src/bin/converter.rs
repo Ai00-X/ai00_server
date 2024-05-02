@@ -12,11 +12,12 @@ pub const RENAME: [(&str, &str); 4] = [
     ("lora_B", "lora.1"),
 ];
 
-pub const TRANSPOSE: [&str; 5] = [
+pub const TRANSPOSE: [&str; 6] = [
     "time_mix_w1",
     "time_mix_w2",
     "time_decay_w1",
     "time_decay_w2",
+    "time_state",
     "lora.0",
 ];
 

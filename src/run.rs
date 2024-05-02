@@ -33,6 +33,7 @@ use crate::{
 };
 
 const _PENALTY_FREE_LIST: [&str; 5] = ["\n", ",", ".", "\u{002c}", "\u{002f}"];
+const END_OF_LINE_TOKEN: u16 = 261;
 const PROMPT_CACHE_TOKENS: usize = 32;
 const MAX_CACHE_ITEMS: usize = 256;
 const SAMPLER_ARENA_CAPACITY: usize = 1048576;
@@ -297,6 +298,7 @@ pub struct Runtime {
     state: Arc<dyn State + Send + Sync>,
     model: Arc<dyn ModelSerialize + Send + Sync>,
     runtime: JobRuntime<InferInput, InferOutput<f16>>,
+    init_state: Option<TensorCpu<f32>>,
     tokenizer: Arc<Tokenizer>,
     vocab: Arc<Vocabulary>,
     slots: Mutex<Vec<SlotState>>,
@@ -308,6 +310,7 @@ impl Runtime {
         context: Context,
         builder: B,
         reload: ReloadRequest,
+        init_state: Option<TensorCpu<f32>>,
         tokenizer: Tokenizer,
         vocab: Vocabulary,
     ) -> Self
@@ -331,6 +334,7 @@ impl Runtime {
             state,
             model,
             runtime,
+            init_state,
             tokenizer: Arc::new(tokenizer),
             vocab: Arc::new(vocab),
             slots: Mutex::new(slots),
@@ -381,7 +385,7 @@ impl Runtime {
         let prefix = prefix[0..len].to_vec();
         let reload = match cache.remove(prefix[..].as_token_slice()) {
             Some(reload) => CachedItem::renew(reload),
-            None => CachedItem::new(self.state.init()),
+            None => CachedItem::new(self.init_state.clone().unwrap_or_else(|| self.state.init())),
         };
         if len > 0 {
             let key = Tokens(prefix.clone());
@@ -643,6 +647,7 @@ impl Runtime {
                         if let Some(bnf) = bnf {
                             bnf.read().await.transform(&mut data);
                         }
+                        // data[0] = f32::MIN;
 
                         let data = data.into_iter().map(f16::from_f32).collect_vec();
                         (batch, data)
@@ -726,6 +731,12 @@ impl Runtime {
                     context.prefix.len()
                 );
             }
+
+            // map token 0 output to "\n\n"
+            let token = match token {
+                0 => END_OF_LINE_TOKEN,
+                _ => token,
+            };
 
             assert_eq!(context.suffix.len(), 0);
             context.suffix.0.push(token);
