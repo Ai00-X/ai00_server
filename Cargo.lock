@@ -4106,11 +4106,14 @@ dependencies = [
 [[package]]
 name = "web-rwkv"
 version = "0.8.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "5c9bdb308e05332a6c4399156da8e4df894a32aa46296f1bfe2650c2518e2e65"
 dependencies = [
  "ahash 0.8.11",
  "anyhow",
  "bytemuck",
  "derive-getters",
+ "document-features",
  "flume",
  "futures",
  "gpp",
@@ -4148,6 +4151,8 @@ dependencies = [
 [[package]]
 name = "web-rwkv-derive"
 version = "0.2.4"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "e6e437989ba9fff469ccdfb7b850a8f81a749a6ae74800de0d2d6fea68328fbd"
 dependencies = [
  "proc-macro2",
  "quote",

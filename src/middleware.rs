@@ -6,7 +6,7 @@ use std::{
     time::Duration,
 };
 
-use anyhow::{bail, Result};
+use anyhow::{anyhow, bail, Result};
 use bnf_sampler::{utils::U8ArrayWrapper, vocabulary::Vocabulary};
 use derivative::Derivative;
 use flume::{Receiver, Sender};
@@ -31,7 +31,7 @@ use web_rwkv::{
         },
         v4, v5, v6,
     },
-    tensor::serialization::Seed,
+    tensor::{serialization::Seed, TensorCpu},
     tokenizer::Tokenizer,
     wgpu::{Backends, PowerPreference},
 };
@@ -301,6 +301,28 @@ fn load_vocab(tokenizer: &Tokenizer) -> Vocabulary {
     }
 }
 
+async fn load_init_state(
+    context: &Context,
+    info: &ModelInfo,
+    model: SafeTensors<'_>,
+) -> Option<TensorCpu<f32>> {
+    let state = match info.version {
+        ModelVersion::V4 => Err(anyhow!("v4 does not support init state yet")),
+        ModelVersion::V5 => v5::read_state(context, info, model).await,
+        ModelVersion::V6 => v6::read_state(context, info, model).await,
+    };
+    match state {
+        Ok(state) => {
+            log::info!("initial state loaded");
+            Some(state)
+        }
+        Err(err) => {
+            log::warn!("initial state not loaded: {}", err);
+            None
+        }
+    }
+}
+
 async fn load_runtime(
     context: &Context,
     reload: &ReloadRequest,
@@ -327,11 +349,7 @@ async fn load_runtime(
     let runtime = match load {
         LoadType::SafeTensors => {
             let model = SafeTensors::deserialize(&data)?;
-            let init_state = match info.version {
-                ModelVersion::V4 => None,
-                ModelVersion::V5 => v5::read_state(context, model).await.ok(),
-                ModelVersion::V6 => v6::read_state(context, model).await.ok(),
-            };
+            let init_state = load_init_state(context, &info, model).await;
 
             let model = SafeTensors::deserialize(&data)?;
             let quant = (0..quant).map(|layer| (layer, quant_type)).collect();
