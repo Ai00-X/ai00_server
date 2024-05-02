@@ -9,32 +9,18 @@ use super::Sampler;
 
 #[derive(Debug, Clone, Derivative, Serialize, Deserialize, ToSchema)]
 #[derivative(Default)]
+#[serde(default)]
 pub struct NucleusParams {
     #[derivative(Default(value = "0.5"))]
     pub top_p: f32,
     #[derivative(Default(value = "1.0"))]
     pub temperature: f32,
     #[derivative(Default(value = "0.3"))]
-    #[serde(default = "default_presence_penalty")]
     pub presence_penalty: f32,
     #[derivative(Default(value = "0.3"))]
-    #[serde(default = "default_frequency_penalty")]
     pub frequency_penalty: f32,
     #[derivative(Default(value = "0.99654026"))]
-    #[serde(default = "default_penalty_decay")]
     pub penalty_decay: f32,
-}
-
-fn default_presence_penalty() -> f32 {
-    NucleusParams::default().presence_penalty
-}
-
-fn default_frequency_penalty() -> f32 {
-    NucleusParams::default().frequency_penalty
-}
-
-fn default_penalty_decay() -> f32 {
-    NucleusParams::default().penalty_decay
 }
 
 #[derive(Debug, Default, Clone)]
