@@ -343,6 +343,11 @@ impl Runtime {
     }
 
     #[inline]
+    pub fn context(&self) -> &Context {
+        &self.context
+    }
+
+    #[inline]
     pub fn reload(&self) -> &ReloadRequest {
         &self.reload
     }

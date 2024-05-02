@@ -518,7 +518,16 @@ pub async fn model_route(receiver: Receiver<ThreadRequest>) -> Result<()> {
                         log::info!("{:#?}", context.adapter.get_info());
 
                         let mut env = env.write().await;
-                        drop(mem::take(&mut *env));
+                        // drop(mem::take(&mut *env));
+                        'unload: {
+                            let env = mem::take(&mut *env);
+                            let context = match env {
+                                Environment::Loaded(runtime) => runtime.context().clone(),
+                                Environment::None => break 'unload,
+                            };
+                            context.queue.submit(None);
+                            context.device.poll(web_rwkv::wgpu::MaintainBase::Wait);
+                        }
 
                         let runtime = load_runtime(&context, &request, info, load).await?;
                         *env = Environment::Loaded(runtime);
@@ -548,8 +557,15 @@ pub async fn model_route(receiver: Receiver<ThreadRequest>) -> Result<()> {
                     let env = env.clone();
                     tokio::spawn(async move {
                         let mut env = env.write().await;
-                        *env = Environment::None;
+                        let env = mem::take(&mut *env);
                         log::info!("model unloaded");
+
+                        let context = match env {
+                            Environment::Loaded(runtime) => runtime.context().clone(),
+                            Environment::None => return,
+                        };
+                        context.queue.submit(None);
+                        context.device.poll(web_rwkv::wgpu::MaintainBase::Wait);
                     });
                 }
                 ThreadRequest::Generate {
