@@ -33,7 +33,7 @@ use web_rwkv::{
     },
     tensor::{serialization::Seed, TensorCpu},
     tokenizer::Tokenizer,
-    wgpu::{Backends, PowerPreference},
+    wgpu::{Backends, Maintain, PowerPreference},
 };
 
 use crate::{
@@ -526,7 +526,7 @@ pub async fn model_route(receiver: Receiver<ThreadRequest>) -> Result<()> {
                                 Environment::None => break 'unload,
                             };
                             context.queue.submit(None);
-                            context.device.poll(web_rwkv::wgpu::MaintainBase::Wait);
+                            context.device.poll(Maintain::Wait);
                         }
 
                         let runtime = load_runtime(&context, &request, info, load).await?;
@@ -565,7 +565,7 @@ pub async fn model_route(receiver: Receiver<ThreadRequest>) -> Result<()> {
                             Environment::None => return,
                         };
                         context.queue.submit(None);
-                        context.device.poll(web_rwkv::wgpu::MaintainBase::Wait);
+                        context.device.poll(Maintain::Wait);
                     });
                 }
                 ThreadRequest::Generate {
