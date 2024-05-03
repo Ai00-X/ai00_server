@@ -59,7 +59,13 @@ pub async fn load(depot: &mut Depot, req: &mut Request) -> StatusCode {
     for lora in request.lora.iter_mut() {
         lora.path = match build_path(model_path, &lora.path) {
             Ok(path) => path,
-            Err(_) => return StatusCode::INTERNAL_SERVER_ERROR,
+            Err(_) => return StatusCode::NOT_FOUND,
+        }
+    }
+    if let Some(s) = request.state.as_mut() {
+        s.path = match build_path(model_path, &s.path) {
+            Ok(path) => path,
+            Err(_) => return StatusCode::NOT_FOUND,
         }
     }
 

@@ -14,6 +14,7 @@ use crate::{build_path, middleware::ReloadRequest};
 pub struct Config {
     pub model: Model,
     pub lora: Vec<Lora>,
+    pub state: Option<State>,
     pub tokenizer: Tokenizer,
     pub bnf: BnfOption,
     pub adapter: AdapterOption,
@@ -36,6 +37,7 @@ impl TryFrom<Config> for ReloadRequest {
                     embed_device,
                 },
             mut lora,
+            mut state,
             tokenizer: Tokenizer {
                 path: tokenizer_path,
             },
@@ -47,11 +49,15 @@ impl TryFrom<Config> for ReloadRequest {
         for lora in lora.iter_mut() {
             lora.path = build_path(&model_path, &lora.path)?;
         }
+        if let Some(state) = state.as_mut() {
+            state.path = build_path(&model_path, &state.path)?;
+        }
         let model_path = build_path(&model_path, model_name)?;
 
         Ok(Self {
             model_path,
             lora,
+            state,
             quant,
             quant_type,
             token_chunk_size,
@@ -96,6 +102,13 @@ pub struct Lora {
     /// Blend factor.
     #[derivative(Default(value = "1.0"))]
     pub alpha: f32,
+}
+
+#[derive(Debug, Clone, Derivative, Serialize, Deserialize)]
+#[derivative(Default)]
+#[serde(default)]
+pub struct State {
+    pub path: PathBuf,
 }
 
 #[derive(Debug, Derivative, Clone, Serialize, Deserialize)]

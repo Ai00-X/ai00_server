@@ -190,6 +190,8 @@ pub struct ReloadRequest {
     pub model_path: PathBuf,
     /// List of LoRA blended on the model.
     pub lora: Vec<crate::config::Lora>,
+    /// Path to the initial state.
+    pub state: Option<crate::config::State>,
     /// Specify layers that needs to be quantized.
     pub quant: usize,
     /// Quantization type (Int8 or NF4).
@@ -329,6 +331,7 @@ async fn load_runtime(
     let ReloadRequest {
         model_path,
         lora,
+        state,
         quant,
         quant_type,
         max_batch,
@@ -346,7 +349,16 @@ async fn load_runtime(
     let runtime = match load {
         LoadType::SafeTensors => {
             let model = SafeTensors::deserialize(&data)?;
-            let init_state = load_init_state(context, &info, model).await;
+
+            let init_state = match state {
+                Some(state) => {
+                    let file = File::open(state.path).await?;
+                    let data = unsafe { Mmap::map(&file) }?;
+                    let model = SafeTensors::deserialize(&data)?;
+                    load_init_state(context, &info, model).await
+                }
+                None => load_init_state(context, &info, model).await,
+            };
 
             let model = SafeTensors::deserialize(&data)?;
             let quant = (0..quant).map(|layer| (layer, quant_type)).collect();
