@@ -11,7 +11,7 @@ license = "MIT OR Apache-2.0"
 name = "ai00_server"
 repository = "https://github.com/cgisky1980/ai00_rwkv_server"
 rust-version = "1.75"
-version = "0.4.3"
+version = "0.4.4"
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 

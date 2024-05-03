@@ -62,8 +62,8 @@ pub async fn load(depot: &mut Depot, req: &mut Request) -> StatusCode {
             Err(_) => return StatusCode::NOT_FOUND,
         }
     }
-    if let Some(s) = request.state.as_mut() {
-        s.path = match build_path(model_path, &s.path) {
+    if let Some(_state) = request.state.as_mut() {
+        _state.path = match build_path(model_path, &_state.path) {
             Ok(path) => path,
             Err(_) => return StatusCode::NOT_FOUND,
         }
