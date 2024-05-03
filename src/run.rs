@@ -572,7 +572,7 @@ impl Runtime {
             .iter()
             .filter(|x| matches!(x, Payload::Busy(_)))
             .count();
-        let remain = self.reload.max_runtime_batch - self.reload.max_runtime_batch.min(occupancy);
+        let remain = self.reload.max_batch - self.reload.max_batch.min(occupancy);
         let batches = slots
             .iter()
             .enumerate()

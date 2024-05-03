@@ -32,7 +32,6 @@ impl TryFrom<Config> for ReloadRequest {
                     quant,
                     quant_type,
                     token_chunk_size,
-                    max_runtime_batch,
                     max_batch,
                     embed_device,
                 },
@@ -56,7 +55,6 @@ impl TryFrom<Config> for ReloadRequest {
             quant,
             quant_type,
             token_chunk_size,
-            max_runtime_batch,
             max_batch,
             embed_device,
             tokenizer_path,
@@ -82,11 +80,8 @@ pub struct Model {
     /// Maximum tokens to be processed in parallel at once.
     #[derivative(Default(value = "128"))]
     pub token_chunk_size: usize,
-    /// Maximum number of batches that are active at once.
-    #[derivative(Default(value = "8"))]
-    pub max_runtime_batch: usize,
     /// Number of states that are cached on GPU.
-    #[derivative(Default(value = "16"))]
+    #[derivative(Default(value = "8"))]
     pub max_batch: usize,
     /// Device to put the embed tensor.
     pub embed_device: EmbedDevice,
