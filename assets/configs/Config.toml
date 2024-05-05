@@ -3,6 +3,7 @@ embed_device = "Cpu"                                       # Device to put the e
 max_batch = 8                                              # The maximum batches that are cached on GPU.
 model_name = "RWKV-x060-World-3B-v2.1-20240417-ctx4096.st" # Name of the model.
 model_path = "assets/models"                               # Path to the folder containing all models.
+precision = "Fp16"                                         # Precision for intermediate tensors ("Fp16" or "Fp32"). "Fp32" yields better outputs but slower.
 quant = 0                                                  # Layers to be quantized.
 quant_type = "Int8"                                        # Quantization type ("Int8" or "NF4").
 stop = ["\n\n"]                                            # Additional stop words in generation.

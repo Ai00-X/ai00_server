@@ -38,7 +38,7 @@ use web_rwkv::{
 };
 
 use crate::{
-    config::{AdapterOption, BnfOption},
+    config::{AdapterOption, BnfOption, Precision},
     run::{GenerateContext, Runtime, SlotResult, Tokens},
     sampler::{nucleus::NucleusSampler, Sampler},
 };
@@ -195,8 +195,10 @@ pub struct ReloadRequest {
     pub state: Option<crate::config::State>,
     /// Specify layers that needs to be quantized.
     pub quant: usize,
-    /// Quantization type (Int8 or NF4).
+    /// Quantization type (`Int8` or `NF4`).
     pub quant_type: Quant,
+    /// Precision for intermediate tensors (`Fp16` or `Fp32`).
+    pub precision: Precision,
     /// Maximum tokens to be processed in parallel at once.
     #[derivative(Default(value = "128"))]
     pub token_chunk_size: usize,
@@ -389,20 +391,35 @@ async fn load_runtime(
 
             let context = context.clone();
             let reload = reload.clone();
-            match info.version {
-                ModelVersion::V4 => {
+            match (info.version, reload.precision) {
+                (ModelVersion::V4, Precision::Fp16) => {
                     let model = Build::<v4::Model>::build(builder).await?;
                     let builder = v4::ModelRuntime::<f16>::new(model, max_batch);
                     Runtime::new(context, builder, reload, init_state, tokenizer, vocab).await
                 }
-                ModelVersion::V5 => {
+                (ModelVersion::V5, Precision::Fp16) => {
                     let model = Build::<v5::Model>::build(builder).await?;
                     let builder = v5::ModelRuntime::<f16>::new(model, max_batch);
                     Runtime::new(context, builder, reload, init_state, tokenizer, vocab).await
                 }
-                ModelVersion::V6 => {
+                (ModelVersion::V6, Precision::Fp16) => {
                     let model = Build::<v6::Model>::build(builder).await?;
                     let builder = v6::ModelRuntime::<f16>::new(model, max_batch);
+                    Runtime::new(context, builder, reload, init_state, tokenizer, vocab).await
+                }
+                (ModelVersion::V4, Precision::Fp32) => {
+                    let model = Build::<v4::Model>::build(builder).await?;
+                    let builder = v4::ModelRuntime::<f32>::new(model, max_batch);
+                    Runtime::new(context, builder, reload, init_state, tokenizer, vocab).await
+                }
+                (ModelVersion::V5, Precision::Fp32) => {
+                    let model = Build::<v5::Model>::build(builder).await?;
+                    let builder = v5::ModelRuntime::<f32>::new(model, max_batch);
+                    Runtime::new(context, builder, reload, init_state, tokenizer, vocab).await
+                }
+                (ModelVersion::V6, Precision::Fp32) => {
+                    let model = Build::<v6::Model>::build(builder).await?;
+                    let builder = v6::ModelRuntime::<f32>::new(model, max_batch);
                     Runtime::new(context, builder, reload, init_state, tokenizer, vocab).await
                 }
             }
@@ -415,23 +432,41 @@ async fn load_runtime(
 
             let context = context.clone();
             let reload = reload.clone();
-            match info.version {
-                ModelVersion::V4 => {
+            match (info.version, reload.precision) {
+                (ModelVersion::V4, Precision::Fp16) => {
                     let seed: Seed<_, v4::Model> = Seed::new(&context);
                     let model = seed.deserialize(&mut deserializer)?;
                     let builder = v4::ModelRuntime::<f16>::new(model, reload.max_batch);
                     Runtime::new(context, builder, reload, None, tokenizer, vocab).await
                 }
-                ModelVersion::V5 => {
+                (ModelVersion::V5, Precision::Fp16) => {
                     let seed: Seed<_, v5::Model> = Seed::new(&context);
                     let model = seed.deserialize(&mut deserializer)?;
                     let builder = v5::ModelRuntime::<f16>::new(model, reload.max_batch);
                     Runtime::new(context, builder, reload, None, tokenizer, vocab).await
                 }
-                ModelVersion::V6 => {
+                (ModelVersion::V6, Precision::Fp16) => {
                     let seed: Seed<_, v6::Model> = Seed::new(&context);
                     let model = seed.deserialize(&mut deserializer)?;
                     let builder = v6::ModelRuntime::<f16>::new(model, reload.max_batch);
+                    Runtime::new(context, builder, reload, None, tokenizer, vocab).await
+                }
+                (ModelVersion::V4, Precision::Fp32) => {
+                    let seed: Seed<_, v4::Model> = Seed::new(&context);
+                    let model = seed.deserialize(&mut deserializer)?;
+                    let builder = v4::ModelRuntime::<f32>::new(model, reload.max_batch);
+                    Runtime::new(context, builder, reload, None, tokenizer, vocab).await
+                }
+                (ModelVersion::V5, Precision::Fp32) => {
+                    let seed: Seed<_, v5::Model> = Seed::new(&context);
+                    let model = seed.deserialize(&mut deserializer)?;
+                    let builder = v5::ModelRuntime::<f32>::new(model, reload.max_batch);
+                    Runtime::new(context, builder, reload, None, tokenizer, vocab).await
+                }
+                (ModelVersion::V6, Precision::Fp32) => {
+                    let seed: Seed<_, v6::Model> = Seed::new(&context);
+                    let model = seed.deserialize(&mut deserializer)?;
+                    let builder = v6::ModelRuntime::<f32>::new(model, reload.max_batch);
                     Runtime::new(context, builder, reload, None, tokenizer, vocab).await
                 }
             }
