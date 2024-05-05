@@ -19,6 +19,7 @@ pub struct Config {
     pub bnf: BnfOption,
     pub adapter: AdapterOption,
     pub listen: ListenerOption,
+    pub web: Option<Web>,
 }
 
 impl TryFrom<Config> for ReloadRequest {
@@ -110,10 +111,12 @@ pub struct Lora {
     pub alpha: f32,
 }
 
+/// State-tuned initial state.
 #[derive(Debug, Clone, Derivative, Serialize, Deserialize)]
 #[derivative(Default)]
 #[serde(default)]
 pub struct State {
+    /// Path to the initial state.
     pub path: PathBuf,
 }
 
@@ -187,4 +190,12 @@ pub struct ListenerOption {
     pub expire_sec: Option<u32>,
     /// AppId with SecretKey pairs
     pub app_keys: Vec<AppKey>,
+}
+
+#[derive(Debug, Derivative, Clone, Serialize, Deserialize)]
+#[derivative(Default)]
+#[serde(default)]
+pub struct Web {
+    #[derivative(Default(value = "\"assets/www/index.zip\".into()"))]
+    pub path: PathBuf,
 }
