@@ -246,7 +246,8 @@ impl<T> CachedItem<T> {
         }
     }
 
-    pub fn renew(cached: CachedItem<T>) -> Self {
+    /// Update an existing cache item's timestamp.
+    pub fn update(cached: CachedItem<T>) -> Self {
         Self {
             item: cached.item,
             instant: Instant::now(),
@@ -297,7 +298,7 @@ pub struct Runtime {
     state: Arc<dyn State + Send + Sync>,
     model: Arc<dyn ModelSerialize + Send + Sync>,
     runtime: JobRuntime<InferInput, InferOutput>,
-    init_state: Option<TensorCpu<f32>>,
+    initial_state: Option<TensorCpu<f32>>,
     tokenizer: Arc<Tokenizer>,
     vocab: Arc<Vocabulary>,
     slots: Mutex<Vec<SlotState>>,
@@ -309,7 +310,7 @@ impl Runtime {
         context: Context,
         builder: B,
         reload: ReloadRequest,
-        init_state: Option<TensorCpu<f32>>,
+        state: Option<TensorCpu<f32>>,
         tokenizer: Tokenizer,
         vocab: Vocabulary,
     ) -> Self
@@ -317,6 +318,8 @@ impl Runtime {
         J: Job<Info = InferInfo, Input = InferChunk, Output = InferOutput>,
         B: JobBuilder<J, Info = InferInfo> + ModelRuntime,
     {
+        let initial_state = state;
+
         let slots = (0..reload.max_batch)
             .map(|_| SlotState::default())
             .collect();
@@ -333,7 +336,7 @@ impl Runtime {
             state,
             model,
             runtime,
-            init_state,
+            initial_state,
             tokenizer: Arc::new(tokenizer),
             vocab: Arc::new(vocab),
             slots: Mutex::new(slots),
@@ -387,9 +390,10 @@ impl Runtime {
         log::info!("slot {} checks out backed cache of length {}", batch, len);
 
         let prefix = prefix[0..len].to_vec();
+        let state = self.initial_state.clone();
         let reload = match cache.remove(prefix[..].as_token_slice()) {
-            Some(reload) => CachedItem::renew(reload),
-            None => CachedItem::new(self.init_state.clone().unwrap_or_else(|| self.state.init())),
+            Some(reload) => CachedItem::update(reload),
+            None => CachedItem::new(state.unwrap_or_else(|| self.state.init())),
         };
         if len > 0 {
             let key = Tokens(prefix.clone());

@@ -303,7 +303,7 @@ fn load_vocab(tokenizer: &Tokenizer) -> Vocabulary {
     }
 }
 
-async fn load_init_state(
+async fn load_initial_state(
     context: &Context,
     info: &ModelInfo,
     model: SafeTensors<'_>,
@@ -353,14 +353,14 @@ async fn load_runtime(
         LoadType::SafeTensors => {
             let model = SafeTensors::deserialize(&data)?;
 
-            let init_state = match state {
+            let state = match state {
                 Some(state) => {
                     let file = File::open(state.path).await?;
                     let data = unsafe { Mmap::map(&file) }?;
                     let model = SafeTensors::deserialize(&data)?;
-                    load_init_state(context, &info, model).await
+                    load_initial_state(context, &info, model).await
                 }
-                None => load_init_state(context, &info, model).await,
+                None => load_initial_state(context, &info, model).await,
             };
 
             let model = SafeTensors::deserialize(&data)?;
@@ -395,32 +395,32 @@ async fn load_runtime(
                 (ModelVersion::V4, Precision::Fp16) => {
                     let model = Build::<v4::Model>::build(builder).await?;
                     let builder = v4::ModelRuntime::<f16>::new(model, max_batch);
-                    Runtime::new(context, builder, reload, init_state, tokenizer, vocab).await
+                    Runtime::new(context, builder, reload, state, tokenizer, vocab).await
                 }
                 (ModelVersion::V5, Precision::Fp16) => {
                     let model = Build::<v5::Model>::build(builder).await?;
                     let builder = v5::ModelRuntime::<f16>::new(model, max_batch);
-                    Runtime::new(context, builder, reload, init_state, tokenizer, vocab).await
+                    Runtime::new(context, builder, reload, state, tokenizer, vocab).await
                 }
                 (ModelVersion::V6, Precision::Fp16) => {
                     let model = Build::<v6::Model>::build(builder).await?;
                     let builder = v6::ModelRuntime::<f16>::new(model, max_batch);
-                    Runtime::new(context, builder, reload, init_state, tokenizer, vocab).await
+                    Runtime::new(context, builder, reload, state, tokenizer, vocab).await
                 }
                 (ModelVersion::V4, Precision::Fp32) => {
                     let model = Build::<v4::Model>::build(builder).await?;
                     let builder = v4::ModelRuntime::<f32>::new(model, max_batch);
-                    Runtime::new(context, builder, reload, init_state, tokenizer, vocab).await
+                    Runtime::new(context, builder, reload, state, tokenizer, vocab).await
                 }
                 (ModelVersion::V5, Precision::Fp32) => {
                     let model = Build::<v5::Model>::build(builder).await?;
                     let builder = v5::ModelRuntime::<f32>::new(model, max_batch);
-                    Runtime::new(context, builder, reload, init_state, tokenizer, vocab).await
+                    Runtime::new(context, builder, reload, state, tokenizer, vocab).await
                 }
                 (ModelVersion::V6, Precision::Fp32) => {
                     let model = Build::<v6::Model>::build(builder).await?;
                     let builder = v6::ModelRuntime::<f32>::new(model, max_batch);
-                    Runtime::new(context, builder, reload, init_state, tokenizer, vocab).await
+                    Runtime::new(context, builder, reload, state, tokenizer, vocab).await
                 }
             }
         }
