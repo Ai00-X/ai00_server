@@ -144,6 +144,98 @@ The API service starts at port 65530, and the data input and output format follo
 *   `/api/oai/v1/embeddings`
 *   `/api/oai/embeddings`
 
+The following is an example of ai00 invocation based on Python and an out of the box tool class implementation
+
+```python
+import openai
+
+class Ai00:
+    def __init__(self,model="model",port=65530,api_key="JUSTSECRET_KEY") :
+        openai.api_base = f"http://127.0.0.1:{port}/api/oai"
+        openai.api_key = api_key
+        self.ctx = []
+        self.ctx_str = ""
+        self.params = {
+            "system_name": "System",
+            "user_name": "User", 
+            "assistant_name": "Assistant",
+            "model": model,
+            "max_tokens": 4096,
+            "top_p": 0.6,
+            "temperature": 1,
+            "presence_penalty": 0.3,
+            "frequency_penalty": 0.3,
+            "half_life": 400,
+            "stop": ['\x00','\n\n']
+        }
+        
+    def set_params(self,**kwargs):
+        self.params.update(kwargs)
+        
+    def clear_ctx(self):
+        self.ctx = []
+        self.ctx_str = ""
+        
+    def get_ctx(self):
+        return self.ctx
+    
+    def send_message(self, message,role="user"):
+        if role == "user":
+            self.ctx.append({
+                "role": self.params['user_name'],
+                "content": message
+            })
+            self.ctx_str += f"{self.params['user_name']}: {message}\n\n{self.params['assistant_name']}: "
+        elif role == "assistant":
+            self.ctx.append({
+                "role": self.params['assistant_name'],
+                "content": message
+            })
+            self.ctx_str += f"{self.params['assistant_name']}: {message}\n\n{self.params['assistant_name']}: "
+        elif role == "system":
+            self.ctx.append({
+                "role": self.params['system_name'],
+                "content": message
+            })
+            self.ctx_str += f"{self.params['system_name']}: {message}"
+            return ""
+        else:
+            raise ValueError("role must be 'user' or 'assistant' or 'system'")
+        response = openai.Completion.create(
+            model=self.params['model'],
+            prompt=self.ctx_str,
+            max_tokens=self.params['max_tokens'],
+            half_life=self.params['half_life'],
+            top_p=self.params['top_p'],
+            temperature=self.params['temperature'],
+            presence_penalty=self.params['presence_penalty'],
+            frequency_penalty=self.params['frequency_penalty'],
+            stop=self.params['stop']
+        )
+        result = response.choices[0].text
+        self.ctx.append({
+            "role": self.params['assistant_name'],
+            "content": result
+        })
+        return result
+    
+ai00 = Ai00()
+ai00.set_params(
+    max_tokens = 4096,
+    top_p = 0.55,
+    temperature = 2,
+    presence_penalty = 0.3,
+    frequency_penalty = 0.8,
+    half_life = 400,
+    stop = ['\x00','\n\n']
+)
+print(ai00.send_message("how are you?"))
+print(ai00.get_ctx())
+ai00.clear_ctx()
+print(ai00.send_message("me too!"))
+print(ai00.get_ctx())
+```
+
 ## 📙WebUI Screenshots
 
 ### Chat Feature  
