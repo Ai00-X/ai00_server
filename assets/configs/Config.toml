@@ -40,3 +40,6 @@ tls = true
 [[listen.app_keys]] # Allow mutiple app keys.
 app_id = "JUSTAISERVER"
 secret_key = "JUSTSECRET_KEY"
+
+[web] # Remove this to disable WebUI.
+path = "assets/www/index.zip" # Path to the WebUI.

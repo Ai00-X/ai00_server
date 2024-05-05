@@ -133,41 +133,45 @@ async fn main() {
         sender: None,
     });
 
-    let serve_path = {
-        let path = tempfile::tempdir()
-            .expect("create temp dir failed")
-            .into_path();
-        load_web("assets/www/index.zip", &path).expect("load frontend failed");
-        path
-    };
+    let serve_path = match config.web {
+        Some(web) => {
+            let path = tempfile::tempdir()
+                .expect("create temp dir failed")
+                .into_path();
+            load_web(web.path, &path).expect("load frontend failed");
 
-    // create `assets/www/plugins` if it doesn't exist
-    if !Path::new("assets/www/plugins").exists() {
-        std::fs::create_dir("assets/www/plugins").expect("create plugins dir failed");
-    }
+            // create `assets/www/plugins` if it doesn't exist
+            if !Path::new("assets/www/plugins").exists() {
+                std::fs::create_dir("assets/www/plugins").expect("create plugins dir failed");
+            }
 
-    // extract and load all plugins under `assets/www/plugins`
-    match std::fs::read_dir("assets/www/plugins") {
-        Ok(dir) => dir
-            .filter_map(|x| x.ok())
-            .filter(|x| x.path().is_file())
-            .filter(|x| x.path().extension().is_some_and(|ext| ext == "zip"))
-            .filter(|x| x.path().file_stem().is_some_and(|stem| stem != "api"))
-            .for_each(|x| {
-                let name = x
-                    .path()
-                    .file_stem()
-                    .expect("this cannot happen")
-                    .to_string_lossy()
-                    .into();
-                match load_plugin(x.path(), &serve_path, &name) {
-                    Ok(_) => log::info!("loaded plugin {}", name),
-                    Err(err) => log::error!("failed to load plugin {}, {}", name, err),
+            // extract and load all plugins under `assets/www/plugins`
+            match std::fs::read_dir("assets/www/plugins") {
+                Ok(dir) => dir
+                    .filter_map(|x| x.ok())
+                    .filter(|x| x.path().is_file())
+                    .filter(|x| x.path().extension().is_some_and(|ext| ext == "zip"))
+                    .filter(|x| x.path().file_stem().is_some_and(|stem| stem != "api"))
+                    .for_each(|x| {
+                        let name = x
+                            .path()
+                            .file_stem()
+                            .expect("this cannot happen")
+                            .to_string_lossy()
+                            .into();
+                        match load_plugin(x.path(), &path, &name) {
+                            Ok(_) => log::info!("loaded plugin {}", name),
+                            Err(err) => log::error!("failed to load plugin {}, {}", name, err),
+                        }
+                    }),
+                Err(err) => {
+                    log::error!("failed to read plugin directory: {}", err);
                 }
-            }),
-        Err(err) => {
-            log::error!("failed to read plugin directory: {}", err);
+            };
+
+            Some(path)
         }
+        None => None,
     };
 
     let cors = Cors::new()
@@ -231,11 +235,14 @@ async fn main() {
 
     let app = app
         .push(doc.into_router("/api-doc/openapi.json"))
-        .push(SwaggerUi::new("/api-doc/openapi.json").into_router("swagger-ui"))
-        .push(
-            // this static serve should be after `swagger`
-            Router::with_path("<**path>").get(StaticDir::new(serve_path).defaults(["index.html"])),
-        );
+        .push(SwaggerUi::new("/api-doc/openapi.json").into_router("swagger-ui"));
+    // this static serve should be after `swagger`
+    let app = match serve_path {
+        Some(path) => app
+            .push(Router::with_path("<**path>").get(StaticDir::new(path).defaults(["index.html"]))),
+        None => app,
+    };
+
     let service = Service::new(app).hoop(cors);
     let ip_addr = args.ip.unwrap_or(listen.ip);
     let (ipv4_addr, ipv6_addr) = match ip_addr {
