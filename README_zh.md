@@ -192,10 +192,16 @@ class Ai00:
                 "role": self.params['system_name'],
                 "content": message
             })
-            self.ctx_str += f"{self.params['system_name']}: {message}"
+            self.ctx_str += f"{self.params['system_name']}: {message}\n\n"
             return ""
+        elif role == "continue":
+            self.ctx.append({
+                "role": "continue",
+                "content": message
+            })
+            self.ctx_str += f"{message}"
         else:
-            raise ValueError("role must be 'user' or 'assistant' or 'system'")
+            raise ValueError("role must be 'user' or 'assistant' or 'system' or 'continue'")
         response = openai.Completion.create(
             model=self.params['model'],
             prompt=self.ctx_str,
@@ -208,10 +214,19 @@ class Ai00:
             stop=self.params['stop']
         )
         result = response.choices[0].text
-        self.ctx.append({
-            "role": self.params['assistant_name'],
-            "content": result
-        })
+        
+        if role != "continue":
+            self.ctx.append({
+                "role": self.params['assistant_name'],
+                "content": result
+            })
+            self.ctx_str += f"{result}\n\n"
+        else:
+            self.ctx.append({
+                "role": "continue",
+                "content": result
+            })
+            self.ctx_str += f"{result}"
         return result
     
 ai00 = Ai00()
@@ -224,10 +239,25 @@ ai00.set_params(
     half_life = 400,
     stop = ['\x00','\n\n']
 )
+ai00 = Ai00()
+ai00.set_params(
+    max_tokens = 4096,
+    top_p = 0.55,
+    temperature = 2,
+    presence_penalty = 0.3,
+    frequency_penalty = 0.8,
+    half_life = 400,
+    stop = ['\x00','\n\n']
+)
+
 print(ai00.send_message("how are you?"))
 print(ai00.get_ctx())
 ai00.clear_ctx()
 print(ai00.send_message("me too!"))
+print(ai00.get_ctx())
+ai00.clear_ctx()
+print(ai00.send_message("i like",role="continue"))
+print(ai00.send_message("you are",role="continue"))
 print(ai00.get_ctx())
 ```
 
