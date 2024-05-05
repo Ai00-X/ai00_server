@@ -139,6 +139,105 @@ API 服务开启于 65530 端口, 数据输入已经输出格式遵循Openai API
 - `/api/oai/v1/embeddings`
 - `/api/oai/embeddings`
 
+下面是一个基于Python和开箱即用工具类实现的ai00调用示例
+
+```python
+import openai
+
+class Ai00:
+    def __init__(self,model="model",port=65530,api_key="JUSTSECRET_KEY") :
+        openai.api_base = f"http://127.0.0.1:{port}/api/oai"
+        openai.api_key = api_key
+        self.ctx = []
+        self.params = {
+            "system_name": "System",
+            "user_name": "User", 
+            "assistant_name": "Assistant",
+            "model": model,
+            "max_tokens": 4096,
+            "top_p": 0.6,
+            "temperature": 1,
+            "presence_penalty": 0.3,
+            "frequency_penalty": 0.3,
+            "half_life": 400,
+            "stop": ['\x00','\n\n']
+        }
+        
+    def set_params(self,**kwargs):
+        self.params.update(kwargs)
+        
+    def clear_ctx(self):
+        self.ctx = []
+        
+    def get_ctx(self):
+        return self.ctx
+    
+    def continuation(self, message):
+        response = openai.Completion.create(
+            model=self.params['model'],
+            prompt=message,
+            max_tokens=self.params['max_tokens'],
+            half_life=self.params['half_life'],
+            top_p=self.params['top_p'],
+            temperature=self.params['temperature'],
+            presence_penalty=self.params['presence_penalty'],
+            frequency_penalty=self.params['frequency_penalty'],
+            stop=self.params['stop']
+        )
+        result = response.choices[0].text
+        return result
+    
+    def append_ctx(self,role,content):
+        self.ctx.append({
+            "role": role,
+            "content": content
+        })
+        
+    def send_message(self, message,role="user"):
+        self.ctx.append({
+            "role": role,
+            "content": message
+        })
+        result = openai.ChatCompletion.create(
+            model=self.params['model'],
+            messages=self.ctx,
+            names={
+                "system": self.params['system_name'],
+                "user": self.params['user_name'],
+                "assistant": self.params['assistant_name']
+            },
+            max_tokens=self.params['max_tokens'],
+            half_life=self.params['half_life'],
+            top_p=self.params['top_p'],
+            temperature=self.params['temperature'],
+            presence_penalty=self.params['presence_penalty'],
+            frequency_penalty=self.params['frequency_penalty'],
+            stop=self.params['stop']
+        )
+        result = result.choices[0].message['content']
+        self.ctx.append({
+            "role": "assistant",
+            "content": result
+        })
+        return result
+    
+ai00 = Ai00()
+ai00.set_params(
+    max_tokens = 4096,
+    top_p = 0.55,
+    temperature = 2,
+    presence_penalty = 0.3,
+    frequency_penalty = 0.8,
+    half_life = 400,
+    stop = ['\x00','\n\n']
+)
+print(ai00.send_message("how are you?"))
+print(ai00.send_message("me too!"))
+print(ai00.get_ctx())
+ai00.clear_ctx()
+print(ai00.continuation("i like"))
+```
+
 ## 📙WebUI 截图
 
 ### 对话功能
