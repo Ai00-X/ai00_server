@@ -149,7 +149,6 @@ class Ai00:
         openai.api_base = f"http://127.0.0.1:{port}/api/oai"
         openai.api_key = api_key
         self.ctx = []
-        self.ctx_str = ""
         self.params = {
             "system_name": "System",
             "user_name": "User", 
@@ -169,42 +168,14 @@ class Ai00:
         
     def clear_ctx(self):
         self.ctx = []
-        self.ctx_str = ""
         
     def get_ctx(self):
         return self.ctx
     
-    def send_message(self, message,role="user"):
-        if role == "user":
-            self.ctx.append({
-                "role": self.params['user_name'],
-                "content": message
-            })
-            self.ctx_str += f"{self.params['user_name']}: {message}\n\n{self.params['assistant_name']}: "
-        elif role == "assistant":
-            self.ctx.append({
-                "role": self.params['assistant_name'],
-                "content": message
-            })
-            self.ctx_str += f"{self.params['assistant_name']}: {message}\n\n{self.params['assistant_name']}: "
-        elif role == "system":
-            self.ctx.append({
-                "role": self.params['system_name'],
-                "content": message
-            })
-            self.ctx_str += f"{self.params['system_name']}: {message}\n\n"
-            return ""
-        elif role == "continue":
-            self.ctx.append({
-                "role": "continue",
-                "content": message
-            })
-            self.ctx_str += f"{message}"
-        else:
-            raise ValueError("role must be 'user' or 'assistant' or 'system' or 'continue'")
+    def continuation(self, message):
         response = openai.Completion.create(
             model=self.params['model'],
-            prompt=self.ctx_str,
+            prompt=message,
             max_tokens=self.params['max_tokens'],
             half_life=self.params['half_life'],
             top_p=self.params['top_p'],
@@ -214,19 +185,40 @@ class Ai00:
             stop=self.params['stop']
         )
         result = response.choices[0].text
+        return result
+    
+    def append_ctx(self,role,content):
+        self.ctx.append({
+            "role": role,
+            "content": content
+        })
         
-        if role != "continue":
-            self.ctx.append({
-                "role": self.params['assistant_name'],
-                "content": result
-            })
-            self.ctx_str += f"{result}\n\n"
-        else:
-            self.ctx.append({
-                "role": "continue",
-                "content": result
-            })
-            self.ctx_str += f"{result}"
+    def send_message(self, message,role="user"):
+        self.ctx.append({
+            "role": role,
+            "content": message
+        })
+        result = openai.ChatCompletion.create(
+            model=self.params['model'],
+            messages=self.ctx,
+            names={
+                "system": self.params['system_name'],
+                "user": self.params['user_name'],
+                "assistant": self.params['assistant_name']
+            },
+            max_tokens=self.params['max_tokens'],
+            half_life=self.params['half_life'],
+            top_p=self.params['top_p'],
+            temperature=self.params['temperature'],
+            presence_penalty=self.params['presence_penalty'],
+            frequency_penalty=self.params['frequency_penalty'],
+            stop=self.params['stop']
+        )
+        result = result.choices[0].message['content']
+        self.ctx.append({
+            "role": "assistant",
+            "content": result
+        })
         return result
     
 ai00 = Ai00()
@@ -239,26 +231,11 @@ ai00.set_params(
     half_life = 400,
     stop = ['\x00','\n\n']
 )
-ai00 = Ai00()
-ai00.set_params(
-    max_tokens = 4096,
-    top_p = 0.55,
-    temperature = 2,
-    presence_penalty = 0.3,
-    frequency_penalty = 0.8,
-    half_life = 400,
-    stop = ['\x00','\n\n']
-)
-
 print(ai00.send_message("how are you?"))
-print(ai00.get_ctx())
-ai00.clear_ctx()
 print(ai00.send_message("me too!"))
 print(ai00.get_ctx())
 ai00.clear_ctx()
-print(ai00.send_message("i like",role="continue"))
-print(ai00.send_message("you are",role="continue"))
-print(ai00.get_ctx())
+print(ai00.continuation("i like"))
 ```
 
 ## 📙WebUI 截图
