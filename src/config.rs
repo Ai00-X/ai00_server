@@ -28,8 +28,8 @@ impl TryFrom<Config> for ReloadRequest {
         let Config {
             model:
                 Model {
-                    model_name,
-                    model_path,
+                    name,
+                    path,
                     quant,
                     quant_type,
                     token_chunk_size,
@@ -46,13 +46,13 @@ impl TryFrom<Config> for ReloadRequest {
             ..
         } = value;
 
+        let model_path = build_path(&path, name)?;
         for lora in lora.iter_mut() {
-            lora.path = build_path(&model_path, &lora.path)?;
+            lora.path = build_path(&path, &lora.path)?;
         }
         if let Some(state) = state.as_mut() {
-            state.path = build_path(&model_path, &state.path)?;
+            state.path = build_path(&path, &state.path)?;
         }
-        let model_path = build_path(&model_path, model_name)?;
 
         Ok(Self {
             model_path,
@@ -76,9 +76,11 @@ impl TryFrom<Config> for ReloadRequest {
 pub struct Model {
     /// Path to the folder containing all models.
     #[derivative(Default(value = "\"assets/models\".into()"))]
-    pub model_path: PathBuf,
+    #[serde(alias = "model_path")]
+    pub path: PathBuf,
     /// Name of the model.
-    pub model_name: PathBuf,
+    #[serde(alias = "model_name")]
+    pub name: PathBuf,
     /// Specify layers that needs to be quantized.
     pub quant: usize,
     /// Quantization type (Int8 or NF4).

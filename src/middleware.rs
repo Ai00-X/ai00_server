@@ -10,6 +10,7 @@ use anyhow::{anyhow, bail, Result};
 use bnf_sampler::{utils::U8ArrayWrapper, vocabulary::Vocabulary};
 use derivative::Derivative;
 use flume::{Receiver, Sender};
+use half::f16;
 use itertools::Itertools;
 use memmap2::Mmap;
 use qp_trie::Trie;
@@ -240,7 +241,7 @@ pub struct TokenCounter {
 #[derive(Clone)]
 pub struct ThreadState {
     pub sender: Sender<ThreadRequest>,
-    pub model_path: PathBuf,
+    pub path: PathBuf,
 }
 
 fn list_adapters() -> AdapterList {
@@ -391,17 +392,17 @@ async fn load_runtime(
             match info.version {
                 ModelVersion::V4 => {
                     let model = Build::<v4::Model>::build(builder).await?;
-                    let builder = v4::ModelRuntime::new(model, max_batch);
+                    let builder = v4::ModelRuntime::<f16>::new(model, max_batch);
                     Runtime::new(context, builder, reload, init_state, tokenizer, vocab).await
                 }
                 ModelVersion::V5 => {
                     let model = Build::<v5::Model>::build(builder).await?;
-                    let builder = v5::ModelRuntime::new(model, max_batch);
+                    let builder = v5::ModelRuntime::<f16>::new(model, max_batch);
                     Runtime::new(context, builder, reload, init_state, tokenizer, vocab).await
                 }
                 ModelVersion::V6 => {
                     let model = Build::<v6::Model>::build(builder).await?;
-                    let builder = v6::ModelRuntime::new(model, max_batch);
+                    let builder = v6::ModelRuntime::<f16>::new(model, max_batch);
                     Runtime::new(context, builder, reload, init_state, tokenizer, vocab).await
                 }
             }
@@ -418,19 +419,19 @@ async fn load_runtime(
                 ModelVersion::V4 => {
                     let seed: Seed<_, v4::Model> = Seed::new(&context);
                     let model = seed.deserialize(&mut deserializer)?;
-                    let builder = v4::ModelRuntime::new(model, reload.max_batch);
+                    let builder = v4::ModelRuntime::<f16>::new(model, reload.max_batch);
                     Runtime::new(context, builder, reload, None, tokenizer, vocab).await
                 }
                 ModelVersion::V5 => {
                     let seed: Seed<_, v5::Model> = Seed::new(&context);
                     let model = seed.deserialize(&mut deserializer)?;
-                    let builder = v5::ModelRuntime::new(model, reload.max_batch);
+                    let builder = v5::ModelRuntime::<f16>::new(model, reload.max_batch);
                     Runtime::new(context, builder, reload, None, tokenizer, vocab).await
                 }
                 ModelVersion::V6 => {
                     let seed: Seed<_, v6::Model> = Seed::new(&context);
                     let model = seed.deserialize(&mut deserializer)?;
-                    let builder = v6::ModelRuntime::new(model, reload.max_batch);
+                    let builder = v6::ModelRuntime::<f16>::new(model, reload.max_batch);
                     Runtime::new(context, builder, reload, None, tokenizer, vocab).await
                 }
             }

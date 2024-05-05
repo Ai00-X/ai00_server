@@ -47,23 +47,23 @@ pub async fn state(depot: &mut Depot, res: &mut Response) {
 /// `/api/models/load`.
 #[handler]
 pub async fn load(depot: &mut Depot, req: &mut Request) -> StatusCode {
-    let ThreadState { sender, model_path } = depot.obtain::<ThreadState>().unwrap();
+    let ThreadState { sender, path } = depot.obtain::<ThreadState>().unwrap();
     let (result_sender, result_receiver) = flume::unbounded();
     let mut request: ReloadRequest = req.parse_body().await.unwrap();
 
     // make sure that we are not visiting un-permitted path.
-    request.model_path = match build_path(model_path, &request.model_path) {
+    request.model_path = match build_path(path, request.model_path) {
         Ok(path) => path,
         Err(_) => return StatusCode::NOT_FOUND,
     };
     for lora in request.lora.iter_mut() {
-        lora.path = match build_path(model_path, &lora.path) {
+        lora.path = match build_path(path, &lora.path) {
             Ok(path) => path,
             Err(_) => return StatusCode::NOT_FOUND,
         }
     }
     if let Some(_state) = request.state.as_mut() {
-        _state.path = match build_path(model_path, &_state.path) {
+        _state.path = match build_path(path, &_state.path) {
             Ok(path) => path,
             Err(_) => return StatusCode::NOT_FOUND,
         }
@@ -82,12 +82,12 @@ pub async fn load(depot: &mut Depot, req: &mut Request) -> StatusCode {
 /// `/api/models/save`.
 #[handler]
 pub async fn save(depot: &mut Depot, req: &mut Request) -> StatusCode {
-    let ThreadState { sender, model_path } = depot.obtain::<ThreadState>().unwrap();
+    let ThreadState { sender, path } = depot.obtain::<ThreadState>().unwrap();
     let (result_sender, result_receiver) = flume::unbounded();
     let mut request: SaveRequest = req.parse_body().await.unwrap();
 
     // make sure that we are not visiting un-permitted path.
-    request.model_path = match build_path(model_path, &request.model_path) {
+    request.model_path = match build_path(path, request.model_path) {
         Ok(path) => path,
         Err(_) => return StatusCode::NOT_FOUND,
     };

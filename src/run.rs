@@ -10,7 +10,6 @@ use std::{
 use anyhow::Result;
 use bnf_sampler::{grammar::Grammar, sampler::AcceptTokenResult, vocabulary::Vocabulary};
 use flume::{Receiver, Sender};
-use half::f16;
 use itertools::Itertools;
 use qp_trie::Trie;
 use serde::Serialize;
@@ -297,7 +296,7 @@ pub struct Runtime {
     info: ModelInfo,
     state: Arc<dyn State + Send + Sync>,
     model: Arc<dyn ModelSerialize + Send + Sync>,
-    runtime: JobRuntime<InferInput, InferOutput<f16>>,
+    runtime: JobRuntime<InferInput, InferOutput>,
     init_state: Option<TensorCpu<f32>>,
     tokenizer: Arc<Tokenizer>,
     vocab: Arc<Vocabulary>,
@@ -315,7 +314,7 @@ impl Runtime {
         vocab: Vocabulary,
     ) -> Self
     where
-        J: Job<Info = InferInfo, Input = InferChunk, Output = InferOutput<f16>>,
+        J: Job<Info = InferInfo, Input = InferChunk, Output = InferOutput>,
         B: JobBuilder<J, Info = InferInfo> + ModelRuntime,
     {
         let slots = (0..reload.max_batch)
@@ -642,7 +641,7 @@ impl Runtime {
                     let sampler = context.request.sampler.clone();
                     let bias = context.request.bias.clone();
                     set.spawn(async move {
-                        let mut data = output.map(|x| x.to_f32()).to_vec();
+                        let mut data = output.to_vec();
                         assert_eq!(data.len(), num_vocab);
 
                         sampler.read().await.transform(&mut data);
@@ -652,9 +651,7 @@ impl Runtime {
                         if let Some(bnf) = bnf {
                             bnf.read().await.transform(&mut data);
                         }
-                        // data[0] = f32::MIN;
 
-                        let data = data.into_iter().map(f16::from_f32).collect_vec();
                         (batch, data)
                     });
                 }
@@ -686,7 +683,7 @@ impl Runtime {
                     let num_vocab = self.info.num_vocab;
                     let sampler = context.request.sampler.clone();
                     set.spawn(async move {
-                        let data = output.map(|x| x.to_f32()).to_vec();
+                        let data = output.to_vec();
                         assert_eq!(data.len(), num_vocab);
                         let token = sampler.write().await.sample(&data);
                         (batch, token)

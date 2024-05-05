@@ -153,9 +153,9 @@ pub async fn dir(depot: &mut Depot, req: &mut Request, res: &mut Response) {
 /// `/api/models/list`.
 #[handler]
 pub async fn models(depot: &mut Depot, res: &mut Response) {
-    let ThreadState { model_path, .. } = depot.obtain::<ThreadState>().unwrap();
+    let ThreadState { path, .. } = depot.obtain::<ThreadState>().unwrap();
     let request = FileInfoRequest {
-        path: model_path.clone(),
+        path: path.clone(),
         is_sha: true,
     };
     match dir_inner(depot, Json(request)).await {

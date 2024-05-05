@@ -213,7 +213,7 @@ async fn main() {
         .hoop(
             affix::inject(ThreadState {
                 sender,
-                model_path: config.model.model_path,
+                path: config.model.path,
             })
             .insert("listen", listen.clone()),
         )
