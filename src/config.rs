@@ -32,6 +32,7 @@ impl TryFrom<Config> for ReloadRequest {
                     path,
                     quant,
                     quant_type,
+                    precision,
                     token_chunk_size,
                     max_batch,
                     embed_device,
@@ -60,6 +61,7 @@ impl TryFrom<Config> for ReloadRequest {
             state,
             quant,
             quant_type,
+            precision,
             token_chunk_size,
             max_batch,
             embed_device,
@@ -83,8 +85,10 @@ pub struct Model {
     pub name: PathBuf,
     /// Specify layers that needs to be quantized.
     pub quant: usize,
-    /// Quantization type (Int8 or NF4).
+    /// Quantization type (`Int8` or `NF4`).
     pub quant_type: Quant,
+    /// Precision for intermediate tensors (`Fp16` or `Fp32`).
+    pub precision: Precision,
     /// Maximum tokens to be processed in parallel at once.
     #[derivative(Default(value = "128"))]
     pub token_chunk_size: usize,
@@ -131,6 +135,13 @@ pub struct BnfOption {
     /// The initial nonterminal of the BNF schemas.
     #[derivative(Default(value = "\"start\".into()"))]
     pub start_nonterminal: String,
+}
+
+#[derive(Debug, Default, Clone, Copy, Serialize, Deserialize)]
+pub enum Precision {
+    #[default]
+    Fp16,
+    Fp32,
 }
 
 #[derive(Debug, Default, Clone, Copy, Serialize, Deserialize)]
