@@ -39,7 +39,7 @@ use web_rwkv::{
 
 use crate::{
     config::{AdapterOption, BnfOption, Precision},
-    run::{GenerateContext, Runtime, SlotResult, Tokens},
+    run::{GenerateContext, Runtime, SlotResult, StateId, Tokens},
     sampler::{nucleus::NucleusSampler, Sampler},
 };
 
@@ -181,6 +181,8 @@ pub struct GenerateRequest {
     pub embed: bool,
     /// The (reversed) number of layer at which the output is as embedding.
     pub embed_layer: usize,
+    /// Initial state ID.
+    pub state_id: uid::Id<StateId>,
 }
 
 #[derive(Debug, Derivative, Clone, Serialize, Deserialize)]

@@ -119,6 +119,7 @@ dependencies = [
  "toml",
  "tower",
  "tower-http",
+ "uid",
  "web-rwkv",
  "web-rwkv-converter",
  "zip-extract",
