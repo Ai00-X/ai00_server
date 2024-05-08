@@ -56,14 +56,14 @@ pub async fn load(depot: &mut Depot, req: &mut Request) -> StatusCode {
         Ok(path) => path,
         Err(_) => return StatusCode::NOT_FOUND,
     };
-    for lora in request.lora.iter_mut() {
-        lora.path = match build_path(path, &lora.path) {
+    for x in request.lora.iter_mut() {
+        x.path = match build_path(path, &x.path) {
             Ok(path) => path,
             Err(_) => return StatusCode::NOT_FOUND,
         }
     }
-    if let Some(_state) = request.state.as_mut() {
-        _state.path = match build_path(path, &_state.path) {
+    for x in request.state.iter_mut() {
+        x.path = match build_path(path, &x.path) {
             Ok(path) => path,
             Err(_) => return StatusCode::NOT_FOUND,
         }

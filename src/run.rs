@@ -307,6 +307,28 @@ struct StateCacheItem {
     cache: Trie<Tokens, CachedItem<TensorCpu<f32>>>,
 }
 
+impl StateCacheItem {
+    fn maintain(&mut self) {
+        let cache = &mut self.cache;
+        if cache.count() <= MAX_CACHE_ITEMS {
+            return;
+        }
+
+        let mut remove = vec![];
+        for (tokens, _) in cache
+            .iter()
+            .sorted_unstable_by_key(|(_, item)| item.instant.elapsed())
+            .skip(MAX_CACHE_ITEMS)
+        {
+            remove.push(tokens.to_owned());
+        }
+
+        for tokens in remove.into_iter() {
+            cache.remove(&tokens);
+        }
+    }
+}
+
 #[derive(Debug, Default)]
 struct StateCache {
     backed: HashMap<uid::Id<StateId>, StateCacheItem>,
@@ -319,32 +341,6 @@ impl StateCache {
             Some(item) => item,
             None => &mut self.default,
         }
-    }
-
-    fn maintain(&mut self) {
-        fn maintain(cache: &mut Trie<Tokens, CachedItem<TensorCpu<f32>>>) {
-            if cache.count() <= MAX_CACHE_ITEMS {
-                return;
-            }
-
-            let mut removing = vec![];
-            for (tokens, _) in cache
-                .iter()
-                .sorted_unstable_by_key(|(_, item)| item.instant.elapsed())
-                .skip(MAX_CACHE_ITEMS)
-            {
-                removing.push(tokens.to_owned());
-            }
-
-            for tokens in removing.into_iter() {
-                cache.remove(&tokens);
-            }
-        }
-
-        maintain(&mut self.default.cache);
-        self.backed
-            .iter_mut()
-            .for_each(|(_, item)| maintain(&mut item.cache));
     }
 }
 
@@ -511,9 +507,6 @@ impl Runtime {
             None
         };
 
-        // copy the initial state id used in this task
-        let state_id = context.request.state_id;
-
         // find the best idle slot by:
         // 1. find the slot that matches the context (continue)
         // 2. find an empty slot
@@ -550,7 +543,7 @@ impl Runtime {
             // back a non-relative and non-empty slot and use it for our new context
             Some(SlotChoice::Back(batch)) => {
                 log::info!("start at non-empty slot {}", batch);
-                let (prefix, reload) = self.checkout(state_id, &tokens, batch).await;
+                let (prefix, reload) = self.checkout(context.request.state, &tokens, batch).await;
                 self.state.load(batch, reload.as_ref().clone())?;
 
                 let tokens = [tokens, vec![last]].concat();
@@ -571,7 +564,7 @@ impl Runtime {
             // directly occupy an empty slot so no need backing
             Some(SlotChoice::Empty(batch)) => {
                 log::info!("start at empty slot {}", batch);
-                let (prefix, reload) = self.checkout(state_id, &tokens, batch).await;
+                let (prefix, reload) = self.checkout(context.request.state, &tokens, batch).await;
                 self.state.load(batch, reload.as_ref().clone())?;
 
                 let tokens = [tokens, vec![last]].concat();
@@ -637,7 +630,7 @@ impl Runtime {
             }
 
             let mut caches = self.caches.lock().await;
-            let cache = &mut caches.fetch(context.request.state_id).cache;
+            let cache = &mut caches.fetch(context.request.state).cache;
             cache.insert(context.prefix.clone(), CachedItem::new(backed));
             log::info!(
                 "backed completed slot {} of length {}",
@@ -805,7 +798,7 @@ impl Runtime {
             // cache the prompt if it is too long.
             if !context.prompt_cached && context.prompt_tokens.len() > PROMPT_CACHE_TOKENS {
                 let mut caches = self.caches.lock().await;
-                let cache = &mut caches.fetch(context.request.state_id).cache;
+                let cache = &mut caches.fetch(context.request.state).cache;
                 let backed = self.state.back(batch).await?;
 
                 cache.insert(context.prefix.clone(), CachedItem::new(backed));
@@ -921,7 +914,8 @@ impl Runtime {
     /// Keep the items in the cache less then [`MAX_CACHE_ITEMS`].
     async fn maintain_cache(&self) {
         let mut caches = self.caches.lock().await;
-        caches.maintain();
+        caches.default.maintain();
+        caches.backed.iter_mut().for_each(|(_, x)| x.maintain());
     }
 }
 

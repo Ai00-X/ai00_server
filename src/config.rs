@@ -14,7 +14,7 @@ use crate::{build_path, middleware::ReloadRequest};
 pub struct Config {
     pub model: Model,
     pub lora: Vec<Lora>,
-    pub state: Option<State>,
+    pub state: Vec<State>,
     pub tokenizer: Tokenizer,
     pub bnf: BnfOption,
     pub adapter: AdapterOption,
@@ -52,7 +52,7 @@ impl TryFrom<Config> for ReloadRequest {
         for lora in lora.iter_mut() {
             lora.path = build_path(&path, &lora.path)?;
         }
-        if let Some(state) = state.as_mut() {
+        for state in state.iter_mut() {
             state.path = build_path(&path, &state.path)?;
         }
 
@@ -118,6 +118,8 @@ pub struct Lora {
 pub struct State {
     /// Path to the initial state.
     pub path: PathBuf,
+    /// If this state should be loaded on startup.
+    pub default: bool,
 }
 
 #[derive(Debug, Derivative, Clone, Serialize, Deserialize)]

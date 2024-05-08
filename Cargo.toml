@@ -56,7 +56,7 @@ zip-extract = "0.1"
 # path = "../web-rwkv"
 default-features = false
 features = ["native"]
-version = "0.8.4"
+version = "0.8.5"
 
 [dependencies.salvo]
 default-features = true
