@@ -9,7 +9,7 @@ use super::*;
 use crate::{
     build_path,
     middleware::{ReloadRequest, RuntimeInfo, SaveRequest, ThreadRequest, ThreadState},
-    run::InitState,
+    run::{InitState, StateId},
 };
 
 #[derive(Debug, Clone, Serialize)]
@@ -21,7 +21,7 @@ pub struct InfoResponse {
 
 #[derive(Debug, Clone, Serialize)]
 struct InitStateInfo {
-    id: usize,
+    id: StateId,
     name: String,
 }
 
@@ -36,7 +36,7 @@ pub async fn info(depot: &mut Depot) -> Json<InfoResponse> {
     } = request_info(sender.to_owned(), Duration::from_millis(500)).await;
     let states = states
         .into_iter()
-        .map(|(id, InitState { name, .. })| InitStateInfo { id: id.get(), name })
+        .map(|(id, InitState { name, .. })| InitStateInfo { id, name })
         .collect();
     Json(InfoResponse {
         reload,
@@ -62,7 +62,7 @@ pub async fn state(depot: &mut Depot, res: &mut Response) {
          }| {
             let states = states
                 .into_iter()
-                .map(|(id, InitState { name, .. })| InitStateInfo { id: id.get(), name })
+                .map(|(id, InitState { name, .. })| InitStateInfo { id, name })
                 .collect();
             match serde_json::to_string(&InfoResponse {
                 reload,

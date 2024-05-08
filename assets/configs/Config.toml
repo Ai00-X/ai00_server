@@ -10,8 +10,14 @@ stop = ["\n\n"]                                      # Additional stop words in 
 token_chunk_size = 128                               # Size of token chunk that is inferred at once. For high end GPUs, this could be 64 or 128 (faster).
 
 # [[state]] # State-tuned initial state.
-# default = true                                                # Load the initial state on startup
+# default = true                                                # Load the initial state on startup.
+# id = "fd7a60ed-7807-449f-8256-bccae3246222"                   # A UUID for this state.
 # path = "rwkv-x060-chn_single_round_qa-3B-20240505-ctx1024.st"
+
+# [[state]] # Add a second initial state.
+# default = false                                               # Do not load the initial state on startup.
+# id = "6a9c60a4-0f4c-40b1-a31f-987f73e20315"                   # A UUID for this state.
+# path = "rwkv-x060-chn_single_round_qa-3B-20240502-ctx1024.st"
 
 # [[lora]] # LoRA and blend factors.
 # alpha = 192

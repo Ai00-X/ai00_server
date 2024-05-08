@@ -150,7 +150,7 @@ impl Environment {
 pub struct RuntimeInfo {
     pub reload: ReloadRequest,
     pub model: ModelInfo,
-    pub states: Vec<(uid::Id<StateId>, InitState)>,
+    pub states: Vec<(StateId, InitState)>,
     pub tokenizer: Arc<Tokenizer>,
 }
 
@@ -183,7 +183,7 @@ pub struct GenerateRequest {
     /// The (reversed) number of layer at which the output is as embedding.
     pub embed_layer: usize,
     /// Initial state ID.
-    pub state: uid::Id<StateId>,
+    pub state: StateId,
 }
 
 #[derive(Debug, Derivative, Clone, Serialize, Deserialize)]
@@ -344,18 +344,19 @@ async fn load_runtime(
     let data = unsafe { Mmap::map(&file) }?;
 
     let mut states = vec![];
-    for crate::config::State { path, default } in state {
+    for crate::config::State { path, id, default } in state {
         let name = path.to_string_lossy().to_string();
         let file = File::open(path).await?;
         let data = unsafe { Mmap::map(&file) }?;
         let model = SafeTensors::deserialize(&data)?;
         if let Some(data) = load_init_state(context, &info, model).await {
-            log::info!("loaded initial state {}, default: {}", name, default);
             let state = InitState {
                 name,
+                id,
                 data,
                 default,
             };
+            log::info!("{:?}", state);
             states.push(state);
         }
     }
@@ -366,8 +367,10 @@ async fn load_runtime(
 
             if let Some(data) = load_init_state(context, &info, model).await {
                 let name = "internal".into();
+                let id = StateId::new();
                 let state = InitState {
                     name,
+                    id,
                     data,
                     default: true,
                 };

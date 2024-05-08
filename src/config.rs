@@ -7,7 +7,7 @@ use derivative::Derivative;
 use serde::{Deserialize, Serialize};
 use web_rwkv::runtime::model::{EmbedDevice, Quant};
 
-use crate::{build_path, middleware::ReloadRequest};
+use crate::{build_path, middleware::ReloadRequest, run::StateId};
 
 #[derive(Debug, Default, Clone, Serialize, Deserialize)]
 #[serde(default)]
@@ -118,6 +118,9 @@ pub struct Lora {
 pub struct State {
     /// Path to the initial state.
     pub path: PathBuf,
+    /// A UUID for this state.
+    #[serde(default = "StateId::new")]
+    pub id: StateId,
     /// If this state should be loaded on startup.
     pub default: bool,
 }

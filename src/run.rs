@@ -9,9 +9,11 @@ use std::{
 
 use anyhow::Result;
 use bnf_sampler::{grammar::Grammar, sampler::AcceptTokenResult, vocabulary::Vocabulary};
+use derivative::Derivative;
 use flume::{Receiver, Sender};
 use itertools::Itertools;
 use qp_trie::Trie;
+use salvo::oapi::ToSchema;
 use serde::{Deserialize, Serialize};
 use tokio::sync::{Mutex, RwLock};
 use web_rwkv::{
@@ -291,15 +293,25 @@ impl<M: Serialize> ModelSerialize for Model<M> {
     }
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Derivative, Clone)]
+#[derivative(Debug)]
 pub struct InitState {
     pub name: String,
-    pub data: TensorCpu<f32>,
+    pub id: StateId,
     pub default: bool,
+    #[derivative(Debug = "ignore")]
+    pub data: TensorCpu<f32>,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
-pub struct StateId;
+#[derive(Debug, Default, Clone, Copy, PartialEq, Eq, Hash, ToSchema, Serialize, Deserialize)]
+#[serde(transparent)]
+pub struct StateId(uuid::Uuid);
+
+impl StateId {
+    pub fn new() -> Self {
+        Self(uuid::Uuid::new_v4())
+    }
+}
 
 #[derive(Debug, Default)]
 struct StateCacheItem {
@@ -331,12 +343,12 @@ impl StateCacheItem {
 
 #[derive(Debug, Default)]
 struct StateCache {
-    backed: HashMap<uid::Id<StateId>, StateCacheItem>,
+    backed: HashMap<StateId, StateCacheItem>,
     default: StateCacheItem,
 }
 
 impl StateCache {
-    fn fetch(&mut self, id: uid::Id<StateId>) -> &mut StateCacheItem {
+    fn fetch(&mut self, id: StateId) -> &mut StateCacheItem {
         match self.backed.get_mut(&id) {
             Some(item) => item,
             None => &mut self.default,
@@ -381,7 +393,7 @@ impl Runtime {
             caches.default.state = Some(state.clone());
         }
         for state in states {
-            let id = uid::Id::new();
+            let id = state.id;
             let item = StateCacheItem {
                 state: Some(state),
                 cache: Trie::new(),
@@ -433,16 +445,16 @@ impl Runtime {
         self.tokenizer.clone()
     }
 
-    pub async fn states(&self) -> Vec<(uid::Id<StateId>, InitState)> {
+    pub async fn states(&self) -> Vec<(StateId, InitState)> {
         let caches = self.caches.lock().await;
         let mut states = vec![];
 
         if let Some(state) = &caches.default.state {
-            states.push((uid::Id::new(), state.clone()));
+            states.push((state.id, state.clone()));
         }
-        for (id, item) in caches.backed.iter() {
+        for item in caches.backed.values() {
             if let Some(state) = &item.state {
-                states.push((*id, state.clone()));
+                states.push((state.id, state.clone()));
             }
         }
 
@@ -462,7 +474,7 @@ impl Runtime {
     /// Should there be a cache miss, an initial state is returned.
     async fn checkout(
         &self,
-        id: uid::Id<StateId>,
+        id: StateId,
         tokens: &[u16],
         batch: usize,
     ) -> (Vec<u16>, Arc<TensorCpu<f32>>) {

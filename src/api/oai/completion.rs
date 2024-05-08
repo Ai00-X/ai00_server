@@ -16,6 +16,7 @@ use crate::{
         Array, FinishReason, GenerateRequest, ThreadRequest, ThreadState, Token, TokenCounter,
         MAX_TOKENS,
     },
+    run::StateId,
 };
 
 #[derive(Debug, Deserialize, ToSchema, ToResponse)]
@@ -35,6 +36,8 @@ pub struct CompletionRequest {
     bnf_schema: Option<String>,
     #[serde(flatten)]
     sampler: SamplerParams,
+    #[serde(default)]
+    state: StateId,
 }
 
 impl Default for CompletionRequest {
@@ -47,6 +50,7 @@ impl Default for CompletionRequest {
             bias: HashMap::new(),
             bnf_schema: Default::default(),
             sampler: Default::default(),
+            state: Default::default(),
         }
     }
 }
@@ -64,6 +68,7 @@ impl From<CompletionRequest> for GenerateRequest {
             sampler,
             bias,
             bnf_schema,
+            state,
             ..
         } = value;
 
@@ -80,6 +85,7 @@ impl From<CompletionRequest> for GenerateRequest {
             sampler,
             bias,
             bnf_schema,
+            state,
             ..Default::default()
         }
     }
