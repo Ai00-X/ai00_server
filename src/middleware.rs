@@ -150,6 +150,7 @@ impl Environment {
 pub struct RuntimeInfo {
     pub reload: ReloadRequest,
     pub model: ModelInfo,
+    pub states: Vec<(uid::Id<StateId>, InitState)>,
     pub tokenizer: Arc<Tokenizer>,
 }
 
@@ -535,10 +536,12 @@ pub async fn model_route(receiver: Receiver<ThreadRequest>) -> Result<()> {
                         if let Environment::Loaded(runtime) = env {
                             let reload = runtime.reload().clone();
                             let model = runtime.info().clone();
+                            let states = runtime.states().await;
                             let tokenizer = runtime.tokenizer();
                             let _ = sender.send(RuntimeInfo {
                                 reload,
                                 model,
+                                states,
                                 tokenizer,
                             });
                         }

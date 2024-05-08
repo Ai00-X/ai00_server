@@ -9,20 +9,40 @@ use super::*;
 use crate::{
     build_path,
     middleware::{ReloadRequest, RuntimeInfo, SaveRequest, ThreadRequest, ThreadState},
+    run::InitState,
 };
 
 #[derive(Debug, Clone, Serialize)]
 pub struct InfoResponse {
     reload: ReloadRequest,
     model: ModelInfo,
+    states: Vec<InitStateInfo>,
+}
+
+#[derive(Debug, Clone, Serialize)]
+struct InitStateInfo {
+    id: usize,
+    name: String,
 }
 
 #[handler]
 pub async fn info(depot: &mut Depot) -> Json<InfoResponse> {
     let ThreadState { sender, .. } = depot.obtain::<ThreadState>().unwrap();
-    let RuntimeInfo { reload, model, .. } =
-        request_info(sender.to_owned(), Duration::from_millis(500)).await;
-    Json(InfoResponse { reload, model })
+    let RuntimeInfo {
+        reload,
+        model,
+        states,
+        ..
+    } = request_info(sender.to_owned(), Duration::from_millis(500)).await;
+    let states = states
+        .into_iter()
+        .map(|(id, InitState { name, .. })| InitStateInfo { id: id.get(), name })
+        .collect();
+    Json(InfoResponse {
+        reload,
+        model,
+        states,
+    })
 }
 
 /// `/api/models/state`.
@@ -33,13 +53,27 @@ pub async fn state(depot: &mut Depot, res: &mut Response) {
     let task = request_info_stream(sender.to_owned(), info_sender, Duration::from_millis(500));
     tokio::task::spawn(task);
 
-    let stream = info_receiver.into_stream().map(|_info| {
-        let RuntimeInfo { reload, model, .. } = _info;
-        match serde_json::to_string(&InfoResponse { reload, model }) {
-            Ok(json) => SseEvent::default().json(json),
-            Err(err) => Err(err),
-        }
-    });
+    let stream = info_receiver.into_stream().map(
+        |RuntimeInfo {
+             reload,
+             model,
+             states,
+             ..
+         }| {
+            let states = states
+                .into_iter()
+                .map(|(id, InitState { name, .. })| InitStateInfo { id: id.get(), name })
+                .collect();
+            match serde_json::to_string(&InfoResponse {
+                reload,
+                model,
+                states,
+            }) {
+                Ok(json) => SseEvent::default().json(json),
+                Err(err) => Err(err),
+            }
+        },
+    );
 
     salvo::sse::stream(res, stream);
 }

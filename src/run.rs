@@ -433,6 +433,22 @@ impl Runtime {
         self.tokenizer.clone()
     }
 
+    pub async fn states(&self) -> Vec<(uid::Id<StateId>, InitState)> {
+        let caches = self.caches.lock().await;
+        let mut states = vec![];
+
+        if let Some(state) = &caches.default.state {
+            states.push((uid::Id::new(), state.clone()));
+        }
+        for (id, item) in caches.backed.iter() {
+            if let Some(state) = &item.state {
+                states.push((*id, state.clone()));
+            }
+        }
+
+        states
+    }
+
     pub async fn serialize_model(&self, path: PathBuf) -> Result<()> {
         let model = self.model.clone();
         let handle = tokio::task::spawn_blocking(move || {
