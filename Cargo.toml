@@ -11,7 +11,7 @@ license = "MIT OR Apache-2.0"
 name = "ai00_server"
 repository = "https://github.com/cgisky1980/ai00_rwkv_server"
 rust-version = "1.75"
-version = "0.4.6"
+version = "0.4.7"
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
@@ -48,6 +48,7 @@ tokio = { version = "1", features = ["full"] }
 toml = "0.8.6"
 tower = { version = "0.4.13", features = ["full"] }
 tower-http = { version = "0.5.0", features = ["full"] }
+uid = "0.1.7"
 web-rwkv-converter = "0.1.1"
 zip-extract = "0.1"
 
@@ -55,7 +56,7 @@ zip-extract = "0.1"
 # path = "../web-rwkv"
 default-features = false
 features = ["native"]
-version = "0.8.3"
+version = "0.8.6"
 
 [dependencies.salvo]
 default-features = true

@@ -87,7 +87,7 @@ dependencies = [
 
 [[package]]
 name = "ai00_server"
-version = "0.4.6"
+version = "0.4.7"
 dependencies = [
  "anyhow",
  "bit-set",
@@ -119,6 +119,7 @@ dependencies = [
  "toml",
  "tower",
  "tower-http",
+ "uid",
  "web-rwkv",
  "web-rwkv-converter",
  "zip-extract",
@@ -4090,9 +4091,9 @@ dependencies = [
 
 [[package]]
 name = "web-rwkv"
-version = "0.8.3"
+version = "0.8.6"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "1e5fc8d667c96ddacf8055769701e8dc56cd92ab8cb7dfb37770ed0e27923985"
+checksum = "758f6c24a47ddd3d6f2de8c07e286d3825ab0a17aceb6e05efa8be9d40409d9f"
 dependencies = [
  "ahash 0.8.11",
  "anyhow",
@@ -4107,6 +4108,7 @@ dependencies = [
  "itertools",
  "log",
  "regex",
+ "rustc-hash",
  "safetensors",
  "serde",
  "serde_bytes",

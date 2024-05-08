@@ -39,7 +39,7 @@ use web_rwkv::{
 
 use crate::{
     config::{AdapterOption, BnfOption, Precision},
-    run::{GenerateContext, Runtime, SlotResult, Tokens},
+    run::{GenerateContext, InitState, Runtime, SlotResult, StateId, Tokens},
     sampler::{nucleus::NucleusSampler, Sampler},
 };
 
@@ -150,6 +150,7 @@ impl Environment {
 pub struct RuntimeInfo {
     pub reload: ReloadRequest,
     pub model: ModelInfo,
+    pub states: Vec<(uid::Id<StateId>, InitState)>,
     pub tokenizer: Arc<Tokenizer>,
 }
 
@@ -181,6 +182,8 @@ pub struct GenerateRequest {
     pub embed: bool,
     /// The (reversed) number of layer at which the output is as embedding.
     pub embed_layer: usize,
+    /// Initial state ID.
+    pub state: uid::Id<StateId>,
 }
 
 #[derive(Debug, Derivative, Clone, Serialize, Deserialize)]
@@ -192,7 +195,7 @@ pub struct ReloadRequest {
     /// List of LoRA blended on the model.
     pub lora: Vec<crate::config::Lora>,
     /// Path to the initial state.
-    pub state: Option<crate::config::State>,
+    pub state: Vec<crate::config::State>,
     /// Specify layers that needs to be quantized.
     pub quant: usize,
     /// Quantization type (`Int8` or `NF4`).
@@ -303,7 +306,7 @@ fn load_vocab(tokenizer: &Tokenizer) -> Vocabulary {
     }
 }
 
-async fn load_initial_state(
+async fn load_init_state(
     context: &Context,
     info: &ModelInfo,
     model: SafeTensors<'_>,
@@ -313,16 +316,7 @@ async fn load_initial_state(
         ModelVersion::V5 => v5::read_state(context, info, model).await,
         ModelVersion::V6 => v6::read_state(context, info, model).await,
     };
-    match state {
-        Ok(state) => {
-            log::info!("initial state loaded");
-            Some(state)
-        }
-        Err(err) => {
-            log::warn!("initial state not loaded: {}", err);
-            None
-        }
-    }
+    state.ok()
 }
 
 async fn load_runtime(
@@ -349,19 +343,36 @@ async fn load_runtime(
     let file = File::open(model_path).await?;
     let data = unsafe { Mmap::map(&file) }?;
 
+    let mut states = vec![];
+    for crate::config::State { path, default } in state {
+        let name = path.to_string_lossy().to_string();
+        let file = File::open(path).await?;
+        let data = unsafe { Mmap::map(&file) }?;
+        let model = SafeTensors::deserialize(&data)?;
+        if let Some(data) = load_init_state(context, &info, model).await {
+            log::info!("loaded initial state {}, default: {}", name, default);
+            let state = InitState {
+                name,
+                data,
+                default,
+            };
+            states.push(state);
+        }
+    }
+
     let runtime = match load {
         LoadType::SafeTensors => {
             let model = SafeTensors::deserialize(&data)?;
 
-            let state = match state {
-                Some(state) => {
-                    let file = File::open(state.path).await?;
-                    let data = unsafe { Mmap::map(&file) }?;
-                    let model = SafeTensors::deserialize(&data)?;
-                    load_initial_state(context, &info, model).await
-                }
-                None => load_initial_state(context, &info, model).await,
-            };
+            if let Some(data) = load_init_state(context, &info, model).await {
+                let name = "internal".into();
+                let state = InitState {
+                    name,
+                    data,
+                    default: true,
+                };
+                states.push(state);
+            }
 
             let model = SafeTensors::deserialize(&data)?;
             let quant = (0..quant).map(|layer| (layer, quant_type)).collect();
@@ -395,32 +406,32 @@ async fn load_runtime(
                 (ModelVersion::V4, Precision::Fp16) => {
                     let model = Build::<v4::Model>::build(builder).await?;
                     let builder = v4::ModelRuntime::<f16>::new(model, max_batch);
-                    Runtime::new(context, builder, reload, state, tokenizer, vocab).await
+                    Runtime::new(context, builder, reload, states, tokenizer, vocab).await
                 }
                 (ModelVersion::V5, Precision::Fp16) => {
                     let model = Build::<v5::Model>::build(builder).await?;
                     let builder = v5::ModelRuntime::<f16>::new(model, max_batch);
-                    Runtime::new(context, builder, reload, state, tokenizer, vocab).await
+                    Runtime::new(context, builder, reload, states, tokenizer, vocab).await
                 }
                 (ModelVersion::V6, Precision::Fp16) => {
                     let model = Build::<v6::Model>::build(builder).await?;
                     let builder = v6::ModelRuntime::<f16>::new(model, max_batch);
-                    Runtime::new(context, builder, reload, state, tokenizer, vocab).await
+                    Runtime::new(context, builder, reload, states, tokenizer, vocab).await
                 }
                 (ModelVersion::V4, Precision::Fp32) => {
                     let model = Build::<v4::Model>::build(builder).await?;
                     let builder = v4::ModelRuntime::<f32>::new(model, max_batch);
-                    Runtime::new(context, builder, reload, state, tokenizer, vocab).await
+                    Runtime::new(context, builder, reload, states, tokenizer, vocab).await
                 }
                 (ModelVersion::V5, Precision::Fp32) => {
                     let model = Build::<v5::Model>::build(builder).await?;
                     let builder = v5::ModelRuntime::<f32>::new(model, max_batch);
-                    Runtime::new(context, builder, reload, state, tokenizer, vocab).await
+                    Runtime::new(context, builder, reload, states, tokenizer, vocab).await
                 }
                 (ModelVersion::V6, Precision::Fp32) => {
                     let model = Build::<v6::Model>::build(builder).await?;
                     let builder = v6::ModelRuntime::<f32>::new(model, max_batch);
-                    Runtime::new(context, builder, reload, state, tokenizer, vocab).await
+                    Runtime::new(context, builder, reload, states, tokenizer, vocab).await
                 }
             }
         }
@@ -437,37 +448,37 @@ async fn load_runtime(
                     let seed: Seed<_, v4::Model> = Seed::new(&context);
                     let model = seed.deserialize(&mut deserializer)?;
                     let builder = v4::ModelRuntime::<f16>::new(model, reload.max_batch);
-                    Runtime::new(context, builder, reload, None, tokenizer, vocab).await
+                    Runtime::new(context, builder, reload, states, tokenizer, vocab).await
                 }
                 (ModelVersion::V5, Precision::Fp16) => {
                     let seed: Seed<_, v5::Model> = Seed::new(&context);
                     let model = seed.deserialize(&mut deserializer)?;
                     let builder = v5::ModelRuntime::<f16>::new(model, reload.max_batch);
-                    Runtime::new(context, builder, reload, None, tokenizer, vocab).await
+                    Runtime::new(context, builder, reload, states, tokenizer, vocab).await
                 }
                 (ModelVersion::V6, Precision::Fp16) => {
                     let seed: Seed<_, v6::Model> = Seed::new(&context);
                     let model = seed.deserialize(&mut deserializer)?;
                     let builder = v6::ModelRuntime::<f16>::new(model, reload.max_batch);
-                    Runtime::new(context, builder, reload, None, tokenizer, vocab).await
+                    Runtime::new(context, builder, reload, states, tokenizer, vocab).await
                 }
                 (ModelVersion::V4, Precision::Fp32) => {
                     let seed: Seed<_, v4::Model> = Seed::new(&context);
                     let model = seed.deserialize(&mut deserializer)?;
                     let builder = v4::ModelRuntime::<f32>::new(model, reload.max_batch);
-                    Runtime::new(context, builder, reload, None, tokenizer, vocab).await
+                    Runtime::new(context, builder, reload, states, tokenizer, vocab).await
                 }
                 (ModelVersion::V5, Precision::Fp32) => {
                     let seed: Seed<_, v5::Model> = Seed::new(&context);
                     let model = seed.deserialize(&mut deserializer)?;
                     let builder = v5::ModelRuntime::<f32>::new(model, reload.max_batch);
-                    Runtime::new(context, builder, reload, None, tokenizer, vocab).await
+                    Runtime::new(context, builder, reload, states, tokenizer, vocab).await
                 }
                 (ModelVersion::V6, Precision::Fp32) => {
                     let seed: Seed<_, v6::Model> = Seed::new(&context);
                     let model = seed.deserialize(&mut deserializer)?;
                     let builder = v6::ModelRuntime::<f32>::new(model, reload.max_batch);
-                    Runtime::new(context, builder, reload, None, tokenizer, vocab).await
+                    Runtime::new(context, builder, reload, states, tokenizer, vocab).await
                 }
             }
         }
@@ -525,10 +536,12 @@ pub async fn model_route(receiver: Receiver<ThreadRequest>) -> Result<()> {
                         if let Environment::Loaded(runtime) = env {
                             let reload = runtime.reload().clone();
                             let model = runtime.info().clone();
+                            let states = runtime.states().await;
                             let tokenizer = runtime.tokenizer();
                             let _ = sender.send(RuntimeInfo {
                                 reload,
                                 model,
+                                states,
                                 tokenizer,
                             });
                         }

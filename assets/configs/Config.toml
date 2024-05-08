@@ -9,8 +9,9 @@ quant_type = "Int8"                                  # Quantization type ("Int8"
 stop = ["\n\n"]                                      # Additional stop words in generation.
 token_chunk_size = 128                               # Size of token chunk that is inferred at once. For high end GPUs, this could be 64 or 128 (faster).
 
-# [state] # State-tuned initial state.
-# path = "rwkv-x060-chn_single_round_qa-3B-20240502-ctx1024.st"
+# [[state]] # State-tuned initial state.
+# default = true                                                # Load the initial state on startup
+# path = "rwkv-x060-chn_single_round_qa-3B-20240505-ctx1024.st"
 
 # [[lora]] # LoRA and blend factors.
 # alpha = 192
