@@ -572,6 +572,7 @@ pub async fn model_route(receiver: Receiver<ThreadRequest>) -> Result<()> {
                                 _ => bail!("failed to read model info"),
                             }
                         };
+                        log::info!("loading model {:?}", request.model_path);
                         log::info!("{:#?}", info);
                         log::info!("type: {:?}", load);
 
@@ -605,7 +606,7 @@ pub async fn model_route(receiver: Receiver<ThreadRequest>) -> Result<()> {
                         match reload.await {
                             Ok(_) => {
                                 callback(true);
-                                log::info!("model reloaded")
+                                log::info!("model loaded")
                             }
                             Err(err) => {
                                 callback(false);
