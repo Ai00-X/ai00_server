@@ -1,0 +1,52 @@
+[model]
+embed_device = "Cpu"                                 # Device to put the embed tensor ("Cpu" or "Gpu").
+max_batch = 8                                        # The maximum batches that are cached on GPU.
+name = "RWKV-x060-World-3B-v2.1-20240417-ctx4096.st" # Name of the model.
+path = "assets/models"                               # Path to the folder containing all models.
+precision = "Fp16"                                   # Precision for intermediate tensors ("Fp16" or "Fp32"). "Fp32" yields better outputs but slower.
+quant = 0                                            # Layers to be quantized.
+quant_type = "Int8"                                  # Quantization type ("Int8" or "NF4").
+stop = ["\n\n"]                                      # Additional stop words in generation.
+token_chunk_size = 128                               # Size of token chunk that is inferred at once. For high end GPUs, this could be 64 or 128 (faster).
+
+# [[state]] # State-tuned initial state.
+# default = true                                                # Load the initial state on startup.
+# id = "fd7a60ed-7807-449f-8256-bccae3246222"                   # A UUID for this state.
+# path = "rwkv-x060-chn_single_round_qa-3B-20240505-ctx1024.st"
+
+# [[state]] # Add a second initial state.
+# default = false                                               # Do not load the initial state on startup.
+# id = "6a9c60a4-0f4c-40b1-a31f-987f73e20315"                   # A UUID for this state.
+# path = "rwkv-x060-chn_single_round_qa-3B-20240502-ctx1024.st"
+
+# [[lora]] # LoRA and blend factors.
+# alpha = 192
+# path = "assets/models/rwkv-x060-3b.lora.st"
+
+[tokenizer]
+path = "assets/tokenizer/rwkv_vocab_v20230424.json" # Path to the tokenizer.
+
+[bnf]
+enable_bytes_cache = true   # Enable the cache that accelerates the expansion of certain short schemas.
+start_nonterminal = "start" # The initial nonterminal of the BNF schemas.
+
+[adapter]
+Auto = {} # Choose the best GPU.
+# Manual = 0 # Manually specify which GPU to use.
+
+[listen]
+acme = false
+domain = "local"
+ip = "0.0.0.0"   # Use IpV4.
+# ip = "::"        # Use IpV6.
+force_pass = true
+port = 65530
+slot = "permisionkey"
+tls = true
+
+[[listen.app_keys]] # Allow mutiple app keys.
+app_id = "JUSTAISERVER"
+secret_key = "JUSTSECRET_KEY"
+
+[web] # Remove this to disable WebUI.
+path = "assets/www/index.zip" # Path to the WebUI.
