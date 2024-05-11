@@ -13,6 +13,8 @@ target/
 # MSVC Windows builds of rustc generate these, which store debugging information
 *.pdb
 
+assets/configs/Config.toml
+
 assets/frpc/
 assets/unzip/
 assets/temp/
