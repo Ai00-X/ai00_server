@@ -118,7 +118,9 @@ pub struct Lora {
 pub struct State {
     /// Path to the initial state.
     pub path: PathBuf,
-    /// A UUID for this state.
+    /// Given name for the state.
+    pub name: Option<String>,
+    /// UUID for this state.
     #[serde(default = "StateId::new")]
     pub id: StateId,
     /// If this state should be loaded on startup.

@@ -314,12 +314,12 @@ impl StateId {
 }
 
 #[derive(Debug, Default)]
-struct StateCacheItem {
+struct Cache {
     state: Option<InitState>,
     cache: Trie<Tokens, CachedItem<TensorCpu<f32>>>,
 }
 
-impl StateCacheItem {
+impl Cache {
     fn maintain(&mut self) {
         let cache = &mut self.cache;
         if cache.count() <= MAX_CACHE_ITEMS {
@@ -342,13 +342,13 @@ impl StateCacheItem {
 }
 
 #[derive(Debug, Default)]
-struct StateCache {
-    backed: HashMap<StateId, StateCacheItem>,
-    default: StateCacheItem,
+struct CacheHub {
+    backed: HashMap<StateId, Cache>,
+    default: Cache,
 }
 
-impl StateCache {
-    fn fetch(&mut self, id: StateId) -> &mut StateCacheItem {
+impl CacheHub {
+    fn fetch(&mut self, id: StateId) -> &mut Cache {
         match self.backed.get_mut(&id) {
             Some(item) => item,
             None => &mut self.default,
@@ -366,7 +366,7 @@ pub struct Runtime {
     tokenizer: Arc<Tokenizer>,
     vocab: Arc<Vocabulary>,
     slots: Mutex<Vec<SlotState>>,
-    caches: Mutex<StateCache>,
+    caches: Mutex<CacheHub>,
 }
 
 impl Runtime {
@@ -386,7 +386,7 @@ impl Runtime {
             .map(|_| SlotState::default())
             .collect();
 
-        let mut caches = StateCache::default();
+        let mut caches = CacheHub::default();
 
         // set up default initial state
         if let Some(state) = states.iter().find(|state| state.default) {
@@ -394,7 +394,7 @@ impl Runtime {
         }
         for state in states {
             let id = state.id;
-            let item = StateCacheItem {
+            let item = Cache {
                 state: Some(state),
                 cache: Trie::new(),
             };
@@ -480,7 +480,7 @@ impl Runtime {
     ) -> (Vec<u16>, Arc<TensorCpu<f32>>) {
         let mut caches = self.caches.lock().await;
 
-        let StateCacheItem { state, cache } = caches.fetch(id);
+        let Cache { state, cache } = caches.fetch(id);
         let prefix = cache.longest_common_prefix(tokens.as_token_slice());
         let len = (1..=prefix.len())
             .rev()

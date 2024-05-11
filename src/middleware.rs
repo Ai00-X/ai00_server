@@ -344,8 +344,20 @@ async fn load_runtime(
     let data = unsafe { Mmap::map(&file) }?;
 
     let mut states = vec![];
-    for crate::config::State { path, id, default } in state {
-        let name = path.to_string_lossy().to_string();
+    for crate::config::State {
+        path,
+        name,
+        id,
+        default,
+    } in state
+    {
+        let name = match name {
+            Some(name) => name,
+            None => match path.file_name() {
+                Some(name) => name.to_string_lossy().to_string(),
+                None => continue,
+            },
+        };
         let file = File::open(path).await?;
         let data = unsafe { Mmap::map(&file) }?;
         let model = SafeTensors::deserialize(&data)?;
@@ -356,7 +368,7 @@ async fn load_runtime(
                 data,
                 default,
             };
-            log::info!("{:?}", state);
+            log::info!("{:#?}", state);
             states.push(state);
         }
     }

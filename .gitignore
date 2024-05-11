@@ -17,8 +17,9 @@ assets/frpc/
 assets/unzip/
 assets/temp/
 
-*.lora
 *.st
+*.state
+*.lora
 *.pth
 *.exe
 qdrant/
