@@ -310,13 +310,13 @@ async fn load_init_state(
     context: &Context,
     info: &ModelInfo,
     model: SafeTensors<'_>,
-) -> Option<TensorCpu<f32>> {
+) -> Result<TensorCpu<f32>> {
     let state = match info.version {
         ModelVersion::V4 => Err(anyhow!("v4 does not support init state yet")),
         ModelVersion::V5 => v5::read_state(context, info, model).await,
         ModelVersion::V6 => v6::read_state(context, info, model).await,
     };
-    state.ok()
+    state.map_err(Into::into)
 }
 
 async fn load_runtime(
@@ -361,23 +361,25 @@ async fn load_runtime(
         let file = File::open(path).await?;
         let data = unsafe { Mmap::map(&file) }?;
         let model = SafeTensors::deserialize(&data)?;
-        if let Some(data) = load_init_state(context, &info, model).await {
-            let state = InitState {
-                name,
-                id,
-                data,
-                default,
-            };
-            log::info!("{:#?}", state);
-            states.push(state);
+        match load_init_state(context, &info, model).await {
+            Ok(data) => {
+                let state = InitState {
+                    name,
+                    id,
+                    data,
+                    default,
+                };
+                log::info!("{:#?}", state);
+                states.push(state);
+            }
+            Err(err) => log::warn!("initial state not loaded: {}", err),
         }
     }
 
     let runtime = match load {
         LoadType::SafeTensors => {
             let model = SafeTensors::deserialize(&data)?;
-
-            if let Some(data) = load_init_state(context, &info, model).await {
+            if let Ok(data) = load_init_state(context, &info, model).await {
                 let name = "internal".into();
                 let id = StateId::new();
                 let state = InitState {
