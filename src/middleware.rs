@@ -419,38 +419,31 @@ async fn load_runtime(
 
             let context = context.clone();
             let reload = reload.clone();
-            match (info.version, reload.precision) {
-                (ModelVersion::V4, Precision::Fp16) => {
-                    let model = Build::<v4::Model>::build(builder).await?;
-                    let builder = v4::ModelRuntime::<f16>::new(model, max_batch);
-                    Runtime::new(context, builder, reload, states, tokenizer, vocab).await
-                }
-                (ModelVersion::V5, Precision::Fp16) => {
-                    let model = Build::<v5::Model>::build(builder).await?;
-                    let builder = v5::ModelRuntime::<f16>::new(model, max_batch);
-                    Runtime::new(context, builder, reload, states, tokenizer, vocab).await
-                }
-                (ModelVersion::V6, Precision::Fp16) => {
-                    let model = Build::<v6::Model>::build(builder).await?;
-                    let builder = v6::ModelRuntime::<f16>::new(model, max_batch);
-                    Runtime::new(context, builder, reload, states, tokenizer, vocab).await
-                }
-                (ModelVersion::V4, Precision::Fp32) => {
-                    let model = Build::<v4::Model>::build(builder).await?;
-                    let builder = v4::ModelRuntime::<f32>::new(model, max_batch);
-                    Runtime::new(context, builder, reload, states, tokenizer, vocab).await
-                }
-                (ModelVersion::V5, Precision::Fp32) => {
-                    let model = Build::<v5::Model>::build(builder).await?;
-                    let builder = v5::ModelRuntime::<f32>::new(model, max_batch);
-                    Runtime::new(context, builder, reload, states, tokenizer, vocab).await
-                }
-                (ModelVersion::V6, Precision::Fp32) => {
-                    let model = Build::<v6::Model>::build(builder).await?;
-                    let builder = v6::ModelRuntime::<f32>::new(model, max_batch);
-                    Runtime::new(context, builder, reload, states, tokenizer, vocab).await
+
+            macro_rules! match_safe_tensors {
+                (($v:expr, $p:expr), { $(($version:path, $precision:path, $model:ty, $runtime:ty)),+ }) => {
+                    match ($v, $p) {
+                        $(
+                            ($version, $precision) => {
+                                let model = Build::<$model>::build(builder).await?;
+                                let builder = <$runtime>::new(model, max_batch);
+                                Runtime::new(context, builder, reload, states, tokenizer, vocab).await
+                            }
+                        )+
+                    }
                 }
             }
+            match_safe_tensors!(
+                (info.version, reload.precision),
+                {
+                    (ModelVersion::V4, Precision::Fp16, v4::Model, v4::ModelRuntime::<f16>),
+                    (ModelVersion::V5, Precision::Fp16, v5::Model, v5::ModelRuntime::<f16>),
+                    (ModelVersion::V6, Precision::Fp16, v6::Model, v6::ModelRuntime::<f16>),
+                    (ModelVersion::V4, Precision::Fp32, v4::Model, v4::ModelRuntime::<f32>),
+                    (ModelVersion::V5, Precision::Fp32, v5::Model, v5::ModelRuntime::<f32>),
+                    (ModelVersion::V6, Precision::Fp32, v6::Model, v6::ModelRuntime::<f32>)
+                }
+            )
         }
         LoadType::Prefab => {
             use cbor4ii::{core::utils::SliceReader, serde::Deserializer};
@@ -460,44 +453,32 @@ async fn load_runtime(
 
             let context = context.clone();
             let reload = reload.clone();
-            match (info.version, reload.precision) {
-                (ModelVersion::V4, Precision::Fp16) => {
-                    let seed: Seed<_, v4::Model> = Seed::new(&context);
-                    let model = seed.deserialize(&mut deserializer)?;
-                    let builder = v4::ModelRuntime::<f16>::new(model, reload.max_batch);
-                    Runtime::new(context, builder, reload, states, tokenizer, vocab).await
-                }
-                (ModelVersion::V5, Precision::Fp16) => {
-                    let seed: Seed<_, v5::Model> = Seed::new(&context);
-                    let model = seed.deserialize(&mut deserializer)?;
-                    let builder = v5::ModelRuntime::<f16>::new(model, reload.max_batch);
-                    Runtime::new(context, builder, reload, states, tokenizer, vocab).await
-                }
-                (ModelVersion::V6, Precision::Fp16) => {
-                    let seed: Seed<_, v6::Model> = Seed::new(&context);
-                    let model = seed.deserialize(&mut deserializer)?;
-                    let builder = v6::ModelRuntime::<f16>::new(model, reload.max_batch);
-                    Runtime::new(context, builder, reload, states, tokenizer, vocab).await
-                }
-                (ModelVersion::V4, Precision::Fp32) => {
-                    let seed: Seed<_, v4::Model> = Seed::new(&context);
-                    let model = seed.deserialize(&mut deserializer)?;
-                    let builder = v4::ModelRuntime::<f32>::new(model, reload.max_batch);
-                    Runtime::new(context, builder, reload, states, tokenizer, vocab).await
-                }
-                (ModelVersion::V5, Precision::Fp32) => {
-                    let seed: Seed<_, v5::Model> = Seed::new(&context);
-                    let model = seed.deserialize(&mut deserializer)?;
-                    let builder = v5::ModelRuntime::<f32>::new(model, reload.max_batch);
-                    Runtime::new(context, builder, reload, states, tokenizer, vocab).await
-                }
-                (ModelVersion::V6, Precision::Fp32) => {
-                    let seed: Seed<_, v6::Model> = Seed::new(&context);
-                    let model = seed.deserialize(&mut deserializer)?;
-                    let builder = v6::ModelRuntime::<f32>::new(model, reload.max_batch);
-                    Runtime::new(context, builder, reload, states, tokenizer, vocab).await
+
+            macro_rules! match_prefab {
+                (($v:expr, $p:expr), { $(($version:path, $precision:path, $model:ty, $runtime:ty)),+ }) => {
+                    match ($v, $p) {
+                        $(
+                            ($version, $precision) => {
+                                let seed: Seed<_, $model> = Seed::new(&context);
+                                let model = seed.deserialize(&mut deserializer)?;
+                                let builder = <$runtime>::new(model, reload.max_batch);
+                                Runtime::new(context, builder, reload, states, tokenizer, vocab).await
+                            }
+                        )+
+                    }
                 }
             }
+            match_prefab!(
+                (info.version, reload.precision),
+                {
+                    (ModelVersion::V4, Precision::Fp16, v4::Model, v4::ModelRuntime::<f16>),
+                    (ModelVersion::V5, Precision::Fp16, v5::Model, v5::ModelRuntime::<f16>),
+                    (ModelVersion::V6, Precision::Fp16, v6::Model, v6::ModelRuntime::<f16>),
+                    (ModelVersion::V4, Precision::Fp32, v4::Model, v4::ModelRuntime::<f32>),
+                    (ModelVersion::V5, Precision::Fp32, v5::Model, v5::ModelRuntime::<f32>),
+                    (ModelVersion::V6, Precision::Fp32, v6::Model, v6::ModelRuntime::<f32>)
+                }
+            )
         }
     };
 
