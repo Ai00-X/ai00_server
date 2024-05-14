@@ -228,6 +228,8 @@ pub struct GenerateContext {
     pub model_tokens: Vec<u16>,
     /// Compiled BNF schema, if any.
     pub bnf_sampler: Option<Arc<RwLock<BnfSampler>>>,
+    /// For measuring time used.
+    pub instant: Option<Instant>,
     /// Generate request provided by the caller.
     pub request: GenerateRequest,
     /// To send back generated tokens.
@@ -809,6 +811,7 @@ impl Runtime {
                 continue;
             };
 
+            let instant = context.instant.get_or_insert(Instant::now());
             let prefix = std::mem::take(&mut context.prefix);
             let suffix = std::mem::take(&mut context.suffix);
             let model_tokens = [prefix.0, suffix.0].concat();
@@ -853,20 +856,22 @@ impl Runtime {
             context.buffer.append(&mut word);
             context.model_tokens.push(token);
 
-            let count_tokens = || {
-                let prompt_tokens = context.prompt_tokens.len();
-                let completion_tokens = context.model_tokens.len();
-                let total_tokens = prompt_tokens + completion_tokens;
-                TokenCounter {
-                    prompt_tokens,
-                    completion_tokens,
-                    total_tokens,
-                }
-            };
-
             let mut done = false;
             let mut finish = |reason| {
-                let _ = context.sender.send(Token::Stop(reason, count_tokens()));
+                let counter = {
+                    let prompt_tokens = context.prompt_tokens.len();
+                    let completion_tokens = context.model_tokens.len();
+                    let total_tokens = prompt_tokens + completion_tokens;
+                    let duration = instant.elapsed();
+                    TokenCounter {
+                        prompt_tokens,
+                        completion_tokens,
+                        total_tokens,
+                        duration,
+                    }
+                };
+
+                let _ = context.sender.send(Token::Stop(reason, counter));
                 let _ = context.sender.send(Token::Done);
                 done = true;
             };

@@ -4093,9 +4093,9 @@ dependencies = [
 
 [[package]]
 name = "web-rwkv"
-version = "0.8.8"
+version = "0.8.9"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "2aaa2dae444cdfbf00718b97a7dffa79d7ff73df5b0175f5f8f4caea371b8b7e"
+checksum = "0dc832976e594cc006a34b3da4d1d151e1c12fee1e529b588ea43a9c8e7b8361"
 dependencies = [
  "ahash 0.8.11",
  "anyhow",

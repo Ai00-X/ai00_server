@@ -241,6 +241,7 @@ pub struct TokenCounter {
     pub prompt_tokens: usize,
     pub completion_tokens: usize,
     pub total_tokens: usize,
+    pub duration: Duration,
 }
 
 #[derive(Clone)]
@@ -645,6 +646,7 @@ pub async fn model_route(receiver: Receiver<ThreadRequest>) -> Result<()> {
                         buffer: Default::default(),
                         model_tokens: Default::default(),
                         bnf_sampler: None,
+                        instant: None,
                         request,
                         sender: token_sender,
                     };
