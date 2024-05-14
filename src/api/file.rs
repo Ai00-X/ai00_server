@@ -7,9 +7,11 @@ use std::{
 use anyhow::Result;
 use itertools::Itertools;
 use memmap2::Mmap;
+use safetensors::SafeTensors;
 use salvo::{macros::Extractible, prelude::*};
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
+use web_rwkv::runtime::{loader::Loader, model::ModelInfo};
 
 use crate::ThreadState;
 use crate::{check_path_permitted, config::Config};
@@ -58,11 +60,13 @@ pub struct FileInfoRequest {
     is_sha: bool,
 }
 
-#[derive(Debug, Clone, Serialize, ToSchema, ToResponse)]
+#[derive(Debug, Clone, Serialize)]
 pub struct FileInfo {
+    path: PathBuf,
     name: String,
     size: u64,
     sha: String,
+    info: Option<ModelInfo>,
 }
 
 #[derive(Debug, Clone, Deserialize, Extractible)]
@@ -101,14 +105,23 @@ async fn dir_inner(
                     let name = x.file_name().to_string_lossy().into();
                     let sha = request
                         .is_sha
-                        .then(|| compute_sha(path, &meta).ok())
+                        .then(|| compute_sha(&path, &meta).ok())
                         .flatten()
                         .unwrap_or_default();
 
+                    let file = File::open(&path).ok()?;
+                    let data = unsafe { Mmap::map(&file) }.ok()?;
+                    let info = SafeTensors::deserialize(&data)
+                        .map_err(Into::into)
+                        .and_then(|model| Loader::info(&model))
+                        .ok();
+
                     Some(FileInfo {
+                        path,
                         name,
                         size: meta.len(),
                         sha,
+                        info,
                     })
                 })
                 .collect_vec();
