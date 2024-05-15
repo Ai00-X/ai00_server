@@ -21,7 +21,7 @@ name = "converter"
 [dependencies]
 anyhow = "1"
 bit-set = "0.5.3"
-bnf_sampler = "0.3.6"
+bnf_sampler = "0.3.7"
 bytemuck = "1"
 cbor4ii = { version = "0.3.2", features = ["serde1"] }
 clap = { version = "4.3", features = ["derive"] }
