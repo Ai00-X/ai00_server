@@ -1,9 +1,7 @@
 use std::{
     collections::HashMap,
-    mem,
     path::{Path, PathBuf},
     sync::Arc,
-    time::Duration,
 };
 
 use anyhow::{anyhow, bail, Result};
@@ -13,20 +11,20 @@ use flume::{Receiver, Sender};
 use half::f16;
 use itertools::Itertools;
 use memmap2::Mmap;
-use qp_trie::Trie;
-use rustc_hash::FxHashMap;
+use reload::{AdapterOption, BnfOption, Precision};
 use safetensors::SafeTensors;
-use salvo::oapi::{ToResponse, ToSchema};
+use salvo::oapi::ToSchema;
 use serde::{de::DeserializeSeed, Deserialize, Serialize};
-use tokio::{fs::File, io::BufReader};
 use tokio::{
-    io::AsyncReadExt,
+    fs::File,
+    io::{AsyncReadExt, BufReader},
     sync::{Mutex, RwLock},
+    time::Duration,
 };
 use web_rwkv::{
     context::{Context, ContextBuilder, InstanceExt},
     runtime::{
-        loader::{Loader, Lora, LoraBlend},
+        loader::{Loader, Lora, LoraBlend, Reader},
         model::{
             Build, ContextAutoLimits, EmbedDevice, ModelBuilder, ModelInfo, ModelVersion, Quant,
         },
@@ -38,10 +36,13 @@ use web_rwkv::{
 };
 
 use crate::{
-    config::{AdapterOption, BnfOption, Precision},
-    run::{GenerateContext, InitState, Runtime, SlotResult, StateId, Tokens},
-    sampler::{nucleus::NucleusSampler, Sampler},
+    run::{GenerateContext, InitState, Runtime, StateId, Tokens},
+    sampler::Sampler,
 };
+
+pub mod reload;
+pub mod run;
+pub mod sampler;
 
 pub const MAX_TOKENS: usize = 4096;
 
@@ -52,6 +53,17 @@ pub enum Token {
     Stop(FinishReason, TokenCounter),
     Embed(Vec<f32>),
     Done,
+}
+
+#[derive(Debug, Default, Clone, Serialize, Deserialize, ToSchema)]
+pub struct TokenCounter {
+    #[serde(alias = "prompt_tokens")]
+    pub prompt: usize,
+    #[serde(alias = "completion_tokens")]
+    pub completion: usize,
+    #[serde(alias = "total_tokens")]
+    pub total: usize,
+    pub duration: Duration,
 }
 
 #[derive(Debug, Default, Clone, Copy, Serialize, ToSchema)]
@@ -68,28 +80,6 @@ pub enum FinishReason {
     #[default]
     #[serde(untagged)]
     Null,
-}
-
-#[derive(Debug, Default, Clone, Serialize, Deserialize, ToSchema)]
-#[serde(untagged)]
-pub enum Array<T: ToSchema + 'static> {
-    #[default]
-    None,
-    Item(T),
-    Vec(Vec<T>),
-}
-
-impl<T> From<Array<T>> for Vec<T>
-where
-    T: std::fmt::Debug + Clone + Serialize + ToSchema,
-{
-    fn from(value: Array<T>) -> Self {
-        match value {
-            Array::None => vec![],
-            Array::Item(item) => vec![item],
-            Array::Vec(vec) => vec,
-        }
-    }
 }
 
 #[derive(Debug, Clone)]
@@ -125,27 +115,6 @@ pub enum Environment {
     None,
 }
 
-impl Environment {
-    pub async fn enqueue(&self, context: GenerateContext) -> Vec<GenerateContext> {
-        let mut queue = vec![];
-        match self {
-            Environment::Loaded(runtime) => {
-                match runtime.queue(context).await.expect("queue task error") {
-                    SlotResult::Success(batch) => log::info!("queued task at slot {batch}"),
-                    SlotResult::Fault(batch) => log::info!("swapped task at slot {batch}"),
-                    SlotResult::Failure(context) => {
-                        log::info!("failed to queue task");
-                        queue.push(*context);
-                    }
-                    SlotResult::Error(reason) => log::warn!("queue task failed: {}", reason),
-                }
-            }
-            Environment::None => queue.push(context),
-        };
-        queue
-    }
-}
-
 #[derive(Debug, Clone)]
 pub struct RuntimeInfo {
     pub reload: ReloadRequest,
@@ -175,7 +144,7 @@ pub struct GenerateRequest {
     /// Sampler parameters.
     #[derivative(
         Debug = "ignore",
-        Default(value = "Arc::new(RwLock::new(NucleusSampler::default()))")
+        Default(value = "Arc::new(RwLock::new(sampler::nucleus::NucleusSampler::default()))")
     )]
     pub sampler: Arc<RwLock<dyn Sampler + Send + Sync>>,
     /// Whether this is an embedding request.
@@ -193,9 +162,9 @@ pub struct ReloadRequest {
     /// Path to the model.
     pub model_path: PathBuf,
     /// List of LoRA blended on the model.
-    pub lora: Vec<crate::config::Lora>,
+    pub lora: Vec<reload::Lora>,
     /// Path to the initial state.
-    pub state: Vec<crate::config::State>,
+    pub state: Vec<reload::State>,
     /// Specify layers that needs to be quantized.
     pub quant: usize,
     /// Quantization type (`Int8` or `NF4`).
@@ -221,8 +190,9 @@ pub struct ReloadRequest {
 #[derive(Debug, Default, Clone, Serialize, Deserialize)]
 #[serde(default)]
 pub struct SaveRequest {
-    /// Path to save model.
-    pub model_path: PathBuf,
+    /// Path to save the model.
+    #[serde(alias = "model_path")]
+    pub path: PathBuf,
 }
 
 #[derive(Debug, Deserialize)]
@@ -234,20 +204,6 @@ struct Prefab {
 enum LoadType {
     SafeTensors,
     Prefab,
-}
-
-#[derive(Debug, Default, Clone, Serialize, Deserialize, ToSchema, ToResponse)]
-pub struct TokenCounter {
-    pub prompt_tokens: usize,
-    pub completion_tokens: usize,
-    pub total_tokens: usize,
-    pub duration: Duration,
-}
-
-#[derive(Clone)]
-pub struct ThreadState {
-    pub sender: Sender<ThreadRequest>,
-    pub path: PathBuf,
 }
 
 fn list_adapters() -> AdapterList {
@@ -291,12 +247,12 @@ async fn load_tokenizer(path: impl AsRef<Path>) -> Result<Tokenizer> {
 
 fn load_vocab(tokenizer: &Tokenizer) -> Vocabulary {
     let vocab = tokenizer.bytes_to_token_index();
-    let token_to_id: Trie<_, _> = vocab
+    let token_to_id = vocab
         .iter()
         .map(|(k, v)| (U8ArrayWrapper(k.clone().into_boxed_slice()), *v as u32))
         .collect();
-    let id_to_token: FxHashMap<_, _> = vocab.iter().map(|(k, v)| (*v as u32, k.clone())).collect();
-    let id_to_token_string: FxHashMap<_, _> = vocab
+    let id_to_token = vocab.iter().map(|(k, v)| (*v as u32, k.clone())).collect();
+    let id_to_token_string = vocab
         .iter()
         .map(|(k, v)| (*v as u32, String::from_utf8_lossy(k).to_string()))
         .collect();
@@ -307,10 +263,10 @@ fn load_vocab(tokenizer: &Tokenizer) -> Vocabulary {
     }
 }
 
-async fn load_init_state(
+async fn load_init_state<R: Reader>(
     context: &Context,
     info: &ModelInfo,
-    model: SafeTensors<'_>,
+    model: R,
 ) -> Result<TensorCpu<f32>> {
     let state = match info.version {
         ModelVersion::V4 => Err(anyhow!("v4 does not support init state yet")),
@@ -345,7 +301,7 @@ async fn load_runtime(
     let data = unsafe { Mmap::map(&file) }?;
 
     let mut states = vec![];
-    for crate::config::State {
+    for reload::State {
         path,
         name,
         id,
@@ -578,7 +534,7 @@ pub async fn model_route(receiver: Receiver<ThreadRequest>) -> Result<()> {
                         let mut env = env.write().await;
                         // drop(mem::take(&mut *env));
                         'unload: {
-                            let env = mem::take(&mut *env);
+                            let env = std::mem::take(&mut *env);
                             let context = match env {
                                 Environment::Loaded(runtime) => runtime.context().clone(),
                                 Environment::None => break 'unload,
@@ -615,7 +571,7 @@ pub async fn model_route(receiver: Receiver<ThreadRequest>) -> Result<()> {
                     let env = env.clone();
                     tokio::spawn(async move {
                         let mut env = env.write().await;
-                        let env = mem::take(&mut *env);
+                        let env = std::mem::take(&mut *env);
                         log::info!("model unloaded");
 
                         let context = match env {
@@ -665,8 +621,8 @@ pub async fn model_route(receiver: Receiver<ThreadRequest>) -> Result<()> {
                     tokio::spawn(async move {
                         let env = &(*env.read().await);
                         if let Environment::Loaded(runtime) = env {
-                            log::info!("serializing model into {:?}", &request.model_path);
-                            let _ = match runtime.serialize_model(request.model_path).await {
+                            log::info!("serializing model into {:?}", &request.path);
+                            let _ = match runtime.serialize_model(request.path).await {
                                 Ok(()) => sender.send(true),
                                 Err(err) => {
                                     log::error!("{}", err);

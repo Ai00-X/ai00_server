@@ -1,5 +1,10 @@
 use std::sync::Arc;
 
+use ai00_core::sampler::{
+    mirostat::{MirostatParams, MirostatSampler},
+    nucleus::{NucleusParams, NucleusSampler},
+    Sampler,
+};
 use salvo::oapi::ToSchema;
 use serde::{Deserialize, Serialize};
 use tokio::sync::RwLock;
@@ -13,12 +18,6 @@ pub use chat::chat_completions;
 pub use completion::completions;
 pub use embedding::embeddings;
 pub use info::models;
-
-use crate::sampler::{
-    mirostat::{MirostatParams, MirostatSampler},
-    nucleus::{NucleusParams, NucleusSampler},
-    Sampler,
-};
 
 #[derive(Debug, Clone, Serialize, Deserialize, ToSchema)]
 #[serde(untagged)]

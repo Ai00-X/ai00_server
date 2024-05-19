@@ -1,0 +1,66 @@
+[package]
+authors = ["Gu ZhenNiu <448885@qq.com>", "Zhang Zhenyuan <cryscan@umich.edu>"]
+categories = ["science"]
+description = "An implementation of the RWKV language model in pure WebGPU."
+edition.workspace = true
+homepage = "https://github.com/cgisky1980/ai00_rwkv_server"
+keywords = ["LLM", "deep-learning", "model", "rwkv"]
+license.workspace = true
+name = "ai00-server"
+repository = "https://github.com/cgisky1980/ai00_rwkv_server"
+rust-version.workspace = true
+version.workspace = true
+
+[dependencies]
+clap = { version = "4.3", features = ["derive"] }
+futures-util = "0.3"
+jsonwebtoken = "9.1"
+log = "0.4"
+regex = "1.8"
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+sha2 = "0.10.8"
+simple_logger = { version = "5.0.0", features = ["stderr"] }
+tempfile = "3.6"
+tokio = { version = "1", features = ["full"] }
+toml = "0.8.6"
+zip-extract = "0.1"
+
+[dependencies.anyhow]
+workspace = true
+
+[dependencies.derivative]
+workspace = true
+
+[dependencies.flume]
+workspace = true
+
+[dependencies.itertools]
+workspace = true
+
+[dependencies.memmap2]
+workspace = true
+
+[dependencies.safetensors]
+workspace = true
+
+[dependencies.web-rwkv]
+workspace = true
+
+[dependencies.salvo]
+default-features = true
+features = [
+    "acme",
+    "affix",
+    "cors",
+    "jwt-auth",
+    "logging",
+    "oapi",
+    "quinn",
+    "serve-static",
+    "sse",
+]
+version = "0.67"
+
+[dependencies.ai00-core]
+path = "../ai00-core"

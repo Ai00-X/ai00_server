@@ -1,16 +1,16 @@
 use std::time::Duration;
 
+use ai00_core::{
+    run::{InitState, StateId},
+    ReloadRequest, RuntimeInfo, SaveRequest, ThreadRequest,
+};
 use futures_util::StreamExt;
 use salvo::prelude::*;
 use serde::Serialize;
 use web_rwkv::runtime::model::ModelInfo;
 
 use super::*;
-use crate::{
-    build_path,
-    middleware::{ReloadRequest, RuntimeInfo, SaveRequest, ThreadRequest, ThreadState},
-    run::{InitState, StateId},
-};
+use crate::{build_path, types::ThreadState};
 
 #[derive(Debug, Clone, Serialize)]
 pub struct InfoResponse {
@@ -121,7 +121,7 @@ pub async fn save(depot: &mut Depot, req: &mut Request) -> StatusCode {
     let mut request: SaveRequest = req.parse_body().await.unwrap();
 
     // make sure that we are not visiting un-permitted path.
-    request.model_path = match build_path(path, request.model_path) {
+    request.path = match build_path(path, request.path) {
         Ok(path) => path,
         Err(_) => return StatusCode::NOT_FOUND,
     };

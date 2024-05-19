@@ -1,0 +1,52 @@
+[package]
+authors = ["Gu ZhenNiu <448885@qq.com>", "Zhang Zhenyuan <cryscan@umich.edu>"]
+categories = ["science"]
+description = "An implementation of the RWKV language model in pure WebGPU."
+edition.workspace = true
+homepage = "https://github.com/cgisky1980/ai00_rwkv_server"
+keywords = ["LLM", "deep-learning", "model", "rwkv"]
+license.workspace = true
+name = "ai00-core"
+repository = "https://github.com/cgisky1980/ai00_rwkv_server"
+rust-version.workspace = true
+version.workspace = true
+
+[dependencies]
+bit-set = "0.5.3"
+bnf_sampler = "0.3.7"
+bytemuck = "1"
+cbor4ii = { version = "0.3.2", features = ["serde1"] }
+fastrand = "2"
+half = "2.4"
+log = "0.4"
+qp-trie = "0.8"
+rustc-hash = "1.1.0"
+serde = { version = "1", features = ["derive"] }
+tokio = { version = "1", features = ["full"] }
+uuid = { version = "1.8.0", features = ["serde", "v4"] }
+
+[dependencies.anyhow]
+workspace = true
+
+[dependencies.derivative]
+workspace = true
+
+[dependencies.flume]
+workspace = true
+
+[dependencies.itertools]
+workspace = true
+
+[dependencies.memmap2]
+workspace = true
+
+[dependencies.safetensors]
+workspace = true
+
+[dependencies.web-rwkv]
+workspace = true
+
+[dependencies.salvo]
+default-features = false
+features = ["oapi"]
+version = "0.67"

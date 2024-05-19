@@ -1,5 +1,9 @@
 use std::{collections::HashMap, sync::Arc, time::Duration};
 
+use ai00_core::{
+    run::StateId, sampler::Sampler, FinishReason, GenerateRequest, ThreadRequest, Token,
+    TokenCounter, MAX_TOKENS,
+};
 use futures_util::StreamExt;
 use itertools::Itertools;
 use regex::Regex;
@@ -10,12 +14,7 @@ use tokio::sync::RwLock;
 use super::*;
 use crate::{
     api::request_info,
-    middleware::{
-        Array, FinishReason, GenerateRequest, ThreadRequest, ThreadState, Token, TokenCounter,
-        MAX_TOKENS,
-    },
-    run::StateId,
-    sampler::Sampler,
+    types::{Array, ThreadState},
 };
 
 #[derive(Debug, Default, Clone, PartialEq, Eq, Hash, Serialize, Deserialize, ToSchema)]

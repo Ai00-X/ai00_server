@@ -1,5 +1,8 @@
 use std::{collections::HashMap, sync::Arc, time::Duration};
 
+use ai00_core::{
+    run::StateId, FinishReason, GenerateRequest, ThreadRequest, Token, TokenCounter, MAX_TOKENS,
+};
 use futures_util::StreamExt;
 use salvo::{
     oapi::{extract::JsonBody, ToResponse, ToSchema},
@@ -12,14 +15,10 @@ use serde::{Deserialize, Serialize};
 use super::*;
 use crate::{
     api::request_info,
-    middleware::{
-        Array, FinishReason, GenerateRequest, ThreadRequest, ThreadState, Token, TokenCounter,
-        MAX_TOKENS,
-    },
-    run::StateId,
+    types::{Array, ThreadState},
 };
 
-#[derive(Debug, Deserialize, ToSchema, ToResponse)]
+#[derive(Debug, Deserialize, ToSchema)]
 pub struct CompletionRequest {
     #[serde(default)]
     prompt: Array<String>,

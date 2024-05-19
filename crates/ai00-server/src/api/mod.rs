@@ -1,5 +1,6 @@
 use std::time::Duration;
 
+use ai00_core::{RuntimeInfo, ThreadRequest};
 use anyhow::Result;
 use flume::Sender;
 
@@ -12,8 +13,6 @@ pub mod oai;
 pub use adapter::adapters;
 pub use file::{dir, load_config, models, save_config, unzip};
 pub use model::{info, load, save, state, unload};
-
-use crate::middleware::{RuntimeInfo, ThreadRequest};
 
 pub async fn try_request_info(sender: Sender<ThreadRequest>) -> Result<RuntimeInfo> {
     let (info_sender, info_receiver) = flume::unbounded();

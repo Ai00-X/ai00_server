@@ -1,5 +1,6 @@
 use std::time::Duration;
 
+use ai00_core::{GenerateRequest, ThreadRequest, Token, TokenCounter};
 use futures_util::StreamExt;
 use salvo::{
     oapi::{extract::JsonBody, ToParameters, ToResponse, ToSchema},
@@ -9,7 +10,7 @@ use serde::{Deserialize, Serialize};
 
 use crate::{
     api::request_info,
-    middleware::{Array, GenerateRequest, ThreadRequest, ThreadState, Token, TokenCounter},
+    types::{Array, ThreadState},
 };
 
 #[derive(Debug, Default, Clone, Deserialize, ToSchema, ToParameters)]

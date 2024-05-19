@@ -7,7 +7,7 @@ use salvo::{
 };
 use serde::{Deserialize, Serialize};
 
-use crate::{config::ListenerOption, JwtClaims};
+use crate::{config::ListenerOption, types::JwtClaims};
 
 #[derive(Serialize, Deserialize, Debug, ToParameters, ToSchema)]
 #[salvo(extract(
