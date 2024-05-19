@@ -1,7 +1,6 @@
 [package]
 authors = ["Gu ZhenNiu <448885@qq.com>", "Zhang Zhenyuan <cryscan@umich.edu>"]
 categories = ["science"]
-default-run = "ai00_server"
 description = "An implementation of the RWKV language model in pure WebGPU."
 edition = "2021"
 exclude = ["assets"]
@@ -10,84 +9,44 @@ keywords = ["LLM", "deep-learning", "model", "rwkv"]
 license = "MIT OR Apache-2.0"
 name = "ai00_server"
 repository = "https://github.com/cgisky1980/ai00_rwkv_server"
-rust-version = "1.78"
+rust-version = "1.76"
 version = "0.4.9"
 
-# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+[workspace]
+default-members = ["crates/ai00-server"]
+members = ["crates/ai00-core", "crates/ai00-server"]
+resolver = "2"
 
-[[bin]]
-name = "converter"
+[workspace.package]
+edition = "2021"
+license = "MIT OR Apache-2.0"
+rust-version = "1.76"
+version = "0.4.9"
 
-[dependencies]
+[workspace.dependencies]
 anyhow = "1"
-bit-set = "0.5.3"
-bnf_sampler = "0.3.7"
-bytemuck = "1"
-cbor4ii = { version = "0.3.2", features = ["serde1"] }
-clap = { version = "4.3", features = ["derive"] }
 derivative = "2.2.0"
-fastrand = "2"
 flume = "0.11.0"
-futures-util = "0.3"
-half = "2"
-itertools = "0.12"
-jsonwebtoken = "9.1"
-log = "0.4"
+itertools = "0.13"
 memmap2 = "0.9"
-qp-trie = "0.8"
-rayon = "1.8"
-regex = "1.8"
-rustc-hash = "1.1.0"
 safetensors = "0.4"
-serde = { version = "1", features = ["derive"] }
-serde_json = "1"
-sha2 = "0.10.8"
-simple_logger = { version = "5.0.0", features = ["stderr"] }
-tempfile = "3.6"
-tokio = { version = "1", features = ["full"] }
-toml = "0.8.6"
-tower = { version = "0.4.13", features = ["full"] }
-tower-http = { version = "0.5.0", features = ["full"] }
-uid = "0.1.7"
-uuid = { version = "1.8.0", features = ["serde"] }
-web-rwkv-converter = "0.1.1"
-zip-extract = "0.1"
 
-[dependencies.web-rwkv]
+[workspace.dependencies.web-rwkv]
 # path = "../web-rwkv"
 default-features = false
 features = ["native"]
 version = "0.8.9"
 
-[dependencies.salvo]
-default-features = true
-features = [
-    "acme",
-    "affix",
-    "cors",
-    "jwt-auth",
-    "logging",
-    "oapi",
-    "quinn",
-    "serve-static",
-    "sse",
-]
-version = "0.67"
+[dependencies]
+anyhow = "1"
+clap = { version = "4.3", features = ["derive"] }
+memmap2 = "0.9"
+web-rwkv-converter = "0.1.2"
 
-# [dependencies.axum]
-# default-features = false
-# features = [
-#     "form",
-#     "http1",
-#     "http2",
-#     "json",
-#     "matched-path",
-#     "original-uri",
-#     "query",
-#     "tokio",
-#     "tower-log",
-# ]
-# version = "0.7.1"
+# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+
+[[bin]]
+name = "converter"
 
 [profile.release]
 lto = false

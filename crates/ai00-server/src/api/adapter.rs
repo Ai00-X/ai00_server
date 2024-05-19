@@ -1,6 +1,7 @@
+use ai00_core::{AdapterList, ThreadRequest};
 use salvo::prelude::*;
 
-use crate::middleware::{AdapterList, ThreadRequest, ThreadState};
+use crate::types::ThreadState;
 
 /// `/api/adapters`.
 #[endpoint]

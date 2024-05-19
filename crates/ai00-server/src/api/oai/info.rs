@@ -6,7 +6,7 @@ use salvo::{
 };
 use serde::Serialize;
 
-use crate::{api::request_info, ThreadState};
+use crate::{api::request_info, types::ThreadState};
 
 #[derive(Debug, Serialize, ToSchema)]
 struct ModelChoice {

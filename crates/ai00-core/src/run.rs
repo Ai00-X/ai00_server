@@ -1,5 +1,4 @@
 use std::{
-    borrow::Borrow,
     cmp::Ordering,
     collections::HashMap,
     path::PathBuf,
@@ -29,11 +28,10 @@ use web_rwkv::{
 };
 
 use crate::{
-    middleware::{Environment, FinishReason, GenerateRequest, ReloadRequest, Token, TokenCounter},
     sampler::{bnf::BnfSampler, Transformer},
+    Environment, FinishReason, GenerateRequest, ReloadRequest, Token, TokenCounter,
 };
 
-const _PENALTY_FREE_LIST: [&str; 5] = ["\n", ",", ".", "\u{002c}", "\u{002f}"];
 const END_OF_LINE_TOKEN: u16 = 261;
 const PROMPT_CACHE_TOKENS: usize = 32;
 const MAX_CACHE_ITEMS: usize = 256;
@@ -146,19 +144,19 @@ impl std::ops::Deref for Tokens {
     }
 }
 
-impl Borrow<[u8]> for Tokens {
+impl std::borrow::Borrow<[u8]> for Tokens {
     fn borrow(&self) -> &[u8] {
         bytemuck::cast_slice(&self.0)
     }
 }
 
-impl Borrow<[u16]> for Tokens {
+impl std::borrow::Borrow<[u16]> for Tokens {
     fn borrow(&self) -> &[u16] {
         &self.0
     }
 }
 
-impl Borrow<TokenSlice> for Tokens {
+impl std::borrow::Borrow<TokenSlice> for Tokens {
     fn borrow(&self) -> &TokenSlice {
         self.0[..].as_token_slice()
     }
@@ -187,7 +185,7 @@ impl std::ops::Deref for TokenSlice {
     }
 }
 
-impl Borrow<[u8]> for TokenSlice {
+impl std::borrow::Borrow<[u8]> for TokenSlice {
     fn borrow(&self) -> &[u8] {
         bytemuck::cast_slice(&self.0)
     }
@@ -267,54 +265,6 @@ impl<T> Clone for CachedItem<T> {
         }
     }
 }
-
-struct Model<M>(M);
-
-trait ModelSerialize {
-    fn serialize(&self, file: std::fs::File) -> Result<()>;
-}
-
-impl<M: Serialize> ModelSerialize for Model<M> {
-    fn serialize(&self, file: std::fs::File) -> Result<()> {
-        use cbor4ii::{core::enc::Write, serde::Serializer};
-        use std::{fs::File, io::Write as _};
-
-        struct FileWriter(File);
-        impl Write for FileWriter {
-            type Error = std::io::Error;
-            fn push(&mut self, input: &[u8]) -> Result<(), Self::Error> {
-                self.0.write_all(input)
-            }
-        }
-
-        let file = FileWriter(file);
-        let mut serializer = Serializer::new(file);
-        self.0.serialize(&mut serializer)?;
-
-        Ok(())
-    }
-}
-
-#[derive(Derivative, Clone)]
-#[derivative(Debug)]
-pub struct InitState {
-    pub name: String,
-    pub id: StateId,
-    pub default: bool,
-    #[derivative(Debug = "ignore")]
-    pub data: TensorCpu<f32>,
-}
-
-#[derive(Debug, Default, Clone, Copy, PartialEq, Eq, Hash, ToSchema, Serialize, Deserialize)]
-#[serde(transparent)]
-pub struct StateId(uuid::Uuid);
-
-impl StateId {
-    pub fn new() -> Self {
-        Self(uuid::Uuid::new_v4())
-    }
-}
-
 #[derive(Debug, Default)]
 struct Cache {
     state: Option<InitState>,
@@ -355,6 +305,77 @@ impl CacheHub {
             Some(item) => item,
             None => &mut self.default,
         }
+    }
+}
+
+#[derive(
+    Derivative, Default, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize, ToSchema,
+)]
+#[derivative(Debug = "transparent")]
+#[serde(transparent)]
+pub struct StateId(uuid::Uuid);
+
+impl StateId {
+    pub fn new() -> Self {
+        Self(uuid::Uuid::new_v4())
+    }
+}
+
+#[derive(Derivative, Clone)]
+#[derivative(Debug)]
+pub struct InitState {
+    pub name: String,
+    pub id: StateId,
+    pub default: bool,
+    #[derivative(Debug = "ignore")]
+    pub data: TensorCpu<f32>,
+}
+
+struct Model<M>(M);
+
+trait ModelSerialize {
+    fn serialize(&self, file: std::fs::File) -> Result<()>;
+}
+
+impl<M: Serialize> ModelSerialize for Model<M> {
+    fn serialize(&self, file: std::fs::File) -> Result<()> {
+        use cbor4ii::{core::enc::Write, serde::Serializer};
+        use std::{fs::File, io::Write as _};
+
+        struct FileWriter(File);
+        impl Write for FileWriter {
+            type Error = std::io::Error;
+            fn push(&mut self, input: &[u8]) -> Result<(), Self::Error> {
+                self.0.write_all(input)
+            }
+        }
+
+        let file = FileWriter(file);
+        let mut serializer = Serializer::new(file);
+        self.0.serialize(&mut serializer)?;
+
+        Ok(())
+    }
+}
+
+impl Environment {
+    pub async fn enqueue(&self, context: GenerateContext) -> Vec<GenerateContext> {
+        let mut queue = vec![];
+        match self {
+            Environment::Loaded(runtime) => {
+                match runtime.queue(context).await.expect("queue task error") {
+                    SlotResult::Success(batch) => log::info!("queued task at slot {batch}"),
+                    SlotResult::Fault(batch) => log::info!("swapped task at slot {batch}"),
+                    SlotResult::Failure(context) => {
+                        log::info!("failed to queue task");
+                        queue.push(*context);
+                    }
+                    SlotResult::Error(reason) => log::warn!("queue task failed: {}", reason),
+                }
+            }
+            Environment::None => queue.push(context),
+        };
+        queue
     }
 }
 
@@ -859,14 +880,14 @@ impl Runtime {
             let mut done = false;
             let mut finish = |reason| {
                 let counter = {
-                    let prompt_tokens = context.prompt_tokens.len();
-                    let completion_tokens = context.model_tokens.len();
-                    let total_tokens = prompt_tokens + completion_tokens;
+                    let prompt = context.prompt_tokens.len();
+                    let completion = context.model_tokens.len();
+                    let total = prompt + completion;
                     let duration = instant.elapsed();
                     TokenCounter {
-                        prompt_tokens,
-                        completion_tokens,
-                        total_tokens,
+                        prompt,
+                        completion,
+                        total,
                         duration,
                     }
                 };

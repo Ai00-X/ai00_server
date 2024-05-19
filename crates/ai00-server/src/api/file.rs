@@ -13,8 +13,7 @@ use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
 use web_rwkv::runtime::{loader::Loader, model::ModelInfo};
 
-use crate::ThreadState;
-use crate::{check_path_permitted, config::Config};
+use crate::{check_path_permitted, config::Config, types::ThreadState};
 
 const PERMITTED_PATHS: [&str; 4] = [
     "assets/models",
@@ -224,7 +223,7 @@ pub async fn load_config(_depot: &mut Depot, request: LoadRequest, response: &mu
         response.status_code(StatusCode::FORBIDDEN);
         response.render("FORBIDDEN");
     }
-    match crate::load_config(request.path) {
+    match crate::load_config(request.path).await {
         Ok(config) => {
             response.status_code(StatusCode::OK);
             response.render(Json(config));

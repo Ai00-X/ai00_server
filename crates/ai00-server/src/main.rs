@@ -1,14 +1,13 @@
 use std::{
-    fs::File,
-    io::{BufReader, Cursor, Read},
+    io::Cursor,
     net::{IpAddr, Ipv4Addr, SocketAddr},
     path::{Path, PathBuf},
 };
 
+use ai00_core::{model_route, ThreadRequest};
 use anyhow::{bail, Result};
-use clap::{CommandFactory, Parser};
+use clap::{command, CommandFactory, Parser};
 use memmap2::Mmap;
-use middleware::ThreadRequest;
 use salvo::{
     affix,
     conn::rustls::{Keycert, RustlsConfig},
@@ -20,15 +19,16 @@ use salvo::{
     serve_static::StaticDir,
     Router,
 };
-use serde::{Deserialize, Serialize};
+use tokio::{
+    fs::File,
+    io::{AsyncReadExt, BufReader},
+};
 
-use crate::middleware::{model_route, ThreadState};
+use crate::types::{JwtClaims, ThreadState};
 
 mod api;
 mod config;
-mod middleware;
-mod run;
-mod sampler;
+mod types;
 
 pub fn build_path(path: impl AsRef<Path>, name: impl AsRef<Path>) -> Result<PathBuf> {
     let permitted = path.as_ref();
@@ -58,15 +58,15 @@ pub fn check_path_permitted(path: impl AsRef<Path>, permitted: &[&str]) -> Resul
     bail!("path not permitted");
 }
 
-pub fn load_web(path: impl AsRef<Path>, target: &Path) -> Result<()> {
-    let file = File::open(path)?;
+pub async fn load_web(path: impl AsRef<Path>, target: &Path) -> Result<()> {
+    let file = File::open(path).await?;
     let map = unsafe { Mmap::map(&file)? };
     zip_extract::extract(Cursor::new(&map), target, false)?;
     Ok(())
 }
 
-pub fn load_plugin(path: impl AsRef<Path>, target: &Path, name: &String) -> Result<()> {
-    let file = File::open(path)?;
+pub async fn load_plugin(path: impl AsRef<Path>, target: &Path, name: &String) -> Result<()> {
+    let file = File::open(path).await?;
     let map = unsafe { Mmap::map(&file)? };
     let root = target.join("plugins");
     if !root.exists() {
@@ -78,18 +78,12 @@ pub fn load_plugin(path: impl AsRef<Path>, target: &Path, name: &String) -> Resu
     Ok(())
 }
 
-pub fn load_config(path: impl AsRef<Path>) -> Result<config::Config> {
-    let file = File::open(path)?;
+pub async fn load_config(path: impl AsRef<Path>) -> Result<config::Config> {
+    let file = File::open(path).await?;
     let mut reader = BufReader::new(file);
     let mut contents = String::new();
-    reader.read_to_string(&mut contents)?;
+    reader.read_to_string(&mut contents).await?;
     Ok(toml::from_str(&contents)?)
-}
-
-#[derive(Debug, Serialize, Deserialize)]
-pub struct JwtClaims {
-    pub sid: String,
-    pub exp: i64,
 }
 
 #[derive(Parser, Debug, Clone)]
@@ -129,7 +123,7 @@ async fn main() {
             .clone()
             .unwrap_or("assets/configs/Config.toml".into());
         log::info!("reading config {}...", path.to_string_lossy());
-        let config = load_config(path).expect("load config failed");
+        let config = load_config(path).await.expect("load config failed");
         let listen = config.listen.clone();
         (listen, config)
     };
@@ -145,7 +139,9 @@ async fn main() {
             let path = tempfile::tempdir()
                 .expect("create temp dir failed")
                 .into_path();
-            load_web(web.path, &path).expect("load frontend failed");
+            load_web(web.path, &path)
+                .await
+                .expect("load frontend failed");
 
             // create `assets/www/plugins` if it doesn't exist
             if !Path::new("assets/www/plugins").exists() {
@@ -154,23 +150,25 @@ async fn main() {
 
             // extract and load all plugins under `assets/www/plugins`
             match std::fs::read_dir("assets/www/plugins") {
-                Ok(dir) => dir
-                    .filter_map(|x| x.ok())
-                    .filter(|x| x.path().is_file())
-                    .filter(|x| x.path().extension().is_some_and(|ext| ext == "zip"))
-                    .filter(|x| x.path().file_stem().is_some_and(|stem| stem != "api"))
-                    .for_each(|x| {
+                Ok(dir) => {
+                    for x in dir
+                        .filter_map(|x| x.ok())
+                        .filter(|x| x.path().is_file())
+                        .filter(|x| x.path().extension().is_some_and(|ext| ext == "zip"))
+                        .filter(|x| x.path().file_stem().is_some_and(|stem| stem != "api"))
+                    {
                         let name = x
                             .path()
                             .file_stem()
                             .expect("this cannot happen")
                             .to_string_lossy()
                             .into();
-                        match load_plugin(x.path(), &path, &name) {
+                        match load_plugin(x.path(), &path, &name).await {
                             Ok(_) => log::info!("loaded plugin {}", name),
                             Err(err) => log::error!("failed to load plugin {}, {}", name, err),
                         }
-                    }),
+                    }
+                }
                 Err(err) => {
                     log::error!("failed to read plugin directory: {}", err);
                 }
