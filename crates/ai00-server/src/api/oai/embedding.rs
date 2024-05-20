@@ -57,7 +57,7 @@ pub async fn embeddings(
 ) -> Json<EmbeddingResponse> {
     let request = req.to_owned(); // req.parse_json::<EmbeddingRequest>().await.unwrap();
     let ThreadState { sender, .. } = depot.obtain::<ThreadState>().unwrap();
-    let info = request_info(sender.clone(), Duration::from_secs(1)).await;
+    let info = request_info(sender.clone(), Duration::from_millis(500)).await;
     let model_name = info.reload.model_path.to_string_lossy().into_owned();
 
     let (token_sender, token_receiver) = flume::unbounded();

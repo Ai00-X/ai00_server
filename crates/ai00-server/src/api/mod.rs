@@ -32,12 +32,12 @@ pub async fn request_info(sender: Sender<ThreadRequest>, sleep: Duration) -> Run
 
 pub async fn request_info_stream(
     sender: Sender<ThreadRequest>,
-    info_sender: Sender<RuntimeInfo>,
+    stream: Sender<RuntimeInfo>,
     sleep: Duration,
 ) {
     loop {
         if let Ok(_info) = try_request_info(sender.clone()).await {
-            if info_sender.send(_info).is_err() {
+            if stream.send(_info).is_err() {
                 break;
             }
         }

@@ -131,7 +131,7 @@ pub struct PartialCompletionResponse {
 
 async fn respond_one(depot: &mut Depot, request: CompletionRequest, res: &mut Response) {
     let ThreadState { sender, .. } = depot.obtain::<ThreadState>().unwrap();
-    let info = request_info(sender.clone(), Duration::from_secs(1)).await;
+    let info = request_info(sender.clone(), Duration::from_millis(500)).await;
     let model_name = info.reload.model_path.to_string_lossy().into_owned();
 
     let (token_sender, token_receiver) = flume::unbounded();
@@ -177,7 +177,7 @@ async fn respond_one(depot: &mut Depot, request: CompletionRequest, res: &mut Re
 
 async fn respond_stream(depot: &mut Depot, request: CompletionRequest, res: &mut Response) {
     let ThreadState { sender, .. } = depot.obtain::<ThreadState>().unwrap();
-    let info = request_info(sender.clone(), Duration::from_secs(1)).await;
+    let info = request_info(sender.clone(), Duration::from_millis(500)).await;
     let model_name = info.reload.model_path.to_string_lossy().into_owned();
 
     let (token_sender, token_receiver) = flume::unbounded();

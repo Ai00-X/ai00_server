@@ -26,6 +26,9 @@ tokio = { version = "1", features = ["full"] }
 toml = "0.8.6"
 zip-extract = "0.1"
 
+[dependencies.ai00-core]
+workspace = true
+
 [dependencies.anyhow]
 workspace = true
 
@@ -61,6 +64,3 @@ features = [
     "sse",
 ]
 version = "0.67"
-
-[dependencies.ai00-core]
-path = "../ai00-core"

@@ -24,6 +24,9 @@ itertools = "0.13"
 memmap2 = "0.9"
 safetensors = "0.4"
 
+[workspace.dependencies.ai00-core]
+path = "crates/ai00-core"
+
 [workspace.dependencies.web-rwkv]
 # path = "../web-rwkv"
 default-features = false

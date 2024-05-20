@@ -23,7 +23,7 @@ pub struct ModelResponse {
 #[endpoint]
 pub async fn models(depot: &mut Depot) -> Json<ModelResponse> {
     let ThreadState { sender, .. } = depot.obtain::<ThreadState>().unwrap();
-    let info = request_info(sender.to_owned(), Duration::from_secs(1)).await;
+    let info = request_info(sender.to_owned(), Duration::from_millis(500)).await;
     let model_name = info
         .reload
         .model_path
