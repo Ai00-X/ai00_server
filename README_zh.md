@@ -114,7 +114,7 @@
 4. 如果你不想安装 Python 或 Torch，可以前往[`web-rwkv`](https://github.com/cryscan/web-rwkv/releases)并下载不依赖于 Python 或 Torch 的转换器`web-rwkv-converter`
 
     ```bash
-    $ ./web-rwkv-converter --input /path/to/model.pth
+    $ ./web-rwkv-converter --input /path/to/model.pth --output /path/to/model.st
     ```
 
 5. 根据上文步骤，将转换所得的`.st`模型文件放在`assets/models/`路径下，并修改  [`assets/Config.toml`](./assets/Config.toml) 中的模型路径
