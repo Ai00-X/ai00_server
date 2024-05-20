@@ -36,6 +36,7 @@ pub struct Model {
 /// Low-rank adaptor.
 #[derive(Debug, Clone, Derivative, Serialize, Deserialize)]
 #[derivative(Default)]
+#[serde(default)]
 pub struct Lora {
     /// Path to the LoRA.
     pub path: PathBuf,
@@ -47,6 +48,7 @@ pub struct Lora {
 /// State-tuned initial state.
 #[derive(Debug, Clone, Derivative, Serialize, Deserialize)]
 #[derivative(Default)]
+#[serde(default)]
 pub struct State {
     /// Path to the initial state.
     pub path: PathBuf,
