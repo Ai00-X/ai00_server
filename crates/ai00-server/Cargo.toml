@@ -15,14 +15,11 @@ version.workspace = true
 clap = { version = "4.3", features = ["derive"] }
 futures-util = "0.3"
 jsonwebtoken = "9.1"
-log = "0.4"
 regex = "1.8"
-serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 sha2 = "0.10.8"
 simple_logger = { version = "5.0.0", features = ["stderr"] }
 tempfile = "3.6"
-tokio = { version = "1", features = ["full"] }
 toml = "0.8.6"
 zip-extract = "0.1"
 
@@ -44,7 +41,16 @@ workspace = true
 [dependencies.memmap2]
 workspace = true
 
+[dependencies.log]
+workspace = true
+
 [dependencies.safetensors]
+workspace = true
+
+[dependencies.serde]
+workspace = true
+
+[dependencies.tokio]
 workspace = true
 
 [dependencies.web-rwkv]

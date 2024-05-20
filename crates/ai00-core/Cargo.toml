@@ -18,11 +18,8 @@ bytemuck = "1"
 cbor4ii = { version = "0.3.2", features = ["serde1"] }
 fastrand = "2"
 half = "2.4"
-log = "0.4"
 qp-trie = "0.8"
 rustc-hash = "1.1.0"
-serde = { version = "1", features = ["derive"] }
-tokio = { version = "1", features = ["full"] }
 uuid = { version = "1.8.0", features = ["serde", "v4"] }
 
 [dependencies.anyhow]
@@ -40,7 +37,16 @@ workspace = true
 [dependencies.memmap2]
 workspace = true
 
+[dependencies.log]
+workspace = true
+
 [dependencies.safetensors]
+workspace = true
+
+[dependencies.serde]
+workspace = true
+
+[dependencies.tokio]
 workspace = true
 
 [dependencies.web-rwkv]
