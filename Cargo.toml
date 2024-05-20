@@ -1,4 +1,9 @@
-[package]
+[workspace]
+default-members = ["crates/ai00-server"]
+members = ["crates/ai00-core", "crates/ai00-server", "crates/converter"]
+resolver = "2"
+
+[workspace.package]
 authors = ["Gu ZhenNiu <448885@qq.com>", "Zhang Zhenyuan <cryscan@umich.edu>"]
 categories = ["science"]
 description = "An implementation of the RWKV language model in pure WebGPU."
@@ -7,21 +12,9 @@ exclude = ["assets"]
 homepage = "https://github.com/cgisky1980/ai00_rwkv_server"
 keywords = ["LLM", "deep-learning", "model", "rwkv"]
 license = "MIT OR Apache-2.0"
-name = "ai00_server"
 repository = "https://github.com/cgisky1980/ai00_rwkv_server"
 rust-version = "1.76"
-version = "0.4.9"
-
-[workspace]
-default-members = ["crates/ai00-server"]
-members = ["crates/ai00-core", "crates/ai00-server"]
-resolver = "2"
-
-[workspace.package]
-edition = "2021"
-license = "MIT OR Apache-2.0"
-rust-version = "1.76"
-version = "0.4.9"
+version = "0.5.0"
 
 [workspace.dependencies]
 anyhow = "1"
@@ -36,17 +29,6 @@ safetensors = "0.4"
 default-features = false
 features = ["native"]
 version = "0.8.9"
-
-[dependencies]
-anyhow = "1"
-clap = { version = "4.3", features = ["derive"] }
-memmap2 = "0.9"
-web-rwkv-converter = "0.1.2"
-
-# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
-
-[[bin]]
-name = "converter"
 
 [profile.release]
 lto = false

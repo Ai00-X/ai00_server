@@ -112,13 +112,13 @@ It only supports Safetensors models with the `.st` extension now. Models saved w
 2. In the [Release](https://github.com/cgisky1980/ai00_rwkv_server/releases) you could find an executable called `converter`. Run
   
   ```bash
-  $ ./converter --input /path/to/model.pth
+  $ ./converter --input /path/to/model.pth --output /path/to/model.st
   ```
   
 3. If you are building from source, run
   
   ```bash
-  $ cargo run --release --bin converter -- --input /path/to/model.pth
+  $ cargo run --release --package converter -- --input /path/to/model.pth --output /path/to/model.st
   ```
 
 4. Just like the steps mentioned above, place the model in the `.st` model in the `assets/models/` path and modify the model path in [`assets/Config.toml`](./assets/Config.toml)
