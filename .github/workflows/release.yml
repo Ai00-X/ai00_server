@@ -67,14 +67,14 @@ jobs:
         if: matrix.build == 'linux'
         run: |
           rustup target add ${{ env.LINUX_TARGET }}
-          cargo build --release --target ${{ env.LINUX_TARGET }}
+          cargo build --release --workspace --target ${{ env.LINUX_TARGET }}
       - name: Build (MacOS)
         if: matrix.build == 'macos'
-        run: cargo build --release
+        run: cargo build --release --workspace
 
       - name: Build (Windows)
         if: matrix.build == 'windows'
-        run: cargo build --release
+        run: cargo build --release --workspace
 
       - name: Create artifact directory
         run: |
