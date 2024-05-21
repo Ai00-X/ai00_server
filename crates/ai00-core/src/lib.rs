@@ -476,8 +476,13 @@ pub async fn model_route(receiver: Receiver<ThreadRequest>) -> Result<()> {
     tokio::spawn(dequeue);
 
     loop {
+        let Ok(request) = receiver.recv_async().await else {
+            log::info!("core exit");
+            break Ok(());
+        };
+
         let listen = async {
-            match receiver.recv_async().await.unwrap() {
+            match request {
                 ThreadRequest::Adapter(sender) => {
                     tokio::spawn(async move {
                         let _ = sender.send(list_adapters());
