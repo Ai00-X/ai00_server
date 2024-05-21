@@ -481,6 +481,22 @@ impl Runtime {
         states
     }
 
+    pub async fn load_init_state(&self, state: InitState) {
+        let mut caches = self.caches.lock().await;
+        caches.backed.insert(
+            state.id,
+            Cache {
+                state: Some(state),
+                cache: Trie::new(),
+            },
+        );
+    }
+
+    pub async fn unload_init_state(&self, id: StateId) {
+        let mut caches = self.caches.lock().await;
+        caches.backed.remove(&id);
+    }
+
     pub async fn serialize_model(&self, path: PathBuf) -> Result<()> {
         let model = self.model.clone();
         let handle = tokio::task::spawn_blocking(move || {

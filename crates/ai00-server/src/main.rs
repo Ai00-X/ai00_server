@@ -119,7 +119,7 @@ async fn main() {
     log::info!("{}\tversion: {}", bin_name, version);
 
     let (sender, receiver) = flume::unbounded::<ThreadRequest>();
-    tokio::task::spawn(model_route(receiver));
+    tokio::spawn(model_route(receiver));
 
     let (listen, config) = {
         let path = args
@@ -204,6 +204,7 @@ async fn main() {
         .push(Router::with_path("/models/save").post(api::save))
         .push(Router::with_path("/models/load").post(api::load))
         .push(Router::with_path("/models/unload").get(api::unload))
+        .push(Router::with_path("/models/state/load").post(api::load_state))
         .push(Router::with_path("/models/state").get(api::state))
         .push(Router::with_path("/models/list").get(api::models))
         .push(Router::with_path("/files/unzip").post(api::unzip))

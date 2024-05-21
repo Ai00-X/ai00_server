@@ -88,7 +88,7 @@ pub enum ThreadRequest {
     Adapter(Sender<AdapterList>),
     /// Get the current runtime info.
     Info(Sender<RuntimeInfo>),
-    /// Request the server to complement a prompt.
+    /// Request the runtime to complement a prompt.
     Generate {
         request: Box<GenerateRequest>,
         tokenizer: Arc<Tokenizer>,
@@ -101,6 +101,13 @@ pub enum ThreadRequest {
     },
     /// Unload the runtime.
     Unload,
+    /// Additionally load an initial state.
+    StateLoad {
+        request: reload::State,
+        sender: Option<Sender<bool>>,
+    },
+    /// Unload an initial state given its id.
+    StateUnload(StateId),
     /// Save the current model with config.
     Save {
         request: SaveRequest,
@@ -449,7 +456,7 @@ pub async fn model_route(receiver: Receiver<ThreadRequest>) -> Result<()> {
     let sender = {
         let (sender, receiver) = flume::unbounded();
         let env = env.clone();
-        tokio::task::spawn(crate::run::run(receiver, env));
+        tokio::spawn(crate::run::run(receiver, env));
         sender
     };
 
@@ -566,7 +573,7 @@ pub async fn model_route(receiver: Receiver<ThreadRequest>) -> Result<()> {
                             }
                             Err(err) => {
                                 callback(false);
-                                log::error!("reload model failed: {}", err);
+                                log::error!("load runtime failed: {}", err);
                             }
                         };
                     });
@@ -576,7 +583,7 @@ pub async fn model_route(receiver: Receiver<ThreadRequest>) -> Result<()> {
                     tokio::spawn(async move {
                         let mut env = env.write().await;
                         let env = std::mem::take(&mut *env);
-                        log::info!("model unloaded");
+                        log::info!("runtime unloaded");
 
                         let context = match env {
                             Environment::Loaded(runtime) => runtime.context().clone(),
@@ -584,6 +591,76 @@ pub async fn model_route(receiver: Receiver<ThreadRequest>) -> Result<()> {
                         };
                         context.queue.submit(None);
                         context.device.poll(Maintain::Wait);
+                    });
+                }
+                ThreadRequest::StateLoad { request, sender } => {
+                    let env = env.clone();
+                    let load = async move {
+                        let env = env.read().await;
+                        let Environment::Loaded(runtime) = &*env else {
+                            bail!("runtime not loaded")
+                        };
+
+                        let reload::State {
+                            path,
+                            name,
+                            id,
+                            default,
+                        } = request;
+                        let name = match name {
+                            Some(name) => name,
+                            None => match path.file_name() {
+                                Some(name) => name.to_string_lossy().to_string(),
+                                None => bail!("failed to parse state name"),
+                            },
+                        };
+                        let file = File::open(&path).await?;
+                        let data = unsafe { Mmap::map(&file)? };
+
+                        let context = runtime.context();
+                        let info = runtime.info();
+                        let model = SafeTensors::deserialize(&data)?;
+                        match load_init_state(context, info, model).await {
+                            Ok(data) => {
+                                let state = InitState {
+                                    name,
+                                    id,
+                                    data,
+                                    default,
+                                };
+                                log::info!("{:#?}", state);
+                                runtime.load_init_state(state).await;
+                            }
+                            Err(err) => log::warn!("initial state not loaded: {}", err),
+                        };
+                        Ok(())
+                    };
+                    let callback = move |result: bool| {
+                        if let Some(sender) = sender {
+                            let _ = sender.send(result);
+                        }
+                    };
+                    tokio::spawn(async move {
+                        match load.await {
+                            Ok(_) => {
+                                callback(true);
+                                log::info!("state loaded")
+                            }
+                            Err(err) => {
+                                callback(false);
+                                log::error!("load state failed: {}", err);
+                            }
+                        };
+                    });
+                }
+                ThreadRequest::StateUnload(id) => {
+                    let env = env.clone();
+                    tokio::spawn(async move {
+                        let env = env.read().await;
+                        let Environment::Loaded(runtime) = &*env else {
+                            return;
+                        };
+                        runtime.unload_init_state(id).await;
                     });
                 }
                 ThreadRequest::Generate {

@@ -13,9 +13,8 @@
 [![All Contributors](https://img.shields.io/badge/all_contributors-7-orange.svg?style=flat-square)](#contributors-)
 <!-- ALL-CONTRIBUTORS-BADGE:END -->
 
-
-
-[English](README.md) | [中文](README_zh.md) 
+[![en](https://img.shields.io/badge/lang-en-red.svg)](README.md)
+[![zh](https://img.shields.io/badge/lang-zh-blue.svg)](README.zh.md)
 
 ---
 
@@ -144,7 +143,7 @@ The API service starts at port 65530, and the data input and output format follo
 *   `/api/oai/v1/embeddings`
 *   `/api/oai/embeddings`
 
-The following is an example of ai00 invocation based on Python and an out of the box tool class implementation
+The following is an out-of-box example of Ai00 API invocations in Python:
 
 ```python
 import openai

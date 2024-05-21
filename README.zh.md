@@ -12,9 +12,8 @@
 [![All Contributors](https://img.shields.io/badge/all_contributors-5-orange.svg?style=flat-square)](#contributors-)
 <!-- ALL-CONTRIBUTORS-BADGE:END -->
 
-
-
-[English](README.md) | [中文](README_zh.md) 
+[![en](https://img.shields.io/badge/lang-en-blue.svg)](README.md)
+[![zh](https://img.shields.io/badge/lang-zh-red.svg)](README.zh.md)
 
 <div align="left"> 
  
@@ -41,11 +40,9 @@
 
 ### ⭕模型下载和转换
 
-你必须（在构建时）[下载模型](https://huggingface.co/BlinkDL)并将其放置在`assets/models`中，如果你从源代码构建。
-你可以从 HuggingFace 下载官方 RWKV World 系列模型，并使用提供的`convert_safetensors.py`进行转换。
-如果你不想安装 Python，也可以前往[`web-rwkv`](https://github.com/cryscan/web-rwkv/releases)下载无依赖的转换器。
+你必须[下载模型](https://huggingface.co/BlinkDL)并将其放置在`assets/models`中。
 
-你可以在这里下载已经转换好的V4 模型： [V5](https://huggingface.co/cgisky/AI00_RWKV_V5) 或者 [V6](https://huggingface.co/cgisky/ai00_rwkv_x060)
+你可以在这里下载已经转换好的模型： [V5](https://huggingface.co/cgisky/AI00_RWKV_V5) 或者 [V6](https://huggingface.co/cgisky/ai00_rwkv_x060)
 
 
 ## 安装、编译和使用
@@ -63,6 +60,7 @@
     ```bash     
     ./ai00_rwkv_server
     ```
+
 5. 打开浏览器，访问WebUI
    [`https://localhost:65530`](https://localhost:65530)
 
@@ -77,7 +75,6 @@
     cd ai00_rwkv_server
     ```
     
-
 3. [下载模型](https://huggingface.co/cgisky/RWKV-safetensors-fp16)后把模型放在
 `assets/models/`路径下，例如`assets/models/RWKV-x060-World-3B-v2-20240228-ctx4096.st`
 
@@ -87,7 +84,6 @@
     cargo build --release
     ```
      
-
 5. 编译完成后运行
    
     ```bash     
@@ -128,7 +124,7 @@
 
 ## 📙目前可用的API
 
-API 服务开启于 65530 端口, 数据输入已经输出格式遵循Openai API 规范。
+API 服务开启于 65530 端口, 数据输入已经输出格式遵循 Openai API 规范。
 
 - `/api/oai/v1/models`
 - `/api/oai/models`
@@ -139,7 +135,7 @@ API 服务开启于 65530 端口, 数据输入已经输出格式遵循Openai API
 - `/api/oai/v1/embeddings`
 - `/api/oai/embeddings`
 
-下面是一个基于Python和开箱即用工具类实现的ai00调用示例
+下面是一个 Python 的 Ai00 API 调用示例，开箱即用：
 
 ```python
 import openai
