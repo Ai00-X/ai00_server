@@ -21,7 +21,7 @@ use web_rwkv::{
         infer::{InferChunk, InferInfo, InferInput, InferInputBatch, InferOption, InferOutput},
         model::{ModelInfo, ModelRuntime, State},
         softmax::softmax,
-        Job, JobBuilder, JobRuntime, Submission,
+        Job, JobBuilder, JobRuntime,
     },
     tensor::{TensorCpu, TensorInit},
     tokenizer::Tokenizer,
@@ -741,12 +741,8 @@ impl Runtime {
 
         // run the model until there is at least one slot finished
         let outputs = loop {
-            let (sender, receiver) = tokio::sync::oneshot::channel();
             let input = inference.take().unwrap();
-            let submission = Submission { input, sender };
-
-            let _ = self.runtime.send(submission).await;
-            let (input, output) = receiver.await?;
+            let (input, output) = self.runtime.infer(input).await;
             inference = Some(input);
 
             if output.iter().any(|batch| batch.size() > 0) {

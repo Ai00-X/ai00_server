@@ -863,13 +863,13 @@ dependencies = [
 
 [[package]]
 name = "derive-getters"
-version = "0.3.0"
+version = "0.4.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "7a2c35ab6e03642397cdda1dd58abbc05d418aef8e36297f336d5aba060fe8df"
+checksum = "0a6433aac097572ea8ccc60b3f2e756c661c9aeed9225cdd4d0cb119cb7ff6ba"
 dependencies = [
  "proc-macro2",
  "quote",
- "syn 1.0.109",
+ "syn 2.0.60",
 ]
 
 [[package]]
@@ -3988,9 +3988,9 @@ dependencies = [
 
 [[package]]
 name = "web-rwkv"
-version = "0.8.9"
+version = "0.8.10"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "0dc832976e594cc006a34b3da4d1d151e1c12fee1e529b588ea43a9c8e7b8361"
+checksum = "72e1b077d80af7c63af13bffc9fed56f08b1fa3b23322dce321564c71591ed4e"
 dependencies = [
  "ahash 0.8.11",
  "anyhow",
@@ -4002,7 +4002,7 @@ dependencies = [
  "gpp",
  "half",
  "instant",
- "itertools 0.12.1",
+ "itertools 0.13.0",
  "log",
  "regex",
  "rustc-hash",
