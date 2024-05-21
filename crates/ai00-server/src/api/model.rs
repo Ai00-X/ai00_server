@@ -120,7 +120,7 @@ pub async fn unload(depot: &mut Depot) -> StatusCode {
     StatusCode::OK
 }
 
-/// `/api/models/load_init_state`.
+/// `/api/models/state/load`.
 #[handler]
 pub async fn load_state(depot: &mut Depot, req: &mut Request) -> StatusCode {
     let ThreadState { sender, path } = depot.obtain::<ThreadState>().unwrap();
