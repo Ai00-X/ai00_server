@@ -1,5 +1,3 @@
-use std::time::Duration;
-
 use ai00_core::{
     run::{InitState, StateId},
     ReloadRequest, RuntimeInfo, SaveRequest, ThreadRequest,
@@ -10,7 +8,7 @@ use serde::Serialize;
 use web_rwkv::runtime::model::ModelInfo;
 
 use super::*;
-use crate::{build_path, types::ThreadState};
+use crate::{build_path, types::ThreadState, SLEEP};
 
 #[derive(Debug, Clone, Serialize)]
 pub struct InfoResponse {
@@ -33,7 +31,7 @@ pub async fn info(depot: &mut Depot) -> Json<InfoResponse> {
         model,
         states,
         ..
-    } = request_info(sender.to_owned(), Duration::from_millis(500)).await;
+    } = request_info(sender.to_owned(), SLEEP).await;
     let states = states
         .into_iter()
         .map(|(id, InitState { name, .. })| InitStateInfo { id, name })
@@ -50,7 +48,7 @@ pub async fn info(depot: &mut Depot) -> Json<InfoResponse> {
 pub async fn state(depot: &mut Depot, res: &mut Response) {
     let ThreadState { sender, .. } = depot.obtain::<ThreadState>().unwrap();
     let (info_sender, info_receiver) = flume::unbounded();
-    let task = request_info_stream(sender.to_owned(), info_sender, Duration::from_millis(500));
+    let task = request_info_stream(sender.to_owned(), info_sender, SLEEP);
     tokio::task::spawn(task);
 
     let stream = info_receiver.into_stream().map(

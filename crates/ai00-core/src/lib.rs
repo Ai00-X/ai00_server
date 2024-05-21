@@ -442,7 +442,6 @@ async fn load_runtime(
     Ok(runtime)
 }
 
-#[tokio::main]
 pub async fn model_route(receiver: Receiver<ThreadRequest>) -> Result<()> {
     let env: Arc<RwLock<Environment>> = Default::default();
     let queue: Arc<Mutex<Vec<GenerateContext>>> = Default::default();
@@ -450,7 +449,7 @@ pub async fn model_route(receiver: Receiver<ThreadRequest>) -> Result<()> {
     let sender = {
         let (sender, receiver) = flume::unbounded();
         let env = env.clone();
-        tokio::task::spawn_blocking(move || crate::run::run(receiver, env));
+        tokio::task::spawn(crate::run::run(receiver, env));
         sender
     };
 

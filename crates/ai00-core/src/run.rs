@@ -366,10 +366,7 @@ impl Environment {
                 match runtime.queue(context).await.expect("queue task error") {
                     SlotResult::Success(batch) => log::info!("queued task at slot {batch}"),
                     SlotResult::Fault(batch) => log::info!("swapped task at slot {batch}"),
-                    SlotResult::Failure(context) => {
-                        log::info!("failed to queue task");
-                        queue.push(*context);
-                    }
+                    SlotResult::Failure(context) => queue.push(*context),
                     SlotResult::Error(reason) => log::warn!("queue task failed: {}", reason),
                 }
             }
@@ -973,7 +970,6 @@ impl Runtime {
     }
 }
 
-#[tokio::main]
 pub async fn run(receiver: Receiver<()>, env: Arc<RwLock<Environment>>) {
     {
         // this task constantly runs, cleaning up state cache

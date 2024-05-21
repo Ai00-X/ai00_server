@@ -1,5 +1,3 @@
-use std::time::Duration;
-
 use ai00_core::{GenerateRequest, ThreadRequest, Token, TokenCounter};
 use futures_util::StreamExt;
 use salvo::{
@@ -11,6 +9,7 @@ use serde::{Deserialize, Serialize};
 use crate::{
     api::request_info,
     types::{Array, ThreadState},
+    SLEEP,
 };
 
 #[derive(Debug, Default, Clone, Deserialize, ToSchema, ToParameters)]
@@ -57,7 +56,7 @@ pub async fn embeddings(
 ) -> Json<EmbeddingResponse> {
     let request = req.to_owned(); // req.parse_json::<EmbeddingRequest>().await.unwrap();
     let ThreadState { sender, .. } = depot.obtain::<ThreadState>().unwrap();
-    let info = request_info(sender.clone(), Duration::from_millis(500)).await;
+    let info = request_info(sender.clone(), SLEEP).await;
     let model_name = info.reload.model_path.to_string_lossy().into_owned();
 
     let (token_sender, token_receiver) = flume::unbounded();

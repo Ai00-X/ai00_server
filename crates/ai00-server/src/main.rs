@@ -2,6 +2,7 @@ use std::{
     io::Cursor,
     net::{IpAddr, Ipv4Addr, SocketAddr},
     path::{Path, PathBuf},
+    time::Duration,
 };
 
 use ai00_core::{model_route, ThreadRequest};
@@ -29,6 +30,8 @@ use crate::types::{JwtClaims, ThreadState};
 mod api;
 mod config;
 mod types;
+
+const SLEEP: Duration = Duration::from_millis(500);
 
 pub fn build_path(path: impl AsRef<Path>, name: impl AsRef<Path>) -> Result<PathBuf> {
     let permitted = path.as_ref();
@@ -116,7 +119,7 @@ async fn main() {
     log::info!("{}\tversion: {}", bin_name, version);
 
     let (sender, receiver) = flume::unbounded::<ThreadRequest>();
-    tokio::task::spawn_blocking(move || model_route(receiver));
+    tokio::task::spawn(model_route(receiver));
 
     let (listen, config) = {
         let path = args

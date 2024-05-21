@@ -1,12 +1,10 @@
-use std::time::Duration;
-
 use salvo::{
     oapi::{ToResponse, ToSchema},
     prelude::*,
 };
 use serde::Serialize;
 
-use crate::{api::request_info, types::ThreadState};
+use crate::{api::request_info, types::ThreadState, SLEEP};
 
 #[derive(Debug, Serialize, ToSchema)]
 struct ModelChoice {
@@ -23,7 +21,7 @@ pub struct ModelResponse {
 #[endpoint]
 pub async fn models(depot: &mut Depot) -> Json<ModelResponse> {
     let ThreadState { sender, .. } = depot.obtain::<ThreadState>().unwrap();
-    let info = request_info(sender.to_owned(), Duration::from_millis(500)).await;
+    let info = request_info(sender.to_owned(), SLEEP).await;
     let model_name = info
         .reload
         .model_path
