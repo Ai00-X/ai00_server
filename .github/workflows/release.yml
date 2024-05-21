@@ -15,7 +15,7 @@ env:
 
   # Space separated paths to include in the archive.
   RELEASE_BINS: ai00-server converter
-  RELEASE_ADDS: README.md README_zh.md LICENSE assets
+  RELEASE_ADDS: README.md README.zh.md LICENSE assets
 
 jobs:
   build:
