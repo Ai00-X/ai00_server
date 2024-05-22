@@ -1,6 +1,7 @@
 pub mod bnf;
 pub mod mirostat;
 pub mod nucleus;
+pub mod typical;
 
 pub trait Sampler {
     /// Initialize the sampler state.

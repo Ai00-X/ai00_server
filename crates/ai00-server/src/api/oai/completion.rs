@@ -23,6 +23,8 @@ use crate::{
 pub struct CompletionRequest {
     #[serde(default)]
     prompt: Array<String>,
+    #[serde(default)]
+    state: StateId,
     #[serde(default = "default_max_tokens")]
     max_tokens: usize,
     #[serde(default)]
@@ -35,22 +37,23 @@ pub struct CompletionRequest {
     #[serde(default)]
     bnf_schema: Option<String>,
     #[serde(flatten)]
-    sampler: SamplerParams,
+    sampler: NucleusParams,
     #[serde(default)]
-    state: StateId,
+    sampler_override: Option<SamplerParams>,
 }
 
 impl Default for CompletionRequest {
     fn default() -> Self {
         Self {
             prompt: Array::default(),
+            state: Default::default(),
             max_tokens: 256,
             stop: Array::default(),
             stream: false,
             bias: HashMap::new(),
             bnf_schema: Default::default(),
             sampler: Default::default(),
-            state: Default::default(),
+            sampler_override: None,
         }
     }
 }
@@ -63,12 +66,13 @@ impl From<CompletionRequest> for GenerateRequest {
     fn from(value: CompletionRequest) -> Self {
         let CompletionRequest {
             prompt,
+            state,
             max_tokens,
             stop,
             sampler,
+            sampler_override,
             bias,
             bnf_schema,
-            state,
             ..
         } = value;
 
@@ -76,7 +80,10 @@ impl From<CompletionRequest> for GenerateRequest {
         let max_tokens = max_tokens.min(MAX_TOKENS);
         let stop = stop.into();
         let bias = Arc::new(bias);
-        let sampler = sampler.into();
+        let sampler = match sampler_override {
+            Some(sampler) => sampler.into(),
+            None => SamplerParams::Nucleus(sampler).into(),
+        };
 
         Self {
             prompt,

@@ -1,15 +1,13 @@
 use std::{collections::HashMap, sync::Arc};
 
 use ai00_core::{
-    run::StateId, sampler::Sampler, FinishReason, GenerateRequest, ThreadRequest, Token,
-    TokenCounter, MAX_TOKENS,
+    run::StateId, FinishReason, GenerateRequest, ThreadRequest, Token, TokenCounter, MAX_TOKENS,
 };
 use futures_util::StreamExt;
 use itertools::Itertools;
 use regex::Regex;
 use salvo::{oapi::extract::JsonBody, prelude::*, sse::SseEvent, Depot, Writer};
 use serde::{Deserialize, Serialize};
-use tokio::sync::RwLock;
 
 use super::*;
 use crate::{
@@ -51,6 +49,8 @@ pub struct ChatRequest {
     messages: Array<ChatRecord>,
     #[serde(default)]
     names: HashMap<Role, String>,
+    #[serde(default)]
+    state: StateId,
     #[serde(default = "default_max_tokens")]
     max_tokens: usize,
     #[serde(default = "default_stop")]
@@ -61,9 +61,9 @@ pub struct ChatRequest {
     #[serde(alias = "logit_bias")]
     bias: HashMap<u16, f32>,
     #[serde(flatten)]
-    sampler: SamplerParams,
+    sampler: NucleusParams,
     #[serde(default)]
-    state: StateId,
+    sampler_override: Option<SamplerParams>,
 }
 
 impl Default for ChatRequest {
@@ -71,12 +71,13 @@ impl Default for ChatRequest {
         Self {
             messages: Array::default(),
             names: HashMap::new(),
+            state: Default::default(),
             max_tokens: 256,
             stop: Array::Item("\n\n".into()),
             stream: false,
             bias: HashMap::new(),
             sampler: Default::default(),
-            state: Default::default(),
+            sampler_override: None,
         }
     }
 }
@@ -94,11 +95,12 @@ impl From<ChatRequest> for GenerateRequest {
         let ChatRequest {
             messages,
             names,
+            state,
             max_tokens,
             stop,
             sampler,
+            sampler_override,
             bias,
-            state,
             ..
         } = value;
 
@@ -128,7 +130,10 @@ impl From<ChatRequest> for GenerateRequest {
         let max_tokens = max_tokens.min(MAX_TOKENS);
         let stop = stop.into();
         let bias = Arc::new(bias);
-        let sampler: Arc<RwLock<dyn Sampler + Send + Sync>> = sampler.into();
+        let sampler = match sampler_override {
+            Some(sampler) => sampler.into(),
+            None => SamplerParams::Nucleus(sampler).into(),
+        };
 
         Self {
             prompt,

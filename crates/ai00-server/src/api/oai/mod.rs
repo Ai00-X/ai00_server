@@ -3,6 +3,7 @@ use std::sync::Arc;
 use ai00_core::sampler::{
     mirostat::{MirostatParams, MirostatSampler},
     nucleus::{NucleusParams, NucleusSampler},
+    typical::{TypicalParams, TypicalSampler},
     Sampler,
 };
 use salvo::oapi::ToSchema;
@@ -20,9 +21,10 @@ pub use embedding::embeddings;
 pub use info::models;
 
 #[derive(Debug, Clone, Serialize, Deserialize, ToSchema)]
-#[serde(untagged)]
+#[serde(tag = "type")]
 pub enum SamplerParams {
     Mirostat(MirostatParams),
+    Typical(TypicalParams),
     Nucleus(NucleusParams),
 }
 
@@ -36,6 +38,7 @@ impl From<SamplerParams> for Arc<RwLock<dyn Sampler + Send + Sync>> {
     fn from(value: SamplerParams) -> Self {
         match value {
             SamplerParams::Mirostat(params) => Arc::new(RwLock::new(MirostatSampler::new(params))),
+            SamplerParams::Typical(params) => Arc::new(RwLock::new(TypicalSampler::new(params))),
             SamplerParams::Nucleus(params) => Arc::new(RwLock::new(NucleusSampler::new(params))),
         }
     }

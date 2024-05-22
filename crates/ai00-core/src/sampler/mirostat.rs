@@ -6,19 +6,13 @@ use serde::{Deserialize, Serialize};
 
 #[derive(Debug, Clone, Derivative, Serialize, Deserialize, ToSchema)]
 #[derivative(Default)]
+#[serde(default)]
 pub struct MirostatParams {
     #[derivative(Default(value = "3.0"))]
     pub tau: f32,
     #[derivative(Default(value = "0.1"))]
     #[serde(alias = "learning_rate")]
     pub rate: f32,
-    #[serde(default = "default_top_p")]
-    #[derivative(Default(value = "0.95"))]
-    pub top_p: f32,
-}
-
-fn default_top_p() -> f32 {
-    MirostatParams::default().top_p
 }
 
 #[derive(Debug, Clone, Default)]
@@ -55,12 +49,14 @@ impl Sampler for MirostatSampler {
             .enumerate()
             .sorted_unstable_by(|(_, x), (_, y)| x.total_cmp(y).reverse())
             .scan((0, 0.0, 0.0), |(_, cum, _), (id, x)| {
-                if *cum > params.top_p {
-                    None
-                } else {
-                    *cum += x;
-                    Some((id, *cum, *x))
-                }
+                // if *cum > params.top_p {
+                //     None
+                // } else {
+                //     *cum += x;
+                //     Some((id, *cum, *x))
+                // }
+                *cum += x;
+                Some((id, *cum, *x))
             })
             .collect_vec();
         let k = sorted
