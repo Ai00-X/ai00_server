@@ -42,8 +42,6 @@ impl std::ops::DerefMut for BnfSampler {
 }
 
 impl Transformer for BnfSampler {
-    type Output = AcceptTokenResult;
-
     fn transform(&self, output: &mut [f32]) {
         output
             .iter_mut()
@@ -52,13 +50,16 @@ impl Transformer for BnfSampler {
             .for_each(|(_, logits)| *logits = f32::MIN)
     }
 
-    fn update(&mut self, token: u16) -> AcceptTokenResult {
+    fn update(&mut self, token: u16) -> bool {
         let token = Some(token as u32);
-        let res = self.accept_a_token(token).expect("invalid input token");
+        let accept = self.accept_a_token(token).expect("invalid input token");
         self.current_token_ids = match self.sampler.all_possible_next_tokens(None) {
             Ok(PossibleTokensResult::Continue(tokens)) => tokens.clone(),
             _ => BitSet::new(),
         };
-        res
+        match accept {
+            AcceptTokenResult::Continue => false,
+            AcceptTokenResult::End | AcceptTokenResult::Failed => true,
+        }
     }
 }

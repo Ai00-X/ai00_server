@@ -7,7 +7,7 @@ use std::{
 };
 
 use anyhow::Result;
-use bnf_sampler::{grammar::Grammar, sampler::AcceptTokenResult, vocabulary::Vocabulary};
+use bnf_sampler::{grammar::Grammar, vocabulary::Vocabulary};
 use derivative::Derivative;
 use flume::{Receiver, Sender};
 use itertools::Itertools;
@@ -208,7 +208,8 @@ impl AsTokenSlice for [u16] {
     }
 }
 
-#[derive(Debug, Clone)]
+#[derive(Derivative, Clone)]
+#[derivative(Debug)]
 pub struct GenerateContext {
     /// Tokens that are provided at first.
     pub prompt_tokens: Vec<u16>,
@@ -225,7 +226,8 @@ pub struct GenerateContext {
     /// Tokens that are output by the model.
     pub model_tokens: Vec<u16>,
     /// Compiled BNF schema, if any.
-    pub bnf_sampler: Option<Arc<RwLock<BnfSampler>>>,
+    #[derivative(Debug = "ignore")]
+    pub transformers: Vec<Arc<RwLock<dyn Transformer + Send + Sync>>>,
     /// For measuring time used.
     pub instant: Option<Instant>,
     /// Generate request provided by the caller.
@@ -562,14 +564,13 @@ impl Runtime {
         };
 
         // compile the BNF schema.
-        let bnf_sampler = if let Some(schema) = context.request.bnf_schema.clone() {
+        let mut transformers = Vec::<Arc<RwLock<dyn Transformer + Send + Sync>>>::new();
+        if let Some(schema) = context.request.bnf_schema.clone() {
             match self.compile_bnf_schema(schema).await {
-                Ok(bnf_sampler) => Some(Arc::new(RwLock::new(bnf_sampler))),
+                Ok(bnf) => transformers.push(Arc::new(RwLock::new(bnf))),
                 Err(err) => return Ok(SlotResult::Error(err.to_string())),
             }
-        } else {
-            None
-        };
+        }
 
         // find the best idle slot by:
         // 1. find the slot that matches the context (continue)
@@ -599,7 +600,7 @@ impl Runtime {
                 GenerateContext {
                     prefix: Default::default(),
                     suffix: Tokens([tokens, vec![last]].concat()),
-                    bnf_sampler,
+                    transformers,
                     ..context
                 }
                 .into(),
@@ -616,7 +617,7 @@ impl Runtime {
                     GenerateContext {
                         prefix: Tokens(tokens[..len].to_vec()),
                         suffix: Tokens(tokens[len..].to_vec()),
-                        bnf_sampler,
+                        transformers,
                         ..context
                     }
                     .into(),
@@ -637,7 +638,7 @@ impl Runtime {
                     GenerateContext {
                         prefix: Tokens(tokens[..len].to_vec()),
                         suffix: Tokens(tokens[len..].to_vec()),
-                        bnf_sampler,
+                        transformers,
                         ..context
                     }
                     .into(),
@@ -653,7 +654,7 @@ impl Runtime {
                     GenerateContext {
                         prefix: Tokens(tokens[..len].to_vec()),
                         suffix: Tokens(tokens[len..].to_vec()),
-                        bnf_sampler,
+                        transformers,
                         ..context
                     }
                     .into(),
@@ -773,7 +774,7 @@ impl Runtime {
                 (Payload::Busy(context), output) if output.size() > 0 => {
                     let num_vocab = self.info.num_vocab;
                     let output = output.0.clone();
-                    let bnf = context.bnf_sampler.clone();
+                    let transformers = context.transformers.clone();
                     let sampler = context.request.sampler.clone();
                     let bias = context.request.bias.clone();
                     set.spawn(async move {
@@ -784,8 +785,8 @@ impl Runtime {
                         for (token, bias) in bias.iter() {
                             data[*token as usize] += *bias;
                         }
-                        if let Some(bnf) = bnf {
-                            bnf.read().await.transform(&mut data);
+                        for transformer in transformers {
+                            transformer.read().await.transform(&mut data);
                         }
 
                         (batch, data)
@@ -906,18 +907,11 @@ impl Runtime {
                 done = true;
             };
 
-            // update the BNF state
+            // update the transformer (BNF) state
             let mut exhausted = false;
-            if let Some(bnf) = context.bnf_sampler.clone() {
-                let mut bnf = bnf.write().await;
-                match bnf.update(token) {
-                    AcceptTokenResult::Continue => {}
-                    AcceptTokenResult::End => exhausted = true,
-                    AcceptTokenResult::Failed => {
-                        log::warn!("slot {batch} bnf failure");
-                        exhausted = true;
-                    }
-                }
+            for transformer in context.transformers.iter() {
+                let mut transformer = transformer.write().await;
+                exhausted |= transformer.update(token);
             }
 
             // here we detect if there is a stop word in our buffer

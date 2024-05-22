@@ -12,10 +12,8 @@ pub trait Sampler {
 }
 
 pub trait Transformer {
-    type Output;
-
     /// Update the raw model output.
     fn transform(&self, output: &mut [f32]);
-    /// Update the internal state after a token is chosen.
-    fn update(&mut self, token: u16) -> Self::Output;
+    /// Update the internal state after a token is chosen. Return if the state machine is halt.
+    fn update(&mut self, token: u16) -> bool;
 }
