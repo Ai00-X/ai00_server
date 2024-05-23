@@ -47,7 +47,7 @@ impl Sampler for MirostatSampler {
         let sorted = probs
             .iter()
             .enumerate()
-            .sorted_unstable_by(|(_, x), (_, y)| x.total_cmp(y).reverse())
+            .sorted_unstable_by(|(_, x), (_, y)| y.total_cmp(x))
             .scan((0, 0.0, 0.0), |(_, cum, _), (id, x)| {
                 // if *cum > params.top_p {
                 //     None
