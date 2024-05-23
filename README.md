@@ -22,7 +22,7 @@
     
 `AI00 RWKV Server` is an inference API server for the [`RWKV` language model](https://github.com/BlinkDL/ChatRWKV) based upon the [`web-rwkv`](https://github.com/cryscan/web-rwkv) inference engine.
 
-It supports `VULKAN` parallel and concurrent batched inference and can run on all GPUs that support `VULKAN`. No need for Nvidia cards!!! AMD cards and even integrated graphics can be accelerated!!!
+It supports `Vulkan` parallel and concurrent batched inference and can run on all GPUs that support `Vulkan`. No need for Nvidia cards!!! AMD cards and even integrated graphics can be accelerated!!!
 
 No need for bulky `pytorch`, `CUDA` and other runtime environments, it's compact and ready to use out of the box!
 
@@ -39,13 +39,13 @@ QQ Group for communication: 30920262
 ### 💥Features
 
 *   Based on the `RWKV` model, it has high performance and accuracy
-*   Supports `VULKAN` inference acceleration, you can enjoy GPU acceleration without the need for `CUDA`! Supports AMD cards, integrated graphics, and all GPUs that support `VULKAN`
+*   Supports `Vulkan` inference acceleration, you can enjoy GPU acceleration without the need for `CUDA`! Supports AMD cards, integrated graphics, and all GPUs that support `Vulkan`
 *   No need for bulky `pytorch`, `CUDA` and other runtime environments, it's compact and ready to use out of the box!
 *   Compatible with OpenAI's ChatGPT API interface
 
 ### ⭕Usages
 
-*   Chatbots
+*   Chatbot
 *   Text generation
 *   Translation
 *   Q&A
@@ -72,7 +72,7 @@ QQ Group for communication: 30920262
     $ ./ai00_rwkv_server
     ```
     
-5.  Open the browser and visit the WebUI [`https://localhost:65530`](https://localhost:65530)
+5.  Open the browser and visit the WebUI at https://localhost:65530
     
 
 ### 📜(Optional) Build from Source
@@ -100,7 +100,7 @@ QQ Group for communication: 30920262
     $ cargo run --release
     ```
     
-6.  Open the browser and visit the WebUI [`https://localhost:65530`](https://localhost:65530)
+6.  Open the browser and visit the WebUI at https://localhost:65530
 
 ### 📒Convert the Model
 
@@ -133,6 +133,7 @@ It only supports Safetensors models with the `.st` extension now. Models saved w
 ## 📙Currently Available APIs
 
 The API service starts at port 65530, and the data input and output format follow the Openai API specification.
+Note that some APIs like `chat` and `completions` have additional optional fields for advanced functionalities. Visit https://localhost:65530/swagger-ui for API schema.
 
 *   `/api/oai/v1/models`
 *   `/api/oai/models`
@@ -242,17 +243,41 @@ ai00.clear_ctx()
 print(ai00.continuation("i like"))
 ```
 
+## BNF Sampling
+
+Since v0.5, Ai00 has a unique feature called BNF sampling. BNF forces the model to output in specified formats (e.g., JSON or markdown with specified fields) by limiting the possible next tokens the model can choose from.
+
+Here is an example BNF for JSON with fields "name", "age" and "job":
+
+```
+<start> ::= <json_object>
+<json_object> ::= "{" <object_members> "}"
+<object_members> ::= <json_member> | <json_member> ", " <object_members>
+<json_member> ::= <json_key> ": " <json_value>
+<json_key> ::= '"' "name" '"' | '"' "age" '"' | '"' "job" '"'
+<json_value> ::= <json_string> | <json_number>
+<json_string>::='"'<content>'"'
+<content>::=<except!([escaped_literals])>|<except!([escaped_literals])><content>|'\\"'<content>|'\\"'
+<escaped_literals>::='\t'|'\n'|'\r'|'"'
+<json_number> ::= <positive_digit><digits>|'0'
+<digits>::=<digit>|<digit><digits>
+<digit>::='0'|<positive_digit>
+<positive_digit>::="1"|"2"|"3"|"4"|"5"|"6"|"7"|"8"|"9"
+```
+
+<image src="img/bnf.png" />
+
 ## 📙WebUI Screenshots
 
-### Chat Feature  
+### Chat
 
 <image src="img/chat_en.gif" />
 
-### Continuation Feature
+### Continuation
 
 <image src="img/continuation_en.gif" />
 
-### Paper Writing Feature
+### Paper (Parallel Inference Demo)
 
 <image src="img/paper_en.gif" />
 
@@ -260,13 +285,15 @@ print(ai00.continuation("i like"))
 
 *   [x] Support for `text_completions` and `chat_completions`
 *   [x] Support for sse push
-*   [x] Add `embeddings`
 *   [x] Integrate basic front-end
 *   [x] Parallel inference via `batch serve`
 *   [x] Support for `int8` quantization
 *   [x] Support for `NF4` quantization
 *   [x] Support for `LoRA` model
+*   [x] Support for tuned initial states
 *   [ ] Hot loading and switching of `LoRA` model
+*   [x] Hot loading and switching of tuned initial states
+*   [x] BNF sampling
 
 ## 👥Join Us
 
@@ -290,7 +317,9 @@ No matter your skill level, we welcome you to join us. You can join us in the fo
 We can't wait to work with you to make this project better! We hope the project is helpful to you!
 
 
-## Thank you to these awesome individuals who are insightful and outstanding for their support and selfless dedication to the project
+## Acknowledgement
+Thank you to these awesome individuals who are insightful and outstanding for their support and selfless dedication to the project!
+
 <!-- ALL-CONTRIBUTORS-LIST:START - Do not remove or modify this section -->
 <!-- prettier-ignore-start -->
 <!-- markdownlint-disable -->

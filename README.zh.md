@@ -22,7 +22,7 @@
 
 `AI00 Server`基于 [`WEB-RWKV`推理引擎](https://github.com/cryscan/web-rwkv)进行开发。
 
-支持Vulkan/Dx12/OpenGL作为推理后端，无需臃肿的`pytorch`、`CUDA`等运行环境，小巧身材，开箱即用！
+支持`Vulkan`/`Dx12`/`OpenGL`作为推理后端，无需臃肿的`pytorch`、`CUDA`等运行环境，小巧身材，开箱即用！
 
 兼容OpenAI的ChatGPT API接口。
 
@@ -124,7 +124,8 @@
 
 ## 📙目前可用的API
 
-API 服务开启于 65530 端口, 数据输入已经输出格式遵循 Openai API 规范。
+API 服务开启于 65530 端口, 数据输入输出格式遵循 Openai API 规范。
+有一些 API，比如`chat`和`completions`有一些可选的额外字段，这些额外字段是为高级功能准备的。可以访问 https://localhost:65530/swagger-ui 查看具体的 API 参数。
 
 - `/api/oai/v1/models`
 - `/api/oai/models`
@@ -234,6 +235,30 @@ ai00.clear_ctx()
 print(ai00.continuation("i like"))
 ```
 
+## BNF 采样
+
+从 v0.5 开始 Ai00 有了一个独特功能：BNF 采样。这个采样法通过限定模型能够选择的 tokens 来使得模型强行输出符合一定格式的文本（比如 JSON 或者 Markdown 等等）。
+
+以下是一个强行让模型输出有 "name"、"age" 和 "job" 字段的 JSON 的 BNF:
+
+```
+<start> ::= <json_object>
+<json_object> ::= "{" <object_members> "}"
+<object_members> ::= <json_member> | <json_member> ", " <object_members>
+<json_member> ::= <json_key> ": " <json_value>
+<json_key> ::= '"' "name" '"' | '"' "age" '"' | '"' "job" '"'
+<json_value> ::= <json_string> | <json_number>
+<json_string>::='"'<content>'"'
+<content>::=<except!([escaped_literals])>|<except!([escaped_literals])><content>|'\\"'<content>|'\\"'
+<escaped_literals>::='\t'|'\n'|'\r'|'"'
+<json_number> ::= <positive_digit><digits>|'0'
+<digits>::=<digit>|<digit><digits>
+<digit>::='0'|<positive_digit>
+<positive_digit>::="1"|"2"|"3"|"4"|"5"|"6"|"7"|"8"|"9"
+```
+
+<image src="img/bnf.png" />
+
 ## 📙WebUI 截图
 
 ### 对话功能
@@ -252,13 +277,15 @@ print(ai00.continuation("i like"))
 
 - [x] 支持`text_completions`和`chat_completions`
 - [x] 支持`sse`推送
-- [x] 添加`embeddings`
 - [x] 集成基本的调用前端
 - [x] `Batch serve`并行推理
 - [x] `int8`量化支持
 - [x] `nf4`量化支持
 - [x] `LoRA`模型支持
+- [x] 支持加载微调的初始状态
 - [ ] `LoRA`模型热加载、切换
+- [x] 初始状态动态加载、切换
+- [x] BNF采样
 
 ## 👥Join Us
 
@@ -282,7 +309,6 @@ print(ai00.continuation("i like"))
 我们迫不及待地想与你合作，让这个项目变得更好！希望项目对你有帮助！
 
 ## Thanks
-
 
 [![cryscan](https://avatars.githubusercontent.com/u/16053640?s=32&v=4)](https://github.com/cryscan)
 感谢cryscan的辛勤付出，为项目做出了杰出的贡献。
