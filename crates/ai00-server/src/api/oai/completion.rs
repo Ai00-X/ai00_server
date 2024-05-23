@@ -53,7 +53,7 @@ impl Default for CompletionRequest {
             bias: HashMap::new(),
             bnf_schema: Default::default(),
             sampler: Default::default(),
-            sampler_override: None,
+            sampler_override: Default::default(),
         }
     }
 }

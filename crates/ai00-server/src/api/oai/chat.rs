@@ -60,6 +60,8 @@ pub struct ChatRequest {
     #[serde(default)]
     #[serde(alias = "logit_bias")]
     bias: HashMap<u16, f32>,
+    #[serde(default)]
+    bnf_schema: Option<String>,
     #[serde(flatten)]
     sampler: NucleusParams,
     #[serde(default)]
@@ -76,8 +78,9 @@ impl Default for ChatRequest {
             stop: Array::Item("\n\n".into()),
             stream: false,
             bias: HashMap::new(),
+            bnf_schema: Default::default(),
             sampler: Default::default(),
-            sampler_override: None,
+            sampler_override: Default::default(),
         }
     }
 }
@@ -101,6 +104,7 @@ impl From<ChatRequest> for GenerateRequest {
             sampler,
             sampler_override,
             bias,
+            bnf_schema,
             ..
         } = value;
 
@@ -142,6 +146,7 @@ impl From<ChatRequest> for GenerateRequest {
             stop,
             sampler,
             bias,
+            bnf_schema,
             state,
             ..Default::default()
         }
