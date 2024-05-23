@@ -69,8 +69,7 @@ impl Sampler for TypicalSampler {
     fn sample(&mut self, probs: &[f32]) -> u16 {
         let TypicalSampler { params, state } = self;
 
-        let entropy: f32 = probs.iter().map(|x| -x * x.ln()).sum();
-
+        let entropy = -probs.iter().map(|x| x * x.ln()).sum::<f32>();
         let sorted = probs
             .iter()
             .map(|&x| (x, (x - entropy).abs()))
