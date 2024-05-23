@@ -75,14 +75,15 @@ impl Sampler for TypicalSampler {
             .iter()
             .map(|&x| (x, (x - entropy).abs()))
             .enumerate()
-            .sorted_unstable_by(|(_, (_, x)), (_, (_, y))| x.total_cmp(y).reverse())
+            .sorted_unstable_by(|(_, (_, x)), (_, (_, y))| y.total_cmp(x))
+            .map(|(id, (x, _))| (id, x))
             .take(params.top_k)
             .scan((0, 0.0, 0.0), |(_, cum, _), (id, x)| {
                 if *cum > params.tau {
                     None
                 } else {
-                    *cum += x.1;
-                    Some((id, *cum, x.0))
+                    *cum += x;
+                    Some((id, *cum, x))
                 }
             })
             .map(|(id, _, x)| (id, x.powf(1.0 / params.temperature)))
