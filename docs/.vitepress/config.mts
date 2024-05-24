@@ -32,7 +32,7 @@ export default defineConfig({
       themeConfig: {
         nav: [
           { text: '首页', link: '/' },
-          { text: '指南', link: '/markdown-examples' }
+          { text: '快速上手', link: '/Simple-Usage' }
         ],
         lastUpdated: {
           text: '最后更新于',
@@ -47,10 +47,12 @@ export default defineConfig({
         },
         sidebar: [
           {
-            text: '例子',
+            text: 'Ai00 文档',
             items: [
-              { text: 'Markdown Examples', link: '/markdown-examples' },
-              { text: 'Runtime API Examples', link: '/api-examples' }
+              { text: '了解 Ai00', link: '/Introduction' },
+              { text: '快速上手', link: '/Simple-Usage' },
+              { text: '进阶功能', link: '/Ai00-Features' },
+              { text: '常见问题', link: '/FAQ' }
             ]
           } 
         ],
