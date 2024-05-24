@@ -23,7 +23,7 @@ A：这是因为设备缺少 vulkan 驱动，请安装最新版本驱动。
 
 ## AI00 支持 CUDA 驱动吗?
 
-A：不支持。AI00 支持 Vulkan/Dx12/openGL 作为推理后端，但不支持 CUDA 驱动。
+A：不支持。AI00 目前支持 Vulkan 作为推理后端，曾支持 Dx12/openGL ，但不支持 CUDA 驱动。
 
 ## 为什么我使用共享显存后感觉速度变慢了
 
