@@ -7,17 +7,17 @@ export default defineConfig({
   base: '/ai00_server/',
   lastUpdated: true,
   cleanUrls: true,
-  appearance:'dark',
+  appearance: 'dark',
   markdown: {
     math: true
   },
- 
+
   themeConfig: {
     // https://vitepress.dev/reference/default-theme-config
     search: {
       provider: 'local'
     },
-   socialLinks: [
+    socialLinks: [
       { icon: 'github', link: 'https://github.com/Ai00-X/ai00_server' }
     ],
 
@@ -50,14 +50,15 @@ export default defineConfig({
             base: '/doc-guide/',
             items: [
               { text: '了解 Ai00', link: '/what-is-ai00' },
-              { text: '快速上手', 
+              {
+                text: '快速上手',
                 collapsed: false,
                 items: [
 
-                      { text: '下载编译包', link: '/release' },
-                      { text: '从源码安装', link: '/source-install' },
-                      { text: '配置文件', link: '/config' },
-                  
+                  { text: '下载编译包', link: '/release' },
+                  { text: '从源码安装', link: '/source-install' },
+                  { text: '配置文件', link: '/config' },
+
                 ]
               },
             ]
@@ -70,10 +71,10 @@ export default defineConfig({
             items: [
               { text: '模型命名规范', link: '/models-name' },
               { text: 'RWKV基座模型', link: '/rwkv-base' },
-              { text: 'LoRA模型', link: '/lora-model' },
-              { text: 'State模型', link: '/state-model' },
+              { text: 'LoRA', link: '/lora-model' },
+              { text: '初始State', link: '/state-model' },
             ]
-          } 
+          }
           ,
           {
             text: 'WebUI',
@@ -81,11 +82,11 @@ export default defineConfig({
             base: '/doc-webui/',
             items: [
               { text: 'WebUI配置', link: '/webui-config' },
-              { text: 'chat例子', link: '/example-chat' },
-              { text: 'write例子', link: '/example-write' },
+              { text: '对话例子', link: '/example-chat' },
+              { text: '续写例子', link: '/example-write' },
               { text: '并发例子', link: '/example-batch' },
             ]
-          } 
+          }
           ,
           {
             text: 'API',
@@ -94,7 +95,7 @@ export default defineConfig({
             items: [
               { text: 'API接口列表', link: '/openai' },
               { text: '调试API', link: '/debug-api' },
-              { 
+              {
                 text: 'SDK调用',
                 base: 'sdk/',
                 collapsed: false,
@@ -128,6 +129,6 @@ export default defineConfig({
       // other locale specific properties...
     }
   }
- 
+
 
 })
