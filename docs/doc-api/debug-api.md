@@ -1,3 +1,3 @@
 # Debug API
 
-This API is used for debugging purposes.
+This API is used for debugging.
