@@ -30,7 +30,7 @@ export default defineConfig({
         logo: '/logo.gif',
         nav: [
           { text: '指南', link: '/' },
-          { text: '快速上手', link: '/guide/quick-start' }
+          { text: '快速上手', link: '/doc-guide/quick-start' }
         ],
         lastUpdated: {
           text: '最后更新于',
@@ -47,7 +47,7 @@ export default defineConfig({
           {
             text: '简介',
             collapsed: false,
-            base: '/guide/',
+            base: '/doc-guide/',
             items: [
               { text: '了解 Ai00', link: '/what-is-ai00' },
               { text: '快速上手', 
@@ -66,31 +66,31 @@ export default defineConfig({
           {
             text: '模型',
             collapsed: false,
-            base: '/models/',
+            base: '/doc-models/',
             items: [
               { text: '模型命名规范', link: '/models-name' },
               { text: 'RWKV基座模型', link: '/rwkv-base' },
               { text: 'LoRA模型', link: '/lora-model' },
-              { text: 'State模型', link: '/State-model' },
+              { text: 'State模型', link: '/state-model' },
             ]
           } 
           ,
           {
             text: 'WebUI',
             collapsed: false,
-            base: '/webui/',
+            base: '/doc-webui/',
             items: [
               { text: 'WebUI配置', link: '/webui-config' },
               { text: 'chat例子', link: '/example-chat' },
               { text: 'write例子', link: '/example-write' },
-              { text: '多线程例子', link: '/example-multithread' },
+              { text: '并发例子', link: '/example-batch' },
             ]
           } 
           ,
           {
             text: 'API',
             collapsed: false,
-            base: '/api/',
+            base: '/doc-api/',
             items: [
               { text: 'API接口列表', link: '/openai' },
               { text: '调试API', link: '/debug-api' },
@@ -109,7 +109,7 @@ export default defineConfig({
           {
             text: '其他',
             collapsed: false,
-            base: '/guide/',
+            base: '/doc-guide/',
             items: [
               { text: '进阶功能', link: '/features' },
               { text: '常见问题', link: '/FAQ' }

@@ -9,10 +9,10 @@ hero:
   actions:
     - theme: brand
       text: 快速上手！
-      link: /guide/quick-start
+      link: /doc-guide/quick-start
     - theme: alt
       text: 什么是AI00_server？
-      link: /guide/what-is-ai00      
+      link: /doc-guide/what-is-ai00      
     - theme: alt
       text: 下载安装  
       link: https://github.com/Ai00-X/ai00_server/releases
