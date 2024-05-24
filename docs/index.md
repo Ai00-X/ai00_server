@@ -34,3 +34,5 @@ features:
     details: 兼容 ChatGPT 的 API 接口，使用强大的 RWKV 模型。RWKV 是将会吊打所有基于 Transformer 的模型的，在端侧 LLM 部署的王者模型。并且正在快速迭代中，功能和性能越来越强悍。
 ---
 
+
+
