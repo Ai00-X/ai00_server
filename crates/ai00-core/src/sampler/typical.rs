@@ -69,11 +69,15 @@ impl Sampler for TypicalSampler {
     fn sample(&mut self, probs: &[f32]) -> u16 {
         let TypicalSampler { params, state } = self;
 
-        let probs = probs.iter().map(|&x| (x, x.ln())).collect_vec();
-        let entropy = -probs.iter().map(|(x, y)| x * y).sum::<f32>();
+        let probs = probs
+            .iter()
+            .filter(|&x| *x > 0.0)
+            .map(|&x| (x, -x.ln()))
+            .collect_vec();
+        let entropy = probs.iter().map(|(x, y)| x * y).sum::<f32>();
         let sorted = probs
             .into_iter()
-            .map(|(x, y)| (x, (-y - entropy).abs()))
+            .map(|(x, y)| (x, (y - entropy).abs()))
             .enumerate()
             .sorted_unstable_by(|(_, (_, x)), (_, (_, y))| x.total_cmp(y))
             .map(|(id, (x, _))| (id, x))
