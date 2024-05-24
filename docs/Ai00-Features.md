@@ -57,7 +57,7 @@ path = "rwkv-x060-chn_single_round_qa-7B-20240516-ctx2048.state" # state 文件�
 
 挂载 LoRA 模型和 State 的效果相似，也可以增强模型在某类任务上的表现。
 
-### 如何挂载 State ？
+### 如何挂载 LoRA 模型 ？
 
 可以在 `Config.toml` 文件配置中修改挂载 LoRA 模型的参数：
 ```
@@ -75,7 +75,7 @@ path = "assets/models/rwkv-x060-3b.lora" # LoRA 文件的路径
 
 ### 挂载 LoRA 模型注意事项
 
-与挂载 state 相似，挂载 LoRA 文件时，必须使用与 LoRA 模型参数一致的基底 RWKV 模型。
+与挂载 State 相似，挂载 LoRA 文件时，必须使用与 LoRA 模型参数一致的基底 RWKV 模型。
 
 举个例子：这个 LoRA 文件是基于 `RWKV-6-World-3B` 模型微调而来，那么你在 Ai00 中必须启动 `RWKV-6-World-3B` 模型，挂载的 LoRA 模型才会生效。
 
