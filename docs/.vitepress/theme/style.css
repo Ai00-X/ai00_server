@@ -137,3 +137,29 @@
   --docsearch-primary-color: var(--vp-c-brand-1) !important;
 }
 
+/* slim scroll bar for windows based web browsers - works on firefox */
+* {
+  scrollbar-color: var(--vp-c-gutter) var(--vp-button-alt-bg);
+  scrollbar-width: thin;
+}
+
+/* slim scroll bar for windows based web browsers - works on chrome, edge, and safari */
+::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+
+/* scrolling handle */
+::-webkit-scrollbar-thumb {
+  background: var(--vp-c-gutter);
+}
+
+/* handle on hover */
+::-webkit-scrollbar-thumb:hover {
+  background: var(--vp-button-alt-hover-bg);
+}
+
+/* scrolling track/backgronund color */
+::-webkit-scrollbar-track {
+  background: var(--vp-button-alt-bg);
+}

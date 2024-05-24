@@ -14,15 +14,12 @@ export default defineConfig({
  
   themeConfig: {
     // https://vitepress.dev/reference/default-theme-config
-    
+    search: {
+      provider: 'local'
+    },
    socialLinks: [
       { icon: 'github', link: 'https://github.com/Ai00-X/ai00_server' }
     ],
-
-
-
- 
- 
 
   },
   locales: {
@@ -30,9 +27,10 @@ export default defineConfig({
       label: '简体中文',
       lang: 'zh-CN', // optional, will be added  as `lang` attribute on `html` tag
       themeConfig: {
+        logo: '/logo.gif',
         nav: [
-          { text: '首页', link: '/' },
-          { text: '快速上手', link: '/Simple-Usage' }
+          { text: '指南', link: '/' },
+          { text: '快速上手', link: '/guide/quick-start' }
         ],
         lastUpdated: {
           text: '最后更新于',
@@ -47,14 +45,76 @@ export default defineConfig({
         },
         sidebar: [
           {
-            text: 'Ai00 文档',
+            text: '简介',
+            collapsed: false,
+            base: '/guide/',
             items: [
-              { text: '了解 Ai00', link: '/Introduction' },
-              { text: '快速上手', link: '/Simple-Usage' },
-              { text: '进阶功能', link: '/Ai00-Features' },
-              { text: '常见问题', link: '/FAQ' }
+              { text: '了解 Ai00', link: '/what-is-ai00' },
+              { text: '快速上手', 
+                collapsed: false,
+                items: [
+
+                      { text: '下载编译包', link: '/release' },
+                      { text: '从源码安装', link: '/source-install' },
+                      { text: '配置文件', link: '/config' },
+                  
+                ]
+              },
+            ]
+          },
+
+          {
+            text: '模型',
+            collapsed: false,
+            base: '/models/',
+            items: [
+              { text: '模型命名规范', link: '/models-name' },
+              { text: 'RWKV基座模型', link: '/rwkv-base' },
+              { text: 'LoRA模型', link: '/lora-model' },
+              { text: 'State模型', link: '/State-model' },
             ]
           } 
+          ,
+          {
+            text: 'WebUI',
+            collapsed: false,
+            base: '/webui/',
+            items: [
+              { text: 'WebUI配置', link: '/webui-config' },
+              { text: 'chat例子', link: '/example-chat' },
+              { text: 'write例子', link: '/example-write' },
+              { text: '多线程例子', link: '/example-multithread' },
+            ]
+          } 
+          ,
+          {
+            text: 'API',
+            collapsed: false,
+            base: '/api/',
+            items: [
+              { text: 'API接口列表', link: '/openai' },
+              { text: '调试API', link: '/debug-api' },
+              { 
+                text: 'SDK调用',
+                base: 'sdk/',
+                collapsed: false,
+                items: [
+                  { text: 'Python SDK', link: '/python-sdk' },
+                  { text: 'JS SDK', link: '/js-sdk' },
+                  { text: 'Rust SDK', link: '/rust-sdk' },
+                ]
+              },
+            ]
+          },
+          {
+            text: '其他',
+            collapsed: false,
+            base: '/guide/',
+            items: [
+              { text: '进阶功能', link: '/features' },
+              { text: '常见问题', link: '/FAQ' }
+            ]
+          },
         ],
 
       },
