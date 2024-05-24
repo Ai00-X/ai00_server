@@ -5,11 +5,14 @@ layout: home
 hero:
   name: "Ai00 server"
   text: "Just for RWKV"
-  tagline: 支持 Vulkan/Dx12/openGL 的并发推理服务器
+  tagline: 一个本地化、高性能、低消耗的推理服务器
   actions:
     - theme: brand
       text: 快速上手！
-      link: /Simple-Usage
+      link: /guide/quick-start
+    - theme: alt
+      text: 什么是AI00_server？
+      link: /guide/what-is-ai00      
     - theme: alt
       text: 下载安装  
       link: https://github.com/Ai00-X/ai00_server/releases
