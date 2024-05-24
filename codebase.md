@@ -21,7 +21,7 @@
 | 中台 | [middleware.rs](src/middleware.rs) | 入口是`model_route`函数。这个函数运行在一个单独的线程里，时刻监听前台发来的消息。 |
 | 后台 | [run.rs](src/run.rs)               | 入口是`run`函数。这个函数持有模型、状态缓存等，也运行在一个单独的线程里。         |
 
-![flowchart](flowchart.png)
+![flowchart](img/flowchart.png)
 
 ## `Ai00`的底层依赖
 
