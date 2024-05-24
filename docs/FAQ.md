@@ -1,7 +1,7 @@
 
-## 访问 https://localhost:65530 加载失败
+## 访问 `https:\\localhost:65530` 加载失败
 
-A：如果你在 `Config.toml` 设置了 `tls = false` ，则需要将 https 改为 http，即访问 http://localhost:65530
+A：如果你在 `Config.toml` 设置了 `tls = false` ，则需要将 https 改为 http，即访问 `http:\\localhost:65530`
 
 ## 为什么我在 config 里面把 tls=true 改成了 false，启动的时候还是把 tls 打开了？
 
