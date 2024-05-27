@@ -609,7 +609,7 @@ impl Runtime {
             Some(SlotChoice::Back(batch)) => {
                 log::info!("start at non-empty slot {}", batch);
                 let (prefix, reload) = self.checkout(context.request.state, &tokens, batch).await;
-                self.state.load(batch, reload.as_ref().clone())?;
+                self.state.load(reload.as_ref().clone(), batch)?;
 
                 let tokens = [tokens, vec![last]].concat();
                 let len = prefix.len();
@@ -630,7 +630,7 @@ impl Runtime {
             Some(SlotChoice::Empty(batch)) => {
                 log::info!("start at empty slot {}", batch);
                 let (prefix, reload) = self.checkout(context.request.state, &tokens, batch).await;
-                self.state.load(batch, reload.as_ref().clone())?;
+                self.state.load(reload.as_ref().clone(), batch)?;
 
                 let tokens = [tokens, vec![last]].concat();
                 let len = prefix.len();

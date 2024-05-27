@@ -34,7 +34,7 @@ path = "crates/ai00-core"
 # path = "../web-rwkv"
 default-features = false
 features = ["native"]
-version = "0.8.10"
+version = "0.8.11"
 
 [profile.release]
 lto = false
