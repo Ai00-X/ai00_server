@@ -133,6 +133,17 @@ pub struct RuntimeInfo {
 #[derive(Debug, Default, Clone)]
 pub struct AdapterList(pub Vec<String>);
 
+#[derive(Debug, Default, Clone)]
+pub enum GenerateKind {
+    /// Normal text completion.
+    #[default]
+    None,
+    /// The (reversed) number of layer at which the output is as embedding.
+    Embed { layer: usize },
+    /// Choose options by perplexity.
+    Choose { choices: Vec<String> },
+}
+
 #[derive(Clone, Derivative)]
 #[derivative(Debug, Default)]
 pub struct GenerateRequest {
@@ -154,10 +165,8 @@ pub struct GenerateRequest {
         Default(value = "Arc::new(RwLock::new(sampler::nucleus::NucleusSampler::default()))")
     )]
     pub sampler: Arc<RwLock<dyn Sampler + Send + Sync>>,
-    /// Whether this is an embedding request.
-    pub embed: bool,
-    /// The (reversed) number of layer at which the output is as embedding.
-    pub embed_layer: usize,
+    /// Generation output kind.
+    pub kind: GenerateKind,
     /// Initial state ID.
     pub state: StateId,
 }

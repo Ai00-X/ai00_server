@@ -1,4 +1,4 @@
-use ai00_core::{GenerateRequest, ThreadRequest, Token, TokenCounter};
+use ai00_core::{GenerateKind, GenerateRequest, ThreadRequest, Token, TokenCounter};
 use futures_util::StreamExt;
 use salvo::{
     oapi::{extract::JsonBody, ToParameters, ToResponse, ToSchema},
@@ -16,17 +16,17 @@ use crate::{
 #[serde(default)]
 pub struct EmbeddingRequest {
     input: Array<String>,
-    embed_layer: usize,
+    #[serde(alias = "embed_layer")]
+    layer: usize,
 }
 
 impl From<EmbeddingRequest> for GenerateRequest {
     fn from(value: EmbeddingRequest) -> Self {
-        let EmbeddingRequest { input, embed_layer } = value;
+        let EmbeddingRequest { input, layer } = value;
         Self {
             prompt: Vec::from(input).join(""),
             max_tokens: 1,
-            embed: true,
-            embed_layer,
+            kind: GenerateKind::Embed { layer },
             ..Default::default()
         }
     }

@@ -29,7 +29,7 @@ use web_rwkv::{
 
 use crate::{
     sampler::{bnf::BnfSampler, Transformer},
-    Environment, FinishReason, GenerateRequest, ReloadRequest, Token, TokenCounter,
+    Environment, FinishReason, GenerateKind, GenerateRequest, ReloadRequest, Token, TokenCounter,
 };
 
 const END_OF_LINE_TOKEN: u16 = 261;
@@ -684,11 +684,8 @@ impl Runtime {
             };
 
             let backed = self.state.back(batch).await?;
-            if context.request.embed {
-                let layer = context
-                    .request
-                    .embed_layer
-                    .clamp(0, self.info.num_layer - 1);
+            if let GenerateKind::Embed { layer } = context.request.kind {
+                let layer = layer.clamp(0, self.info.num_layer - 1);
                 let backed = backed.clone();
                 let embed = self.state.embed(layer, backed)?.to_vec();
                 let _ = context.sender.send(Token::Embed(embed));
