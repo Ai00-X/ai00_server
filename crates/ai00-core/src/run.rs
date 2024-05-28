@@ -219,6 +219,8 @@ pub struct GenerateContext {
     pub prefix: Tokens,
     /// Tokens to be computed.
     pub suffix: Tokens,
+    /// Tokens to be chosen if this is a choose request.
+    pub choices: Vec<Tokens>,
     /// Texts that are output by the model.
     pub model_text: Vec<u8>,
     /// Model may output partial utf-8. This makes sure the output is always valid.
@@ -670,7 +672,7 @@ impl Runtime {
         let mut slots = self.slots.lock().await;
 
         // sync payloads and slots: kill dead payloads
-        for (slot, payload) in slots.iter().zip_eq(payloads.iter_mut()) {
+        for (slot, payload) in slots.iter().zip(payloads.iter_mut()) {
             if !(payload.is_empty() || matches!(slot, SlotState::Busy)) {
                 log::warn!("payload should either be empty or slot should be busy");
                 *payload = Payload::Empty;
@@ -757,7 +759,7 @@ impl Runtime {
         let outputs = loop {
             let input = inference.take().unwrap();
             let (input, output) = self.runtime.infer(input).await;
-            inference = Some(input);
+            inference.replace(input);
 
             if output.iter().any(|batch| batch.size() > 0) {
                 break output;
@@ -766,7 +768,7 @@ impl Runtime {
 
         // update raw outputs
         let mut set = tokio::task::JoinSet::new();
-        for (batch, (payload, output)) in payloads.iter().zip_eq(outputs.iter()).enumerate() {
+        for (batch, (payload, output)) in payloads.iter().zip(outputs.iter()).enumerate() {
             match (payload, output) {
                 (Payload::Busy(context), output) if output.size() > 0 => {
                     let num_vocab = self.info.num_vocab;
@@ -809,9 +811,7 @@ impl Runtime {
 
         // sample tokens
         let mut set = tokio::task::JoinSet::new();
-        for (batch, (payload, output)) in
-            payloads.iter_mut().zip_eq(outputs.into_iter()).enumerate()
-        {
+        for (batch, (payload, output)) in payloads.iter_mut().zip(outputs.into_iter()).enumerate() {
             match (payload, output) {
                 (Payload::Busy(context), output) if output.size() > 0 => {
                     let num_vocab = self.info.num_vocab;
@@ -820,20 +820,22 @@ impl Runtime {
                         let data = output.to_vec();
                         assert_eq!(data.len(), num_vocab);
                         let token = sampler.write().await.sample(&data);
-                        (batch, token)
+                        (batch, token, data)
                     });
                 }
                 _ => {}
             }
         }
         let mut tokens = HashMap::new();
-        while let Some(Ok((batch, token))) = set.join_next().await {
-            tokens.insert(batch, token);
+        while let Some(Ok((batch, token, data))) = set.join_next().await {
+            tokens.insert(batch, (token, data));
         }
 
         let inference = inference.unwrap();
-        for (batch, (payload, input)) in
-            itertools::multizip((payloads.iter_mut(), inference.batches.into_iter())).enumerate()
+        for (batch, (payload, input)) in payloads
+            .iter_mut()
+            .zip(inference.batches.into_iter())
+            .enumerate()
         {
             let Payload::Busy(context) = payload else {
                 continue;
@@ -850,7 +852,7 @@ impl Runtime {
             context.prefix = Tokens(model_tokens[..len].to_vec());
             context.suffix = Tokens(model_tokens[len..].to_vec());
 
-            let Some(&token) = tokens.get(&batch) else {
+            let Some((token, data)) = tokens.get(&batch) else {
                 continue;
             };
 
@@ -873,7 +875,7 @@ impl Runtime {
             // map token 0 output to "\n\n"
             let token = match token {
                 0 => END_OF_LINE_TOKEN,
-                _ => token,
+                _ => *token,
             };
 
             assert_eq!(context.suffix.len(), 0);
@@ -947,6 +949,56 @@ impl Runtime {
                 .unwrap_or(((&context.buffer[..], &[]), false));
 
             if context.sender.is_disconnected() {
+                done = true;
+            } else if matches!(context.request.kind, GenerateKind::Choose { .. }) {
+                // calculate perplexities for choose request
+                let backed = self.state.read(batch)?;
+                let mut perplexities = Vec::with_capacity(context.choices.len());
+                for choice in &context.choices {
+                    if choice.is_empty() {
+                        perplexities.push(f32::INFINITY);
+                        continue;
+                    }
+
+                    let mut probabilities = Vec::with_capacity(choice.len());
+                    probabilities.push(data[choice[0] as usize]);
+
+                    // construct an inference session with only one batch
+                    let mut batches = vec![InferInputBatch::default(); self.num_batch()];
+                    batches[batch] = InferInputBatch {
+                        tokens: choice.0.clone(),
+                        option: InferOption::Full,
+                    };
+                    let mut inference =
+                        Some(InferInput::new(batches, self.reload.token_chunk_size));
+
+                    let mut index = 1;
+                    loop {
+                        let input = inference.take().unwrap();
+                        if input.batches[batch].tokens.is_empty() {
+                            break;
+                        }
+                        let (input, InferOutput(output)) = self.runtime.infer(input).await;
+                        inference.replace(input);
+
+                        let output = output[batch].0.clone().split(1)?;
+                        for data in output {
+                            let data = data.to_vec();
+                            if index < choice.len() {
+                                probabilities.push(data[choice[index] as usize]);
+                            }
+                            index += 1;
+                        }
+                    }
+
+                    let perplexity: f32 = probabilities.into_iter().map(|x| x.ln()).sum::<f32>();
+                    let perplexity = -perplexity / choice.len() as f32;
+                    perplexities.push(perplexity.exp());
+
+                    // recover the state
+                    self.state.write(backed.clone(), batch)?;
+                }
+                let _ = context.sender.send(Token::Choose(perplexities));
                 done = true;
             } else if exhausted || stop_matched {
                 let output = String::from_utf8_lossy(head);

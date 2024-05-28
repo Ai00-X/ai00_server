@@ -52,6 +52,7 @@ pub enum Token {
     Content(String),
     Stop(FinishReason, TokenCounter),
     Embed(Vec<f32>),
+    Choose(Vec<f32>),
     Done,
 }
 
@@ -683,11 +684,23 @@ pub async fn model_route(receiver: Receiver<ThreadRequest>) -> Result<()> {
                     // init sampler state here
                     request.sampler.write().await.init(&model_tokens);
 
+                    let choices = match &request.kind {
+                        GenerateKind::Choose { choices } => {
+                            let choices: Vec<_> = choices
+                                .iter()
+                                .map(|prompt| tokenizer.encode(prompt.as_bytes()))
+                                .try_collect()?;
+                            choices.into_iter().map(Tokens).collect()
+                        }
+                        _ => vec![],
+                    };
+
                     let context = GenerateContext {
                         prompt_tokens: tokens.to_vec(),
                         prompt_cached: false,
                         prefix: Default::default(),
                         suffix: tokens,
+                        choices,
                         model_text: vec![],
                         buffer: vec![],
                         model_tokens: vec![],
