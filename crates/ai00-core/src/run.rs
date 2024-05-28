@@ -969,8 +969,8 @@ impl Runtime {
                         tokens: choice.0.clone(),
                         option: InferOption::Full,
                     };
-                    let mut inference =
-                        Some(InferInput::new(batches, self.reload.token_chunk_size));
+                    let inference = InferInput::new(batches, self.reload.token_chunk_size);
+                    let mut inference = Some(inference);
 
                     let mut index = 1;
                     loop {
@@ -981,11 +981,12 @@ impl Runtime {
                         let (input, InferOutput(output)) = self.runtime.infer(input).await;
                         inference.replace(input);
 
-                        let output = output[batch].0.clone().split(1)?;
-                        for data in output {
-                            let data = data.to_vec();
+                        let output = output[batch].0.to_vec();
+                        for mut data in &output.iter().chunks(self.info.num_vocab) {
                             if index < choice.len() {
-                                probabilities.push(data[choice[index] as usize]);
+                                let token = choice[index] as usize;
+                                let probability = data.nth(token).unwrap_or(&1.0);
+                                probabilities.push(*probability);
                             }
                             index += 1;
                         }
