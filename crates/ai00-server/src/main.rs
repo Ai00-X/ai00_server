@@ -219,7 +219,9 @@ async fn main() {
         .push(Router::with_path("/oai/chat/completions").post(api::oai::chat_completions))
         .push(Router::with_path("/oai/v1/chat/completions").post(api::oai::chat_completions))
         .push(Router::with_path("/oai/embeddings").post(api::oai::embeddings))
-        .push(Router::with_path("/oai/v1/embeddings").post(api::oai::embeddings));
+        .push(Router::with_path("/oai/v1/embeddings").post(api::oai::embeddings))
+        .push(Router::with_path("/oai/chooses").post(api::oai::chooses))
+        .push(Router::with_path("/oai/v1/chooses").post(api::oai::chooses));
 
     let app = Router::new()
         //.hoop(CorsLayer::permissive())

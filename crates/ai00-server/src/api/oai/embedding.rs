@@ -54,7 +54,7 @@ pub async fn embeddings(
     depot: &mut Depot,
     req: JsonBody<EmbeddingRequest>,
 ) -> Json<EmbeddingResponse> {
-    let request = req.to_owned(); // req.parse_json::<EmbeddingRequest>().await.unwrap();
+    let request = req.to_owned();
     let ThreadState { sender, .. } = depot.obtain::<ThreadState>().unwrap();
     let info = request_info(sender.clone(), SLEEP).await;
     let model_name = info.reload.model_path.to_string_lossy().into_owned();
