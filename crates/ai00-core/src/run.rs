@@ -981,12 +981,13 @@ impl Runtime {
                         let (input, InferOutput(output)) = self.runtime.infer(input).await;
                         inference.replace(input);
 
-                        let output = output[batch].0.to_vec();
-                        for mut data in &output.iter().chunks(self.info.num_vocab) {
+                        let output = output[batch].0.clone().split(1)?;
+                        for data in output {
                             if index < choice.len() {
+                                let data = data.map(|x| x.exp()).to_vec();
+                                let sum: f32 = data.iter().sum();
                                 let token = choice[index] as usize;
-                                let probability = data.nth(token).unwrap_or(&1.0);
-                                probabilities.push(*probability);
+                                probabilities.push(data[token] / sum);
                             }
                             index += 1;
                         }
