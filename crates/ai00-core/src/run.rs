@@ -994,7 +994,7 @@ impl Runtime {
 
                     let perplexity: f32 = probabilities.into_iter().map(|x| x.ln()).sum::<f32>();
                     let perplexity = -perplexity / choice.len() as f32;
-                    perplexities.push(perplexity.exp());
+                    perplexities.push(perplexity);
 
                     // recover the state
                     self.state.write(backed.clone(), batch)?;
