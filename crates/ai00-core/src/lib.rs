@@ -52,6 +52,7 @@ pub enum Token {
     Content(String),
     Stop(FinishReason, TokenCounter),
     Embed(Vec<f32>),
+    Choose(Vec<f32>),
     Done,
 }
 
@@ -133,6 +134,17 @@ pub struct RuntimeInfo {
 #[derive(Debug, Default, Clone)]
 pub struct AdapterList(pub Vec<String>);
 
+#[derive(Debug, Default, Clone)]
+pub enum GenerateKind {
+    /// Normal text completion.
+    #[default]
+    None,
+    /// The (reversed) number of layer at which the output is as embedding.
+    Embed { layer: usize },
+    /// Choose options by perplexity.
+    Choose { choices: Vec<String> },
+}
+
 #[derive(Clone, Derivative)]
 #[derivative(Debug, Default)]
 pub struct GenerateRequest {
@@ -154,10 +166,8 @@ pub struct GenerateRequest {
         Default(value = "Arc::new(RwLock::new(sampler::nucleus::NucleusSampler::default()))")
     )]
     pub sampler: Arc<RwLock<dyn Sampler + Send + Sync>>,
-    /// Whether this is an embedding request.
-    pub embed: bool,
-    /// The (reversed) number of layer at which the output is as embedding.
-    pub embed_layer: usize,
+    /// Generation output kind.
+    pub kind: GenerateKind,
     /// Initial state ID.
     pub state: StateId,
 }
@@ -674,11 +684,23 @@ pub async fn model_route(receiver: Receiver<ThreadRequest>) -> Result<()> {
                     // init sampler state here
                     request.sampler.write().await.init(&model_tokens);
 
+                    let choices = match &request.kind {
+                        GenerateKind::Choose { choices } => {
+                            let choices: Vec<_> = choices
+                                .iter()
+                                .map(|prompt| tokenizer.encode(prompt.as_bytes()))
+                                .try_collect()?;
+                            choices.into_iter().map(Tokens).collect()
+                        }
+                        _ => vec![],
+                    };
+
                     let context = GenerateContext {
                         prompt_tokens: tokens.to_vec(),
                         prompt_cached: false,
                         prefix: Default::default(),
                         suffix: tokens,
+                        choices,
                         model_text: vec![],
                         buffer: vec![],
                         model_tokens: vec![],

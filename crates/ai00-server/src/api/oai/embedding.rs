@@ -1,4 +1,4 @@
-use ai00_core::{GenerateRequest, ThreadRequest, Token, TokenCounter};
+use ai00_core::{GenerateKind, GenerateRequest, ThreadRequest, Token, TokenCounter};
 use futures_util::StreamExt;
 use salvo::{
     oapi::{extract::JsonBody, ToParameters, ToResponse, ToSchema},
@@ -16,17 +16,17 @@ use crate::{
 #[serde(default)]
 pub struct EmbeddingRequest {
     input: Array<String>,
-    embed_layer: usize,
+    #[serde(alias = "embed_layer")]
+    layer: usize,
 }
 
 impl From<EmbeddingRequest> for GenerateRequest {
     fn from(value: EmbeddingRequest) -> Self {
-        let EmbeddingRequest { input, embed_layer } = value;
+        let EmbeddingRequest { input, layer } = value;
         Self {
             prompt: Vec::from(input).join(""),
             max_tokens: 1,
-            embed: true,
-            embed_layer,
+            kind: GenerateKind::Embed { layer },
             ..Default::default()
         }
     }
@@ -54,7 +54,7 @@ pub async fn embeddings(
     depot: &mut Depot,
     req: JsonBody<EmbeddingRequest>,
 ) -> Json<EmbeddingResponse> {
-    let request = req.to_owned(); // req.parse_json::<EmbeddingRequest>().await.unwrap();
+    let request = req.to_owned();
     let ThreadState { sender, .. } = depot.obtain::<ThreadState>().unwrap();
     let info = request_info(sender.clone(), SLEEP).await;
     let model_name = info.reload.model_path.to_string_lossy().into_owned();

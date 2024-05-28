@@ -11,11 +11,13 @@ use serde::{Deserialize, Serialize};
 use tokio::sync::RwLock;
 
 pub mod chat;
+pub mod choose;
 pub mod completion;
 pub mod embedding;
 pub mod info;
 
 pub use chat::chat_completions;
+pub use choose::chooses;
 pub use completion::completions;
 pub use embedding::embeddings;
 pub use info::models;
