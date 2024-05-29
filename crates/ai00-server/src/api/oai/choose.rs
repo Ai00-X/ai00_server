@@ -1,4 +1,4 @@
-use ai00_core::{GenerateKind, GenerateRequest, ThreadRequest, Token};
+use ai00_core::{run::StateId, GenerateKind, GenerateRequest, ThreadRequest, Token};
 use futures_util::StreamExt;
 use itertools::Itertools;
 use salvo::{
@@ -18,15 +18,21 @@ use crate::{
 pub struct ChooseRequest {
     input: Array<String>,
     choices: Vec<String>,
+    state: StateId,
 }
 
 impl From<ChooseRequest> for GenerateRequest {
     fn from(value: ChooseRequest) -> Self {
-        let ChooseRequest { input, choices } = value;
+        let ChooseRequest {
+            input,
+            choices,
+            state,
+        } = value;
         Self {
             prompt: Vec::from(input).join(""),
             max_tokens: 1,
             kind: GenerateKind::Choose { choices },
+            state,
             ..Default::default()
         }
     }

@@ -3,6 +3,7 @@ use std::{collections::HashMap, sync::Arc};
 use ai00_core::{
     run::StateId, FinishReason, GenerateRequest, ThreadRequest, Token, TokenCounter, MAX_TOKENS,
 };
+use derivative::Derivative;
 use futures_util::StreamExt;
 use salvo::{
     oapi::{extract::JsonBody, ToResponse, ToSchema},
@@ -19,47 +20,22 @@ use crate::{
     SLEEP,
 };
 
-#[derive(Debug, Deserialize, ToSchema)]
+#[derive(Debug, Derivative, Deserialize, ToSchema)]
+#[derivative(Default)]
+#[serde(default)]
 pub struct CompletionRequest {
-    #[serde(default)]
     prompt: Array<String>,
-    #[serde(default)]
     state: StateId,
-    #[serde(default = "default_max_tokens")]
+    #[derivative(Default(value = "256"))]
     max_tokens: usize,
-    #[serde(default)]
+    #[derivative(Default(value = "Array::Item(\"\\n\\n\".into())"))]
     stop: Array<String>,
-    #[serde(default)]
     stream: bool,
-    #[serde(default)]
     #[serde(alias = "logit_bias")]
     bias: HashMap<u16, f32>,
-    #[serde(default)]
     bnf_schema: Option<String>,
-    #[serde(flatten)]
     sampler: NucleusParams,
-    #[serde(default)]
     sampler_override: Option<SamplerParams>,
-}
-
-impl Default for CompletionRequest {
-    fn default() -> Self {
-        Self {
-            prompt: Array::default(),
-            state: Default::default(),
-            max_tokens: 256,
-            stop: Array::default(),
-            stream: false,
-            bias: HashMap::new(),
-            bnf_schema: Default::default(),
-            sampler: Default::default(),
-            sampler_override: Default::default(),
-        }
-    }
-}
-
-fn default_max_tokens() -> usize {
-    CompletionRequest::default().max_tokens
 }
 
 impl From<CompletionRequest> for GenerateRequest {
