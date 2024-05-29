@@ -3,6 +3,7 @@ use std::{collections::HashMap, sync::Arc};
 use ai00_core::{
     run::StateId, FinishReason, GenerateRequest, ThreadRequest, Token, TokenCounter, MAX_TOKENS,
 };
+use derivative::Derivative;
 use futures_util::StreamExt;
 use itertools::Itertools;
 use regex::Regex;
@@ -43,54 +44,23 @@ pub struct ChatRecord {
     content: String,
 }
 
-#[derive(Debug, Deserialize, ToSchema)]
+#[derive(Debug, Derivative, Deserialize, ToSchema)]
+#[derivative(Default)]
+#[serde(default)]
 pub struct ChatRequest {
-    #[serde(default)]
     messages: Array<ChatRecord>,
-    #[serde(default)]
     names: HashMap<Role, String>,
-    #[serde(default)]
     state: StateId,
-    #[serde(default = "default_max_tokens")]
+    #[derivative(Default(value = "256"))]
     max_tokens: usize,
-    #[serde(default = "default_stop")]
+    #[derivative(Default(value = "Array::Item(\"\\n\\n\".into())"))]
     stop: Array<String>,
-    #[serde(default)]
     stream: bool,
-    #[serde(default)]
     #[serde(alias = "logit_bias")]
     bias: HashMap<u16, f32>,
-    #[serde(default)]
     bnf_schema: Option<String>,
-    #[serde(flatten)]
     sampler: NucleusParams,
-    #[serde(default)]
     sampler_override: Option<SamplerParams>,
-}
-
-impl Default for ChatRequest {
-    fn default() -> Self {
-        Self {
-            messages: Array::default(),
-            names: HashMap::new(),
-            state: Default::default(),
-            max_tokens: 256,
-            stop: Array::Item("\n\n".into()),
-            stream: false,
-            bias: HashMap::new(),
-            bnf_schema: Default::default(),
-            sampler: Default::default(),
-            sampler_override: Default::default(),
-        }
-    }
-}
-
-fn default_max_tokens() -> usize {
-    ChatRequest::default().max_tokens
-}
-
-fn default_stop() -> Array<String> {
-    ChatRequest::default().stop
 }
 
 impl From<ChatRequest> for GenerateRequest {
