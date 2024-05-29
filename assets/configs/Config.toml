@@ -10,13 +10,11 @@ stop = ["\n\n"]                                      # Additional stop words in 
 token_chunk_size = 128                               # Size of token chunk that is inferred at once. For high end GPUs, this could be 64 or 128 (faster).
 
 # [[state]] # State-tuned initial state.
-# default = true                                                   # Load this initial state on startup.
 # id = "fd7a60ed-7807-449f-8256-bccae3246222"                      # UUID for this state, which is used to specify which one to use in the APIs.
 # name = "x060-3B"                                                 # Given name for this state (optional).
 # path = "rwkv-x060-chn_single_round_qa-3B-20240505-ctx1024.state"
 
 # [[state]] # Load another initial state.
-# default = false                                                  # Do not load this initial state on startup.
 # id = "6a9c60a4-0f4c-40b1-a31f-987f73e20315"                      # UUID for this state.
 # path = "rwkv-x060-chn_single_round_qa-3B-20240502-ctx1024.state"
 
@@ -43,7 +41,7 @@ ip = "0.0.0.0"   # Use IpV4.
 force_pass = true
 port = 65530
 slot = "permisionkey"
-tls = true
+tls = false
 
 [[listen.app_keys]] # Allow mutiple app keys.
 app_id = "JUSTAISERVER"

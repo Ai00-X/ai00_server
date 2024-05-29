@@ -72,7 +72,7 @@ QQ Group for communication: 30920262
     $ ./ai00_rwkv_server
     ```
     
-5.  Open the browser and visit the WebUI at https://localhost:65530
+5.  Open the browser and visit the WebUI at http://localhost:65530 (https://localhost:65530 if `tls` is enabled)
     
 
 ### 📜(Optional) Build from Source
@@ -100,7 +100,7 @@ QQ Group for communication: 30920262
     $ cargo run --release
     ```
     
-6.  Open the browser and visit the WebUI at https://localhost:65530
+6.  Open the browser and visit the WebUI at http://localhost:65530 (https://localhost:65530 if `tls` is enabled)
 
 ### 📒Convert the Model
 
@@ -133,7 +133,7 @@ It only supports Safetensors models with the `.st` extension now. Models saved w
 ## 📙Currently Available APIs
 
 The API service starts at port 65530, and the data input and output format follow the Openai API specification.
-Note that some APIs like `chat` and `completions` have additional optional fields for advanced functionalities. Visit https://localhost:65530/swagger-ui for API schema.
+Note that some APIs like `chat` and `completions` have additional optional fields for advanced functionalities. Visit http://localhost:65530/swagger-ui for API schema.
 
 *   `/api/oai/v1/models`
 *   `/api/oai/models`

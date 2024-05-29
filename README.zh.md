@@ -61,8 +61,7 @@
     ./ai00_rwkv_server
     ```
 
-5. 打开浏览器，访问WebUI
-   [`https://localhost:65530`](https://localhost:65530)
+5. 打开浏览器，访问WebUI http://localhost:65530（如果开启了`tls`，访问 https://localhost:65530）
 
 ### 📜从源码编译
 
@@ -90,8 +89,7 @@
     cargo run --release
     ```
    
-6. 打开浏览器，访问WebUI
-   [`https://localhost:65530`](https://localhost:65530)
+6. 打开浏览器，访问WebUI http://localhost:65530（如果开启了`tls`，访问 https://localhost:65530）
 
 ### 📒模型转换
 
@@ -125,7 +123,7 @@
 ## 📙目前可用的API
 
 API 服务开启于 65530 端口, 数据输入输出格式遵循 Openai API 规范。
-有一些 API，比如`chat`和`completions`有一些可选的额外字段，这些额外字段是为高级功能准备的。可以访问 https://localhost:65530/swagger-ui 查看具体的 API 参数。
+有一些 API，比如`chat`和`completions`有一些可选的额外字段，这些额外字段是为高级功能准备的。可以访问 http://localhost:65530/swagger-ui 查看具体的 API 参数。
 
 - `/api/oai/v1/models`
 - `/api/oai/models`
