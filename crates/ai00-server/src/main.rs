@@ -1,6 +1,6 @@
 use std::{
     io::Cursor,
-    net::{IpAddr, Ipv4Addr, SocketAddr},
+    net::{IpAddr, Ipv4Addr, Ipv6Addr, SocketAddr},
     path::{Path, PathBuf},
     time::Duration,
 };
@@ -262,30 +262,41 @@ async fn main() {
         "local" => (false, listen.tls),
         _ => (listen.acme, true),
     };
-    let addr = SocketAddr::new(IpAddr::V4(ipv4_addr), port);
+    let ipv4_addr = SocketAddr::new(IpAddr::V4(ipv4_addr), port);
+
+    let url = match ip_addr {
+        IpAddr::V6(Ipv6Addr::UNSPECIFIED) | IpAddr::V4(Ipv4Addr::UNSPECIFIED) => "localhost".into(),
+        IpAddr::V6(addr) => addr.to_string(),
+        IpAddr::V4(addr) => addr.to_string(),
+    };
+    let url = match acme || tls {
+        true => format!("https://{url}:{port}"),
+        false => format!("http://{url}:{port}"),
+    };
+    log::info!("visit WebUI at {url}");
 
     if acme {
-        let listener = TcpListener::new(addr)
+        let listener = TcpListener::new(ipv4_addr)
             .acme()
             .cache_path("assets/certs")
             .add_domain(&listen.domain)
-            .quinn(addr);
+            .quinn(ipv4_addr);
         if let Some(ipv6_addr) = ipv6_addr {
-            let addr_v6 = SocketAddr::new(IpAddr::V6(ipv6_addr), port);
-            let ipv6_listener = TcpListener::new(addr_v6)
+            let ipv6_addr = SocketAddr::new(IpAddr::V6(ipv6_addr), port);
+            let ipv6_listener = TcpListener::new(ipv6_addr)
                 .acme()
                 .cache_path("assets/certs")
                 .add_domain(&listen.domain)
-                .quinn(addr_v6);
+                .quinn(ipv6_addr);
             #[cfg(not(target_os = "windows"))]
             let acceptor = ipv6_listener.bind().await;
             #[cfg(target_os = "windows")]
             let acceptor = listener.join(ipv6_listener).bind().await;
-            log::info!("server started at {addr_v6} with acme and tls");
+            log::info!("server started at {ipv6_addr} with acme and tls");
             salvo::server::Server::new(acceptor).serve(service).await;
         } else {
             let acceptor = listener.bind().await;
-            log::info!("server started at {addr} with acme and tls.");
+            log::info!("server started at {ipv4_addr} with acme and tls.");
             salvo::server::Server::new(acceptor).serve(service).await;
         };
     } else if tls {
@@ -296,53 +307,53 @@ async fn main() {
                 .key_from_path("assets/certs/key.pem")
                 .expect("unable to fine key.pem"),
         );
-        let listener = TcpListener::new(addr).rustls(config.clone());
+        let listener = TcpListener::new(ipv4_addr).rustls(config.clone());
         if let Some(ipv6_addr) = ipv6_addr {
-            let addr_v6 = SocketAddr::new(IpAddr::V6(ipv6_addr), port);
-            let ipv6_listener = TcpListener::new(addr_v6).rustls(config.clone());
+            let ipv6_addr = SocketAddr::new(IpAddr::V6(ipv6_addr), port);
+            let ipv6_listener = TcpListener::new(ipv6_addr).rustls(config.clone());
             #[cfg(not(target_os = "windows"))]
             let acceptor = QuinnListener::new(config.clone(), addr_v6)
                 .join(ipv6_listener)
                 .bind()
                 .await;
             #[cfg(target_os = "windows")]
-            let acceptor = QuinnListener::new(config.clone(), addr)
-                .join(QuinnListener::new(config, addr_v6))
+            let acceptor = QuinnListener::new(config.clone(), ipv4_addr)
+                .join(QuinnListener::new(config, ipv6_addr))
                 .join(ipv6_listener)
                 .join(listener)
                 .bind()
                 .await;
-            log::info!("server started at {addr_v6} with tls");
+            log::info!("server started at {ipv6_addr} with tls");
             salvo::server::Server::new(acceptor).serve(service).await;
         } else {
-            let acceptor = QuinnListener::new(config.clone(), addr)
+            let acceptor = QuinnListener::new(config.clone(), ipv4_addr)
                 .join(listener)
                 .bind()
                 .await;
-            log::info!("server started at {addr} with tls");
+            log::info!("server started at {ipv4_addr} with tls");
             salvo::server::Server::new(acceptor).serve(service).await;
         };
     } else if let Some(ipv6_addr) = ipv6_addr {
-        let addr_v6 = SocketAddr::new(IpAddr::V6(ipv6_addr), port);
-        let ipv6_listener = TcpListener::new(addr_v6);
-        log::info!("server started at {addr_v6} without tls");
+        let ipv6_addr = SocketAddr::new(IpAddr::V6(ipv6_addr), port);
+        let ipv6_listener = TcpListener::new(ipv6_addr);
+        log::info!("server started at {ipv6_addr} without tls");
         // on Linux, when the IpV6 addr is unspecified while the IpV4 addr being unspecified, it will cause exception "address in used"
         #[cfg(not(target_os = "windows"))]
         if ipv6_addr.is_unspecified() {
             let acceptor = ipv6_listener.bind().await;
             salvo::server::Server::new(acceptor).serve(service).await;
         } else {
-            let acceptor = TcpListener::new(addr).join(ipv6_listener).bind().await;
+            let acceptor = TcpListener::new(ipv4_addr).join(ipv6_listener).bind().await;
             salvo::server::Server::new(acceptor).serve(service).await;
         };
         #[cfg(target_os = "windows")]
         {
-            let acceptor = TcpListener::new(addr).join(ipv6_listener).bind().await;
+            let acceptor = TcpListener::new(ipv4_addr).join(ipv6_listener).bind().await;
             salvo::server::Server::new(acceptor).serve(service).await;
         }
     } else {
-        log::info!("server started at {addr} without tls");
-        let acceptor = TcpListener::new(addr).bind().await;
+        log::info!("server started at {ipv4_addr} without tls");
+        let acceptor = TcpListener::new(ipv4_addr).bind().await;
         salvo::server::Server::new(acceptor).serve(service).await;
     };
 }
