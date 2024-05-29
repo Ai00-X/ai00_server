@@ -1,5 +1,6 @@
 use ai00_core::{GenerateKind, GenerateRequest, ThreadRequest, Token};
 use futures_util::StreamExt;
+use itertools::Itertools;
 use salvo::{
     oapi::{extract::JsonBody, ToParameters, ToResponse, ToSchema},
     prelude::*,
@@ -32,10 +33,19 @@ impl From<ChooseRequest> for GenerateRequest {
 }
 
 #[derive(Debug, Serialize, ToSchema, ToResponse)]
+pub struct ChooseData {
+    object: String,
+    index: usize,
+    rank: usize,
+    choice: String,
+    perplexity: f32,
+}
+
+#[derive(Debug, Serialize, ToSchema, ToResponse)]
 pub struct ChooseResponse {
     object: String,
     model: String,
-    perplexities: Vec<f32>,
+    data: Vec<ChooseData>,
 }
 
 #[endpoint]
@@ -44,6 +54,8 @@ pub async fn chooses(depot: &mut Depot, req: JsonBody<ChooseRequest>) -> Json<Ch
     let ThreadState { sender, .. } = depot.obtain::<ThreadState>().unwrap();
     let info = request_info(sender.clone(), SLEEP).await;
     let model_name = info.reload.model_path.to_string_lossy().into_owned();
+
+    let choices = request.choices.clone();
 
     let (token_sender, token_receiver) = flume::unbounded();
     let _ = sender.send(ThreadRequest::Generate {
@@ -62,9 +74,24 @@ pub async fn chooses(depot: &mut Depot, req: JsonBody<ChooseRequest>) -> Json<Ch
         }
     }
 
+    let data = perplexities
+        .into_iter()
+        .zip(choices.into_iter())
+        .enumerate()
+        .sorted_by(|(_, (x, _)), (_, (y, _))| x.total_cmp(y))
+        .enumerate()
+        .map(|(rank, (index, (perplexity, choice)))| ChooseData {
+            object: "choice".into(),
+            rank,
+            index,
+            choice,
+            perplexity,
+        })
+        .collect();
+
     Json(ChooseResponse {
         object: "list".into(),
         model: model_name,
-        perplexities,
+        data,
     })
 }
