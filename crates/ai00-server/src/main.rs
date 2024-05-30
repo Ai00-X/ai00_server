@@ -312,7 +312,7 @@ async fn main() {
             let ipv6_addr = SocketAddr::new(IpAddr::V6(ipv6_addr), port);
             let ipv6_listener = TcpListener::new(ipv6_addr).rustls(config.clone());
             #[cfg(not(target_os = "windows"))]
-            let acceptor = QuinnListener::new(config.clone(), addr_v6)
+            let acceptor = QuinnListener::new(config.clone(), ipv6_addr)
                 .join(ipv6_listener)
                 .bind()
                 .await;
