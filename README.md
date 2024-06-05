@@ -108,7 +108,15 @@ It only supports Safetensors models with the `.st` extension now. Models saved w
 
 1. [Download the `.pth` model](https://huggingface.co/BlinkDL)
 
-2. In the [Release](https://github.com/cgisky1980/ai00_rwkv_server/releases) you could find an executable called `converter`. Run
+2. (Recommended) Run the python script `convert2ai00.py` or `convert_safetensors.py`:
+
+    ```bash
+    $ python ./convert2ai00.py --input /path/to/model.pth --output /path/to/model.st
+    ```
+
+    Requirements: Python, with `torch` and `safetensors` installed.
+
+3. If you do not want to install python, In the [Release](https://github.com/cgisky1980/ai00_rwkv_server/releases) you could find an executable called `converter`. Run
   
   ```bash
   $ ./converter --input /path/to/model.pth --output /path/to/model.st

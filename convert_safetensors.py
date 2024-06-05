@@ -25,7 +25,8 @@ def rename_key(rename, name):
 
 
 def convert_file(pt_filename: str, sf_filename: str, rename={}, transpose_names=[]):
-    loaded: collections.OrderedDict = torch.load(pt_filename, map_location="cpu")
+    loaded: collections.OrderedDict = torch.load(
+        pt_filename, map_location="cpu")
     if "state_dict" in loaded:
         loaded = loaded["state_dict"]
 
@@ -51,7 +52,8 @@ def convert_file(pt_filename: str, sf_filename: str, rename={}, transpose_names=
             if "time_decay" in k or "time_faaaa" in k:
                 # print(k, mm[k].shape)
                 loaded[k] = (
-                    loaded[k].unsqueeze(1).repeat(1, n_emb // loaded[k].shape[0])
+                    loaded[k].unsqueeze(1).repeat(
+                        1, n_emb // loaded[k].shape[0])
                 )
 
     with torch.no_grad():

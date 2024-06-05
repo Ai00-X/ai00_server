@@ -2,7 +2,7 @@ import collections
 import numpy
 import os
 import torch
-from safetensors.torch import serialize_file, load_file 
+from safetensors.torch import serialize_file, load_file
 import time
 import hashlib
 import json
@@ -27,7 +27,8 @@ def rename_key(rename, name):
 
 
 def convert_file(pt_filename: str, sf_filename: str, rename={}, transpose_names=[], model_info={}):
-    loaded: collections.OrderedDict = torch.load(pt_filename, map_location="cpu")
+    loaded: collections.OrderedDict = torch.load(
+        pt_filename, map_location="cpu")
     if "state_dict" in loaded:
         loaded = loaded["state_dict"]
 
@@ -53,9 +54,10 @@ def convert_file(pt_filename: str, sf_filename: str, rename={}, transpose_names=
             if "time_decay" in k or "time_faaaa" in k:
                 # print(k, mm[k].shape)
                 loaded[k] = (
-                    loaded[k].unsqueeze(1).repeat(1, n_emb // loaded[k].shape[0])
+                    loaded[k].unsqueeze(1).repeat(
+                        1, n_emb // loaded[k].shape[0])
                 )
-    
+
     with torch.no_grad():
         for k in kk:
             new_k = rename_key(rename, k).lower()
@@ -71,31 +73,27 @@ def convert_file(pt_filename: str, sf_filename: str, rename={}, transpose_names=
                 "shape": v.shape,
                 "data": v.numpy().tobytes(),
             }
- 
 
-    # 把model_info 写入文件
+    # 把 model_info 写入文件
     dirname = os.path.dirname(sf_filename)
     os.makedirs(dirname, exist_ok=True)
     serialize_file(loaded, sf_filename, metadata=model_info)
-    
-    
 
 
-#reload函数 读取safetensors 文件中的 metadata 并打印出来
+# reload 函数读取 safetensors 文件中的 metadata 并打印出来
 def read_metadata(sf_filename):
     with open(sf_filename, 'rb') as f:
         # 读取文件头部的JSON元数据
-        header_size = int.from_bytes(f.read(8), byteorder='little', signed=False)
+        header_size = int.from_bytes(
+            f.read(8), byteorder='little', signed=False)
         metadata_json = f.read(header_size)
         return json.loads(metadata_json)
-    
- 
 
 
 if __name__ == "__main__":
 
-    print(f"请选择语言(Language)：\n1.中文\n2.English\n")
-    choice = input("请输入序号(type 1 or 2  default 1)：")
+    print(f"请选择语言 (Language): \n1.中文\n2.English\n")
+    choice = input("请输入序号 (Enter 1 or 2; default 1): ")
     if choice == "1":
         language = "zh"
         print("\n已选择中文\n")
@@ -105,28 +103,28 @@ if __name__ == "__main__":
     else:
         language = "zh"
         print("\n已选择中文\n")
- 
+
     # 假设这里的 model_type_dict 是一个字典，包含了中英文对应的模型类型描述
     model_type_dict = {
         "zh": {
             "ask": {
-                "ask0": "输入模型类型(默认rwkv)",
-                "ask1": "请选择要转换的模型类型：",
-                "ask2": "请选择要转换模型的参数量：",
-                "ask3": "请输入作者名：",
-                "ask4": "请输入模型说明：",
-                "ask5": "请输入RWKV版本(默认x060)：",
+                "ask0": "输入模型类型 (默认rwkv)",
+                "ask1": "请选择要转换的模型类型: ",
+                "ask2": "请选择要转换模型的参数量: ",
+                "ask3": "请输入作者名: ",
+                "ask4": "请输入模型说明: ",
+                "ask5": "请输入RWKV版本 (默认x060): ",
             },
             "model_type": {
                 "rwkv": "RWKV 模型",
-                "lora": "RWKV LoRA模型",
-                "state": "RWKV init State模型",
+                "lora": "RWKV LoRA",
+                "state": "RWKV init State",
             },
             "error": "输入错误，请重新输入！",
         },
         "en": {
             "ask": {
-                "ask0": "Input model type(default rwkv)",
+                "ask0": "Input model type (default rwkv)",
                 "ask1": "Please select the model you want to convert:",
                 "ask2": "Please select the number of parameters for the model you want to convert:",
                 "ask3": "Please enter the author name:",
@@ -136,8 +134,8 @@ if __name__ == "__main__":
             },
             "model_type": {
                 "rwkv": "RWKV model",
-                "lora": "RWKV LoRA model",
-                "state": "RWKV init State model",
+                "lora": "RWKV LoRA",
+                "state": "RWKV init State",
             },
             "error": "Input error, please re-enter!"
         }
@@ -155,10 +153,9 @@ if __name__ == "__main__":
         model_type = "rwkv"
         print(f"\n已选择 {model_type_dict[language]['model_type'][model_type]}\n")
 
-
     print(f"\n{model_type_dict[language]['ask']['ask2']}")
     print(f"(1)1B5\n(2)3B\n(3)7B\n(4)14B")
-    choice = input("Enter the number 1 - 4(defult 3)：")
+    choice = input("Enter the number 1 - 4 (default 3): ")
     if choice == "1":
         model_size = "1B5"
     elif choice == "2":
@@ -170,23 +167,20 @@ if __name__ == "__main__":
     else:
         model_size = "7B"
 
-    
     rwkv_version = input(f"{model_type_dict[language]['ask']['ask5']}")
-    #检查rwkv_version是否符合x060这样的格式
+    # 检查 rwkv_version 是否符合x060这样的格式
     if not rwkv_version.startswith("x"):
         rwkv_version = "x060"
-        
+
     elif len(rwkv_version) != 4:
         rwkv_version = "x060"
-        
-    #检查x后三位是否是数字
+
+    # 检查 x 后三位是否是数字
     elif not rwkv_version[1:].isdigit():
         rwkv_version = "x060"
-        
 
     author_name = input(f"{model_type_dict[language]['ask']['ask3']}")
     model_readme = input(f"{model_type_dict[language]['ask']['ask4']}")
-
 
     if model_type == "rwkv":
         sf_filename = f"rwkv_{model_size}.st"
@@ -197,14 +191,9 @@ if __name__ == "__main__":
     else:
         print("输入错误，请重新输入！")
         exit()
-    
- 
 
-    
     current_time = time.time()
- 
-    
-    
+
     def get_sha(file_path):
         with open(file_path, 'rb') as f:
             sha1 = hashlib.sha1()
@@ -214,7 +203,7 @@ if __name__ == "__main__":
                     break
                 sha1.update(data)
         return sha1.hexdigest()
-    
+
     pth_SHA = get_sha(args.input)
 
     model_info = {
@@ -227,13 +216,15 @@ if __name__ == "__main__":
         "rwkv_version": rwkv_version,
     }
 
-    print(f"正在转换模型：{model_info}")
-    
+    print(f"正在转换模型: {model_info}")
+
     convert_file(
         args.input,
         args.output,
-        rename={"time_faaaa": "time_first", "time_maa": "time_mix","lora_A": "lora.0", "lora_B": "lora.1"},
-        transpose_names=["time_mix_w1", "time_mix_w2", "time_decay_w1", "time_decay_w2", "time_state", "lora.0"],
+        rename={"time_faaaa": "time_first", "time_maa": "time_mix",
+                "lora_A": "lora.0", "lora_B": "lora.1"},
+        transpose_names=["time_mix_w1", "time_mix_w2",
+                         "time_decay_w1", "time_decay_w2", "time_state", "lora.0"],
         model_info=model_info
     )
     print(f"Saved to {args.output}")

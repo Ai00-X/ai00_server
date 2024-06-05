@@ -97,7 +97,7 @@
 
 1. [下载pth模型](https://huggingface.co/BlinkDL)
 
-2. 克隆或下载本仓库下[convert_safetensors.py](./convert_safetensors.py)程序，并安装相应的依赖库
+2. 克隆或下载本仓库下[convert2ai00.py](./convert2ai00.py)或[convert_safetensors.py](./convert_safetensors.py)程序，并安装相应的依赖库（`torch`和`safetensors`）
 
 3. 运行上述程序，并指定输入输出路径
 
