@@ -219,6 +219,8 @@ pub struct GenerateContext {
     pub prefix: Tokens,
     /// Tokens to be computed.
     pub suffix: Tokens,
+    /// The output of the model from the last run.
+    pub output: Option<TensorCpu<f32>>,
     /// Tokens to be chosen if this is a choose request.
     pub choices: Vec<Tokens>,
     /// Texts that are output by the model.
@@ -238,41 +240,35 @@ pub struct GenerateContext {
     pub sender: Sender<Token>,
 }
 
-#[derive(Debug)]
-struct CachedItem<T> {
-    item: Arc<T>,
+#[derive(Debug, Clone)]
+struct CachedItem {
+    state: TensorCpu<f32>,
+    output: Option<TensorCpu<f32>>,
     instant: Instant,
 }
 
-impl<T> CachedItem<T> {
-    pub fn new(backed: T) -> Self {
+impl CachedItem {
+    pub fn new(state: TensorCpu<f32>, output: Option<TensorCpu<f32>>) -> Self {
         Self {
-            item: Arc::new(backed),
+            state,
+            output,
             instant: Instant::now(),
         }
     }
 
     /// Update an existing cache item's timestamp.
-    pub fn update(cached: CachedItem<T>) -> Self {
+    pub fn update(cached: CachedItem) -> Self {
         Self {
-            item: cached.item,
             instant: Instant::now(),
+            ..cached
         }
     }
 }
 
-impl<T> Clone for CachedItem<T> {
-    fn clone(&self) -> Self {
-        Self {
-            item: self.item.clone(),
-            instant: self.instant,
-        }
-    }
-}
 #[derive(Debug, Default)]
 struct Cache {
     state: Option<InitState>,
-    cache: Trie<Tokens, CachedItem<TensorCpu<f32>>>,
+    cache: Trie<Tokens, CachedItem>,
 }
 
 impl Cache {
@@ -512,12 +508,7 @@ impl Runtime {
 
     /// Search for the longest common prefix in the memory cache and checkout the state from that point.
     /// Should there be a cache miss, an initial state is returned.
-    async fn checkout(
-        &self,
-        id: StateId,
-        tokens: &[u16],
-        batch: usize,
-    ) -> (Vec<u16>, Arc<TensorCpu<f32>>) {
+    async fn checkout(&self, id: StateId, tokens: &[u16], batch: usize) -> (Vec<u16>, CachedItem) {
         let mut caches = self.caches.lock().await;
 
         let Cache { state, cache } = caches.fetch(id);
@@ -530,15 +521,15 @@ impl Runtime {
 
         let prefix = prefix[0..len].to_vec();
         let state = state.clone().map(|state| state.data);
-        let reload = match cache.remove(prefix[..].as_token_slice()) {
-            Some(reload) => CachedItem::update(reload),
-            None => CachedItem::new(state.unwrap_or_else(|| self.state.init())),
+        let item = match cache.remove(prefix[..].as_token_slice()) {
+            Some(item) => CachedItem::update(item),
+            None => CachedItem::new(state.unwrap_or_else(|| self.state.init()), None),
         };
         if len > 0 {
             let key = Tokens(prefix.clone());
-            cache.insert(key, reload.clone());
+            cache.insert(key, item.clone());
         }
-        (prefix, reload.item)
+        (prefix, item)
     }
 
     /// Compile and cache the given schema into a BNF sampler.
@@ -559,11 +550,10 @@ impl Runtime {
     pub async fn queue(&self, context: GenerateContext) -> Result<SlotResult> {
         let mut slots = self.slots.lock().await;
 
-        // we must ensure that there is at least one token as the suffix, otherwise the whole slot will loop forever as there is no input
-        let (last, tokens) = match [context.prefix, context.suffix].concat().split_last() {
-            Some((last, tokens)) => (*last, tokens.to_vec()),
-            None => return Ok(SlotResult::Error("empty task is not queued".into())),
-        };
+        let mut tokens = [context.prefix, context.suffix].concat();
+        if tokens.is_empty() {
+            tokens.push(0);
+        }
 
         // compile the BNF schema.
         let mut transformers = Vec::<Arc<RwLock<dyn Transformer + Send + Sync>>>::new();
@@ -601,7 +591,7 @@ impl Runtime {
             None => Ok(SlotResult::Failure(
                 GenerateContext {
                     prefix: Default::default(),
-                    suffix: Tokens([tokens, vec![last]].concat()),
+                    suffix: Tokens(tokens),
                     transformers,
                     ..context
                 }
@@ -611,14 +601,14 @@ impl Runtime {
             Some(SlotChoice::Back(batch)) => {
                 log::info!("start at non-empty slot {}", batch);
                 let (prefix, reload) = self.checkout(context.request.state, &tokens, batch).await;
-                self.state.load(reload.as_ref().clone(), batch)?;
+                self.state.load(reload.state, batch)?;
 
-                let tokens = [tokens, vec![last]].concat();
                 let len = prefix.len();
                 let mut state = SlotState::Wait(
                     GenerateContext {
                         prefix: Tokens(tokens[..len].to_vec()),
                         suffix: Tokens(tokens[len..].to_vec()),
+                        output: reload.output,
                         transformers,
                         ..context
                     }
@@ -632,14 +622,14 @@ impl Runtime {
             Some(SlotChoice::Empty(batch)) => {
                 log::info!("start at empty slot {}", batch);
                 let (prefix, reload) = self.checkout(context.request.state, &tokens, batch).await;
-                self.state.load(reload.as_ref().clone(), batch)?;
+                self.state.load(reload.state, batch)?;
 
-                let tokens = [tokens, vec![last]].concat();
                 let len = prefix.len();
                 let state = SlotState::Wait(
                     GenerateContext {
                         prefix: Tokens(tokens[..len].to_vec()),
                         suffix: Tokens(tokens[len..].to_vec()),
+                        output: reload.output,
                         transformers,
                         ..context
                     }
@@ -651,7 +641,6 @@ impl Runtime {
             // continue from an existing slot; no need backing as well
             Some(SlotChoice::Continue(batch, len)) => {
                 log::info!("continue at slot {}", batch);
-                let tokens = [tokens, vec![last]].concat();
                 let state = SlotState::Wait(
                     GenerateContext {
                         prefix: Tokens(tokens[..len].to_vec()),
@@ -695,7 +684,10 @@ impl Runtime {
 
             let mut caches = self.caches.lock().await;
             let cache = &mut caches.fetch(context.request.state).cache;
-            cache.insert(context.prefix.clone(), CachedItem::new(backed));
+            cache.insert(
+                context.prefix.clone(),
+                CachedItem::new(backed, context.output),
+            );
             log::info!(
                 "backed completed slot {} of length {}",
                 batch,
@@ -735,63 +727,34 @@ impl Runtime {
         Ok(())
     }
 
-    async fn process(&self, payloads: &mut [Payload]) -> Result<()> {
-        self.prepare(payloads).await?;
-
-        let batches = payloads
-            .iter()
-            .map(|payload| match payload {
-                Payload::Busy(context) => context.suffix.0.clone(),
-                _ => vec![],
-            })
-            .map(|tokens| InferInputBatch {
-                tokens,
-                option: InferOption::Last,
-            })
-            .collect();
-        let inference = InferInput::new(batches, self.reload.token_chunk_size);
-        if inference.num_token() == 0 {
-            return Ok(());
-        }
-        let mut inference = Some(inference);
-
-        // run the model until there is at least one slot finished
-        let outputs = loop {
-            let input = inference.take().unwrap();
-            let (input, output) = self.runtime.infer(input).await;
-            inference.replace(input);
-
-            if output.iter().any(|batch| batch.size() > 0) {
-                break output;
-            }
-        };
-
+    async fn sample(
+        &self,
+        payloads: &mut [Payload],
+        outputs: Vec<Option<TensorCpu<f32>>>,
+    ) -> Result<HashMap<usize, (u16, Vec<f32>)>> {
         // update raw outputs
         let mut set = tokio::task::JoinSet::new();
         for (batch, (payload, output)) in payloads.iter().zip(outputs.iter()).enumerate() {
-            match (payload, output) {
-                (Payload::Busy(context), output) if output.size() > 0 => {
-                    let num_vocab = self.info.num_vocab;
-                    let output = output.0.clone();
-                    let transformers = context.transformers.clone();
-                    let sampler = context.request.sampler.clone();
-                    let bias = context.request.bias.clone();
-                    set.spawn(async move {
-                        let mut data = output.to_vec();
-                        assert_eq!(data.len(), num_vocab);
+            if let (Payload::Busy(context), Some(output)) = (payload, output) {
+                let num_vocab = self.info.num_vocab;
+                let output = output.clone();
+                let transformers = context.transformers.clone();
+                let sampler = context.request.sampler.clone();
+                let bias = context.request.bias.clone();
+                set.spawn(async move {
+                    let mut data = output.to_vec();
+                    assert_eq!(data.len(), num_vocab);
 
-                        sampler.read().await.transform(&mut data);
-                        for (token, bias) in bias.iter() {
-                            data[*token as usize] += *bias;
-                        }
-                        for transformer in transformers {
-                            transformer.read().await.transform(&mut data);
-                        }
+                    sampler.read().await.transform(&mut data);
+                    for (token, bias) in bias.iter() {
+                        data[*token as usize] += *bias;
+                    }
+                    for transformer in transformers {
+                        transformer.read().await.transform(&mut data);
+                    }
 
-                        (batch, data)
-                    });
-                }
-                _ => {}
+                    (batch, data)
+                });
             }
         }
         let mut outputs = HashMap::new();
@@ -812,45 +775,52 @@ impl Runtime {
         // sample tokens
         let mut set = tokio::task::JoinSet::new();
         for (batch, (payload, output)) in payloads.iter_mut().zip(outputs.into_iter()).enumerate() {
-            match (payload, output) {
-                (Payload::Busy(context), output) if output.size() > 0 => {
-                    let num_vocab = self.info.num_vocab;
-                    let sampler = context.request.sampler.clone();
-                    set.spawn(async move {
-                        let data = output.to_vec();
-                        assert_eq!(data.len(), num_vocab);
-                        let token = sampler.write().await.sample(&data);
-                        (batch, token, data)
-                    });
-                }
-                _ => {}
+            let Payload::Busy(context) = payload else {
+                continue;
+            };
+
+            if output.is_empty() {
+                continue;
             }
+
+            let num_vocab = self.info.num_vocab;
+            let sampler = context.request.sampler.clone();
+            set.spawn(async move {
+                let data = output.to_vec();
+                assert_eq!(data.len(), num_vocab);
+                let token = sampler.write().await.sample(&data);
+                (batch, token, data)
+            });
         }
         let mut tokens = HashMap::new();
         while let Some(Ok((batch, token, data))) = set.join_next().await {
             tokens.insert(batch, (token, data));
         }
 
-        let inference = inference.unwrap();
-        for (batch, (payload, input)) in payloads
-            .iter_mut()
-            .zip(inference.batches.into_iter())
-            .enumerate()
-        {
+        Ok(tokens)
+    }
+
+    async fn process(&self, payloads: &mut [Payload]) -> Result<()> {
+        self.prepare(payloads).await?;
+
+        let outputs = payloads
+            .iter()
+            .map(|payload| match payload {
+                Payload::Busy(context) => context.output.clone(),
+                _ => None,
+            })
+            .collect();
+        let tokens = self.sample(payloads, outputs).await?;
+
+        for (batch, payload) in payloads.iter_mut().enumerate() {
             let Payload::Busy(context) = payload else {
                 continue;
             };
 
-            let instant = context.instant.get_or_insert(Instant::now());
-            let prefix = std::mem::take(&mut context.prefix);
-            let suffix = std::mem::take(&mut context.suffix);
-            let model_tokens = [prefix.0, suffix.0].concat();
-
-            // compute new prefix and suffix using the current remaining tokens
-            assert!(model_tokens.len() >= input.tokens.len());
-            let len = model_tokens.len() - input.tokens.len();
-            context.prefix = Tokens(model_tokens[..len].to_vec());
-            context.suffix = Tokens(model_tokens[len..].to_vec());
+            // in case that we are not actually generating but still gets the output (from the cache)
+            if !context.suffix.is_empty() {
+                continue;
+            }
 
             let Some((token, data)) = tokens.get(&batch) else {
                 continue;
@@ -862,7 +832,10 @@ impl Runtime {
                 let cache = &mut caches.fetch(context.request.state).cache;
                 let backed = self.state.back(batch).await?;
 
-                cache.insert(context.prefix.clone(), CachedItem::new(backed));
+                cache.insert(
+                    context.prefix.clone(),
+                    CachedItem::new(backed, context.output.clone()),
+                );
                 context.prompt_cached = true;
 
                 log::info!(
@@ -886,6 +859,7 @@ impl Runtime {
             context.buffer.append(&mut word);
             context.model_tokens.push(token);
 
+            let instant = context.instant.get_or_insert(Instant::now());
             let mut done = false;
             let mut finish = |reason| {
                 let counter = {
@@ -1014,6 +988,60 @@ impl Runtime {
             }
 
             done.then(|| payload.finalize());
+        }
+
+        let option = InferOption::Last;
+        let batches = payloads
+            .iter()
+            .map(|payload| match payload {
+                Payload::Busy(context) => context.suffix.0.clone(),
+                _ => vec![],
+            })
+            .map(|tokens| InferInputBatch { tokens, option })
+            .collect();
+        let inference = InferInput::new(batches, self.reload.token_chunk_size);
+        if inference.num_token() == 0 {
+            return Ok(());
+        }
+        let mut inference = Some(inference);
+
+        // run the model until there is at least one slot finished
+        let outputs = loop {
+            let input = inference.take().unwrap();
+            let (input, output) = self.runtime.infer(input).await;
+            inference.replace(input);
+
+            if output.iter().any(|batch| batch.len() > 0) {
+                break output;
+            }
+        };
+
+        for (payload, output) in payloads.iter_mut().zip(outputs.iter()) {
+            let Payload::Busy(context) = payload else {
+                continue;
+            };
+            context.output = match output.len() {
+                0 => None,
+                x if x == self.info.num_vocab => Some(output.0.clone()),
+                x => unreachable!("output size should not be {x}"),
+            };
+        }
+
+        let inference = inference.unwrap();
+        for (payload, input) in payloads.iter_mut().zip(inference.batches.into_iter()) {
+            let Payload::Busy(context) = payload else {
+                continue;
+            };
+
+            let prefix = std::mem::take(&mut context.prefix);
+            let suffix = std::mem::take(&mut context.suffix);
+            let model_tokens = [prefix.0, suffix.0].concat();
+
+            // compute new prefix and suffix using the current remaining tokens
+            assert!(model_tokens.len() >= input.tokens.len());
+            let len = model_tokens.len() - input.tokens.len();
+            context.prefix = Tokens(model_tokens[..len].to_vec());
+            context.suffix = Tokens(model_tokens[len..].to_vec());
         }
 
         Ok(())

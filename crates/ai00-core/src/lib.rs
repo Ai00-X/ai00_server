@@ -700,6 +700,7 @@ pub async fn model_route(receiver: Receiver<ThreadRequest>) -> Result<()> {
                         prompt_cached: false,
                         prefix: Default::default(),
                         suffix: tokens,
+                        output: None,
                         choices,
                         model_text: vec![],
                         buffer: vec![],
