@@ -10,11 +10,11 @@ use salvo::oapi::ToSchema;
 use serde::{Deserialize, Serialize};
 use tokio::sync::RwLock;
 
-pub mod chat;
-pub mod choose;
-pub mod completion;
-pub mod embedding;
-pub mod info;
+mod chat;
+mod choose;
+mod completion;
+mod embedding;
+mod info;
 
 pub use chat::chat_completions;
 pub use choose::chooses;

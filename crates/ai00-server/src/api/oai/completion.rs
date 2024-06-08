@@ -200,11 +200,11 @@ async fn respond_stream(depot: &mut Depot, request: CompletionRequest, res: &mut
 
 /// Generate completions for the given text.
 #[endpoint(
-        responses(
-            (status_code = 200, description = "Generate one response if `stream` is false.", body = CompletionResponse),
-            (status_code = 201, description = "Generate SSE response if `stream` is true. `StatusCode` should be 200.", body = PartialCompletionResponse)
-        )
-    )]
+    responses(
+        (status_code = 200, description = "Generate one response if `stream` is false.", body = CompletionResponse),
+        (status_code = 201, description = "Generate SSE response if `stream` is true. `StatusCode` should be 200.", body = PartialCompletionResponse)
+    )
+)]
 pub async fn completions(depot: &mut Depot, req: JsonBody<CompletionRequest>, res: &mut Response) {
     let request = req.0;
     match request.stream {

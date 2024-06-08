@@ -23,6 +23,7 @@ struct InitStateInfo {
     name: String,
 }
 
+/// Report the current runtime info.
 #[handler]
 pub async fn info(depot: &mut Depot) -> Json<InfoResponse> {
     let ThreadState { sender, .. } = depot.obtain::<ThreadState>().unwrap();
@@ -43,6 +44,8 @@ pub async fn info(depot: &mut Depot) -> Json<InfoResponse> {
     })
 }
 
+/// Report the current runtime info every half second.
+///
 /// `/api/models/state`.
 #[handler]
 pub async fn state(depot: &mut Depot, res: &mut Response) {
@@ -76,8 +79,16 @@ pub async fn state(depot: &mut Depot, res: &mut Response) {
     salvo::sse::stream(res, stream);
 }
 
+/// Load a runtime with models, LoRA, initial states, etc.
+///
 /// `/api/models/load`.
-#[handler]
+#[endpoint(
+    responses(
+        (status_code = 200, description = "Load the initial state successfully."),
+        (status_code = 404, description = "Cannot locate the file requested."),
+        (status_code = 500, description = "Server thread exited."),
+    )
+)]
 pub async fn load(depot: &mut Depot, req: &mut Request) -> StatusCode {
     let ThreadState { sender, path } = depot.obtain::<ThreadState>().unwrap();
     let (result_sender, result_receiver) = flume::unbounded();
@@ -111,6 +122,8 @@ pub async fn load(depot: &mut Depot, req: &mut Request) -> StatusCode {
     }
 }
 
+/// Unload the current runtime.
+///
 /// `/api/models/unload`.
 #[handler]
 pub async fn unload(depot: &mut Depot) -> StatusCode {
@@ -120,8 +133,16 @@ pub async fn unload(depot: &mut Depot) -> StatusCode {
     StatusCode::OK
 }
 
+/// Load an initial state from the path.
+///
 /// `/api/models/state/load`.
-#[handler]
+#[endpoint(
+    responses(
+        (status_code = 200, description = "Load the initial state successfully."),
+        (status_code = 404, description = "Cannot locate the file requested."),
+        (status_code = 500, description = "Server thread exited."),
+    )
+)]
 pub async fn load_state(depot: &mut Depot, req: &mut Request) -> StatusCode {
     let ThreadState { sender, path } = depot.obtain::<ThreadState>().unwrap();
     let (result_sender, result_receiver) = flume::unbounded();
@@ -142,8 +163,16 @@ pub async fn load_state(depot: &mut Depot, req: &mut Request) -> StatusCode {
     }
 }
 
+/// Save the current model as a prefab.
+///
 /// `/api/models/save`.
-#[handler]
+#[endpoint(
+    responses(
+        (status_code = 200, description = "Save the model successfully."),
+        (status_code = 404, description = "Cannot locate the file requested."),
+        (status_code = 500, description = "Server thread exited."),
+    )
+)]
 pub async fn save(depot: &mut Depot, req: &mut Request) -> StatusCode {
     let ThreadState { sender, path } = depot.obtain::<ThreadState>().unwrap();
     let (result_sender, result_receiver) = flume::unbounded();

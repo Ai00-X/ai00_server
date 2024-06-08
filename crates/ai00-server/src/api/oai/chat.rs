@@ -265,11 +265,11 @@ async fn respond_stream(depot: &mut Depot, request: ChatRequest, res: &mut Respo
 
 /// Generate chat completions with context.
 #[endpoint(
-        responses(
-            (status_code = 200, description = "Generate one response if `stream` is false.", body = ChatResponse),
-            (status_code = 201, description = "Generate SSE response if `stream` is true. `StatusCode` should be 200.", body = PartialChatResponse)
-        )
-    )]
+    responses(
+        (status_code = 200, description = "Generate one response if `stream` is false.", body = ChatResponse),
+        (status_code = 201, description = "Generate SSE response if `stream` is true. `StatusCode` should be 200.", body = PartialChatResponse)
+    )
+)]
 pub async fn chat_completions(depot: &mut Depot, req: JsonBody<ChatRequest>, res: &mut Response) {
     let request = req.0;
     match request.stream {
