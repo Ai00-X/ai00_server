@@ -23,6 +23,30 @@ use crate::{
 #[derive(Debug, Derivative, Deserialize, ToSchema)]
 #[derivative(Default)]
 #[serde(default)]
+#[salvo(schema(
+    example = json!({
+        "prompt": [
+            "The Eiffel Tower is located in the city of"
+        ],
+        "stop": [
+            "\n\n",
+            "."
+        ],
+        "stream": false,
+        "max_tokens": 1000,
+        "sampler_override": {
+            "type": "Nucleus",
+            "top_p": 0.5,
+            "top_k": 128,
+            "temperature": 1,
+            "presence_penalty": 0.3,
+            "frequency_penalty": 0.3,
+            "penalty": 400,
+            "penalty_decay": 0.99654026
+        },
+        "state": "00000000-0000-0000-0000-000000000000"
+    })
+))]
 pub struct CompletionRequest {
     prompt: Array<String>,
     state: StateId,
@@ -82,6 +106,28 @@ pub struct CompletionChoice {
 }
 
 #[derive(Debug, Serialize, ToSchema, ToResponse)]
+#[salvo(schema(
+    example = json!({
+        "object": "text_completion",
+        "model": "assets/models\\RWKV-x060-World-3B-v2.1-20240417-ctx4096.st",
+        "choices": [
+            {
+                "text": " Paris, France",
+                "index": 0,
+                "finish_reason": "stop"
+            }
+        ],
+        "usage": {
+            "prompt": 11,
+            "completion": 4,
+            "total": 15,
+            "duration": {
+                "secs": 0,
+                "nanos": 260801800
+            }
+        }
+    })
+))]
 pub struct CompletionResponse {
     object: String,
     model: String,
@@ -107,17 +153,28 @@ pub struct PartialCompletionChoice {
 }
 
 #[derive(Debug, Serialize, ToSchema, ToResponse)]
+#[salvo(schema(
+    example = json!({
+        "object": "text_completion.chunk",
+        "model": "assets/models\\RWKV-x060-World-3B-v2.1-20240417-ctx4096.st",
+        "choices": [
+            {
+                "delta": {
+                    "content": " Paris"
+                },
+                "index": 0,
+                "finish_reason": null
+            }
+        ]
+    })
+))]
 pub struct PartialCompletionResponse {
     object: String,
     model: String,
     choices: Vec<PartialCompletionChoice>,
 }
 
-async fn respond_one(
-    depot: &mut Depot,
-    request: CompletionRequest,
-    res: &mut Response,
-) -> StatusCode {
+async fn respond_one(depot: &mut Depot, request: CompletionRequest, res: &mut Response) {
     let ThreadState { sender, .. } = depot.obtain::<ThreadState>().unwrap();
     let info = request_info(sender.clone(), SLEEP).await;
     let model_name = info.reload.model_path.to_string_lossy().into_owned();
@@ -161,15 +218,9 @@ async fn respond_one(
         counter: token_counter,
     });
     res.render(json);
-
-    StatusCode::OK
 }
 
-async fn respond_stream(
-    depot: &mut Depot,
-    request: CompletionRequest,
-    res: &mut Response,
-) -> StatusCode {
+async fn respond_stream(depot: &mut Depot, request: CompletionRequest, res: &mut Response) {
     let ThreadState { sender, .. } = depot.obtain::<ThreadState>().unwrap();
     let info = request_info(sender.clone(), SLEEP).await;
     let model_name = info.reload.model_path.to_string_lossy().into_owned();
@@ -206,8 +257,6 @@ async fn respond_stream(
         }
     });
     salvo::sse::stream(res, stream);
-
-    StatusCode::CREATED
 }
 
 /// Generate completions for the given text.
@@ -217,11 +266,7 @@ async fn respond_stream(
         (status_code = 201, description = "Generate SSE response if `stream` is true", body = PartialCompletionResponse)
     )
 )]
-pub async fn completions(
-    depot: &mut Depot,
-    req: JsonBody<CompletionRequest>,
-    res: &mut Response,
-) -> StatusCode {
+pub async fn completions(depot: &mut Depot, req: JsonBody<CompletionRequest>, res: &mut Response) {
     let request = req.0;
     match request.stream {
         true => respond_stream(depot, request, res).await,
