@@ -243,12 +243,12 @@ pub struct GenerateContext {
 #[derive(Debug, Clone)]
 struct CachedItem {
     state: TensorCpu<f32>,
-    output: Option<TensorCpu<f32>>,
+    output: TensorCpu<f32>,
     instant: Instant,
 }
 
 impl CachedItem {
-    pub fn new(state: TensorCpu<f32>, output: Option<TensorCpu<f32>>) -> Self {
+    pub fn new(state: TensorCpu<f32>, output: TensorCpu<f32>) -> Self {
         Self {
             state,
             output,
@@ -263,6 +263,12 @@ impl CachedItem {
             ..cached
         }
     }
+}
+
+struct CacheCheckout {
+    prefix: Vec<u16>,
+    state: TensorCpu<f32>,
+    output: Option<TensorCpu<f32>>,
 }
 
 #[derive(Debug, Default)]
@@ -508,7 +514,7 @@ impl Runtime {
 
     /// Search for the longest common prefix in the memory cache and checkout the state from that point.
     /// Should there be a cache miss, an initial state is returned.
-    async fn checkout(&self, id: StateId, tokens: &[u16], batch: usize) -> (Vec<u16>, CachedItem) {
+    async fn checkout(&self, id: StateId, tokens: &[u16], batch: usize) -> CacheCheckout {
         let mut caches = self.caches.lock().await;
 
         let Cache { state, cache } = caches.fetch(id);
@@ -521,15 +527,27 @@ impl Runtime {
 
         let prefix = prefix[0..len].to_vec();
         let state = state.clone().map(|state| state.data);
-        let item = match cache.remove(prefix[..].as_token_slice()) {
-            Some(item) => CachedItem::update(item),
-            None => CachedItem::new(state.unwrap_or_else(|| self.state.init()), None),
-        };
-        if len > 0 {
-            let key = Tokens(prefix.clone());
-            cache.insert(key, item.clone());
+
+        match cache.remove(prefix[..].as_token_slice()) {
+            Some(item) => {
+                let item = CachedItem::update(item);
+                let key = Tokens(prefix.clone());
+                cache.insert(key, item.clone());
+                CacheCheckout {
+                    prefix,
+                    state: item.state,
+                    output: Some(item.output),
+                }
+            }
+            None => {
+                let state = state.unwrap_or_else(|| self.state.init());
+                CacheCheckout {
+                    prefix,
+                    state,
+                    output: None,
+                }
+            }
         }
-        (prefix, item)
     }
 
     /// Compile and cache the given schema into a BNF sampler.
@@ -600,15 +618,15 @@ impl Runtime {
             // back a non-relative and non-empty slot and use it for our new context
             Some(SlotChoice::Back(batch)) => {
                 log::info!("start at non-empty slot {}", batch);
-                let (prefix, reload) = self.checkout(context.request.state, &tokens, batch).await;
-                self.state.load(reload.state, batch)?;
+                let checkout = self.checkout(context.request.state, &tokens, batch).await;
+                self.state.load(checkout.state, batch)?;
 
-                let len = prefix.len();
+                let len = checkout.prefix.len();
                 let mut state = SlotState::Wait(
                     GenerateContext {
                         prefix: Tokens(tokens[..len].to_vec()),
                         suffix: Tokens(tokens[len..].to_vec()),
-                        output: reload.output,
+                        output: checkout.output,
                         transformers,
                         ..context
                     }
@@ -621,15 +639,15 @@ impl Runtime {
             // directly occupy an empty slot so no need backing
             Some(SlotChoice::Empty(batch)) => {
                 log::info!("start at empty slot {}", batch);
-                let (prefix, reload) = self.checkout(context.request.state, &tokens, batch).await;
-                self.state.load(reload.state, batch)?;
+                let checkout = self.checkout(context.request.state, &tokens, batch).await;
+                self.state.load(checkout.state, batch)?;
 
-                let len = prefix.len();
+                let len = checkout.prefix.len();
                 let state = SlotState::Wait(
                     GenerateContext {
                         prefix: Tokens(tokens[..len].to_vec()),
                         suffix: Tokens(tokens[len..].to_vec()),
-                        output: reload.output,
+                        output: checkout.output,
                         transformers,
                         ..context
                     }
@@ -641,10 +659,20 @@ impl Runtime {
             // continue from an existing slot; no need backing as well
             Some(SlotChoice::Continue(batch, len)) => {
                 log::info!("continue at slot {}", batch);
+                let checkout = self.checkout(context.request.state, &tokens, batch).await;
+
+                // retrieve the last output from the cache
+                assert!(checkout.prefix.len() <= len);
+                if checkout.prefix.len() < len {
+                    self.state.load(checkout.state, batch)?;
+                }
+                let len = checkout.prefix.len();
+
                 let state = SlotState::Wait(
                     GenerateContext {
                         prefix: Tokens(tokens[..len].to_vec()),
                         suffix: Tokens(tokens[len..].to_vec()),
+                        output: checkout.output,
                         transformers,
                         ..context
                     }
@@ -682,17 +710,16 @@ impl Runtime {
                 let _ = context.sender.send(Token::Embed(embed));
             }
 
-            let mut caches = self.caches.lock().await;
-            let cache = &mut caches.fetch(context.request.state).cache;
-            cache.insert(
-                context.prefix.clone(),
-                CachedItem::new(backed, context.output),
-            );
-            log::info!(
-                "backed completed slot {} of length {}",
-                batch,
-                context.prefix.len()
-            );
+            if let Some(output) = context.output {
+                let mut caches = self.caches.lock().await;
+                let cache = &mut caches.fetch(context.request.state).cache;
+                cache.insert(context.prefix.clone(), CachedItem::new(backed, output));
+                log::info!(
+                    "backed completed slot {} of length {}",
+                    batch,
+                    context.prefix.len()
+                );
+            }
 
             assert!(matches!(slots[batch], SlotState::Busy));
             slots[batch] = SlotState::Idle(context.prefix, Instant::now());
@@ -801,8 +828,6 @@ impl Runtime {
     }
 
     async fn process(&self, payloads: &mut [Payload]) -> Result<()> {
-        self.prepare(payloads).await?;
-
         let outputs = payloads
             .iter()
             .map(|payload| match payload {
@@ -827,15 +852,14 @@ impl Runtime {
             };
 
             // cache the prompt if it is too long.
-            if !context.prompt_cached && context.prompt_tokens.len() > PROMPT_CACHE_TOKENS {
+            let cache_prompt = !context.prompt_cached;
+            let cache_prompt = cache_prompt && context.prompt_tokens.len() > PROMPT_CACHE_TOKENS;
+            if let Some(output) = cache_prompt.then_some(()).and(context.output.clone()) {
                 let mut caches = self.caches.lock().await;
                 let cache = &mut caches.fetch(context.request.state).cache;
                 let backed = self.state.back(batch).await?;
 
-                cache.insert(
-                    context.prefix.clone(),
-                    CachedItem::new(backed, context.output.clone()),
-                );
+                cache.insert(context.prefix.clone(), CachedItem::new(backed, output));
                 context.prompt_cached = true;
 
                 log::info!(
@@ -989,6 +1013,8 @@ impl Runtime {
 
             done.then(|| payload.finalize());
         }
+
+        self.prepare(payloads).await?;
 
         let option = InferOption::Last;
         let batches = payloads

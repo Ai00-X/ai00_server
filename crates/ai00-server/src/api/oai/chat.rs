@@ -47,6 +47,44 @@ pub struct ChatRecord {
 #[derive(Debug, Derivative, Deserialize, ToSchema)]
 #[derivative(Default)]
 #[serde(default)]
+#[salvo(schema(
+    example = json!({
+        "messages": [
+            {
+                "role": "user",
+                "content": "Hi!"
+            },
+            {
+                "role": "assistant",
+                "content": "Hello, I am your AI assistant. If you have any questions or instructions, please let me know!"
+            },
+            {
+                "role": "user",
+                "content": "Tell me about water."
+            }
+        ],
+        "names": {
+            "user": "User",
+            "assistant": "Assistant"
+        },
+        "stop": [
+            "\n\nUser:"
+        ],
+        "stream": false,
+        "max_tokens": 1000,
+        "sampler_override": {
+            "type": "Nucleus",
+            "top_p": 0.5,
+            "top_k": 128,
+            "temperature": 1,
+            "presence_penalty": 0.3,
+            "frequency_penalty": 0.3,
+            "penalty": 400,
+            "penalty_decay": 0.99654026
+        },
+        "state": "00000000-0000-0000-0000-000000000000"
+    })
+))]
 pub struct ChatRequest {
     messages: Array<ChatRecord>,
     names: HashMap<Role, String>,
@@ -131,6 +169,31 @@ struct ChatChoice {
 }
 
 #[derive(Debug, Serialize, ToSchema, ToResponse)]
+#[salvo(schema(
+    example = json!({
+        "object": "chat.completion",
+        "model": "assets/models\\RWKV-x060-World-3B-v2.1-20240417-ctx4096.st",
+        "choices": [
+            {
+                "message": {
+                    "role": "Assistant",
+                    "content": "Water is a chemical compound made up of two hydrogen atoms and one oxygen atom, bonded together with a shared electron pair. It is the most abundant substance in the Earth's atmosphere and oceans, and is essential for life on Earth. Water can exist in many different forms, including liquid water, ice, and solid ice. It is also an important solvent for many chemical reactions and processes. Water is found in all parts of the world and is essential for life on Earth."
+                },
+                "index": 0,
+                "finish_reason": "stop"
+            }
+        ],
+        "usage": {
+            "prompt": 41,
+            "completion": 97,
+            "total": 138,
+            "duration": {
+                "secs": 8,
+                "nanos": 381235000
+            }
+        }
+    })
+))]
 struct ChatResponse {
     object: String,
     model: String,
@@ -157,6 +220,21 @@ struct PartialChatChoice {
 }
 
 #[derive(Debug, Serialize, ToSchema, ToResponse)]
+#[salvo(schema(
+    example = json!({
+        "object": "chat.completion.chunk",
+        "model": "assets/models\\RWKV-x060-World-3B-v2.1-20240417-ctx4096.st",
+        "choices": [
+            {
+                "delta": {
+                    "role": "Assistant"
+                },
+                "index": 0,
+                "finish_reason": null
+            }
+        ]
+    })
+))]
 struct PartialChatResponse {
     object: String,
     model: String,
@@ -267,7 +345,7 @@ async fn respond_stream(depot: &mut Depot, request: ChatRequest, res: &mut Respo
 #[endpoint(
     responses(
         (status_code = 200, description = "Generate one response if `stream` is false.", body = ChatResponse),
-        (status_code = 201, description = "Generate SSE response if `stream` is true. `StatusCode` should be 200.", body = PartialChatResponse)
+        (status_code = 201, description = "Generate SSE response if `stream` is true.", body = PartialChatResponse)
     )
 )]
 pub async fn chat_completions(depot: &mut Depot, req: JsonBody<ChatRequest>, res: &mut Response) {

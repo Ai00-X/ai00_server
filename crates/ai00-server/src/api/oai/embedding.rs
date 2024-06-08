@@ -55,7 +55,7 @@ pub struct EmbeddingResponse {
 }
 
 /// Generate a embedding vector for the given text, with layer number specified for producing the embedding.
-#[endpoint]
+#[endpoint(responses((status_code = 200, body = EmbeddingResponse)))]
 pub async fn embeddings(
     depot: &mut Depot,
     req: JsonBody<EmbeddingRequest>,
