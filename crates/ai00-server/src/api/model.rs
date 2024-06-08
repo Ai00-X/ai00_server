@@ -1,9 +1,10 @@
 use ai00_core::{
+    reload::State,
     run::{InitState, StateId},
     ReloadRequest, RuntimeInfo, SaveRequest, ThreadRequest,
 };
 use futures_util::StreamExt;
-use salvo::prelude::*;
+use salvo::{oapi::extract::JsonBody, prelude::*};
 use serde::Serialize;
 use web_rwkv::runtime::model::ModelInfo;
 
@@ -82,17 +83,11 @@ pub async fn state(depot: &mut Depot, res: &mut Response) {
 /// Load a runtime with models, LoRA, initial states, etc.
 ///
 /// `/api/models/load`.
-#[endpoint(
-    responses(
-        (status_code = 200, description = "Load the initial state successfully."),
-        (status_code = 404, description = "Cannot locate the file requested."),
-        (status_code = 500, description = "Server thread exited."),
-    )
-)]
-pub async fn load(depot: &mut Depot, req: &mut Request) -> StatusCode {
+#[handler]
+pub async fn load(depot: &mut Depot, req: JsonBody<ReloadRequest>) -> StatusCode {
     let ThreadState { sender, path } = depot.obtain::<ThreadState>().unwrap();
     let (result_sender, result_receiver) = flume::unbounded();
-    let mut request: ReloadRequest = req.parse_body().await.unwrap();
+    let mut request = req.0;
 
     // make sure that we are not visiting un-permitted path.
     request.model_path = match build_path(path, request.model_path) {
@@ -136,17 +131,11 @@ pub async fn unload(depot: &mut Depot) -> StatusCode {
 /// Load an initial state from the path.
 ///
 /// `/api/models/state/load`.
-#[endpoint(
-    responses(
-        (status_code = 200, description = "Load the initial state successfully."),
-        (status_code = 404, description = "Cannot locate the file requested."),
-        (status_code = 500, description = "Server thread exited."),
-    )
-)]
-pub async fn load_state(depot: &mut Depot, req: &mut Request) -> StatusCode {
+#[handler]
+pub async fn load_state(depot: &mut Depot, req: JsonBody<State>) -> StatusCode {
     let ThreadState { sender, path } = depot.obtain::<ThreadState>().unwrap();
     let (result_sender, result_receiver) = flume::unbounded();
-    let mut request: ai00_core::reload::State = req.parse_body().await.unwrap();
+    let mut request = req.0;
 
     request.path = match build_path(path, &request.path) {
         Ok(path) => path,
@@ -166,17 +155,11 @@ pub async fn load_state(depot: &mut Depot, req: &mut Request) -> StatusCode {
 /// Save the current model as a prefab.
 ///
 /// `/api/models/save`.
-#[endpoint(
-    responses(
-        (status_code = 200, description = "Save the model successfully."),
-        (status_code = 404, description = "Cannot locate the file requested."),
-        (status_code = 500, description = "Server thread exited."),
-    )
-)]
-pub async fn save(depot: &mut Depot, req: &mut Request) -> StatusCode {
+#[handler]
+pub async fn save(depot: &mut Depot, req: JsonBody<SaveRequest>) -> StatusCode {
     let ThreadState { sender, path } = depot.obtain::<ThreadState>().unwrap();
     let (result_sender, result_receiver) = flume::unbounded();
-    let mut request: SaveRequest = req.parse_body().await.unwrap();
+    let mut request = req.0;
 
     // make sure that we are not visiting un-permitted path.
     request.path = match build_path(path, request.path) {
