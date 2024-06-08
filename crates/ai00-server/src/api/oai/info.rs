@@ -18,7 +18,7 @@ pub struct ModelResponse {
 }
 
 /// Model name and id of the current choice.
-#[endpoint]
+#[endpoint(responses((status_code = 200, body = ModelResponse)))]
 pub async fn models(depot: &mut Depot) -> Json<ModelResponse> {
     let ThreadState { sender, .. } = depot.obtain::<ThreadState>().unwrap();
     let info = request_info(sender.to_owned(), SLEEP).await;

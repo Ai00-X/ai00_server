@@ -83,7 +83,7 @@ pub async fn state(depot: &mut Depot, res: &mut Response) {
 /// Load a runtime with models, LoRA, initial states, etc.
 ///
 /// `/api/models/load`.
-#[handler]
+#[endpoint]
 pub async fn load(depot: &mut Depot, req: JsonBody<ReloadRequest>) -> StatusCode {
     let ThreadState { sender, path } = depot.obtain::<ThreadState>().unwrap();
     let (result_sender, result_receiver) = flume::unbounded();
@@ -120,7 +120,7 @@ pub async fn load(depot: &mut Depot, req: JsonBody<ReloadRequest>) -> StatusCode
 /// Unload the current runtime.
 ///
 /// `/api/models/unload`.
-#[handler]
+#[endpoint]
 pub async fn unload(depot: &mut Depot) -> StatusCode {
     let ThreadState { sender, .. } = depot.obtain::<ThreadState>().unwrap();
     let _ = sender.send(ThreadRequest::Unload);
@@ -131,7 +131,7 @@ pub async fn unload(depot: &mut Depot) -> StatusCode {
 /// Load an initial state from the path.
 ///
 /// `/api/models/state/load`.
-#[handler]
+#[endpoint]
 pub async fn load_state(depot: &mut Depot, req: JsonBody<State>) -> StatusCode {
     let ThreadState { sender, path } = depot.obtain::<ThreadState>().unwrap();
     let (result_sender, result_receiver) = flume::unbounded();
@@ -155,7 +155,7 @@ pub async fn load_state(depot: &mut Depot, req: JsonBody<State>) -> StatusCode {
 /// Save the current model as a prefab.
 ///
 /// `/api/models/save`.
-#[handler]
+#[endpoint]
 pub async fn save(depot: &mut Depot, req: JsonBody<SaveRequest>) -> StatusCode {
     let ThreadState { sender, path } = depot.obtain::<ThreadState>().unwrap();
     let (result_sender, result_receiver) = flume::unbounded();

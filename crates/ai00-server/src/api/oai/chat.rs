@@ -163,7 +163,7 @@ struct PartialChatResponse {
     choices: Vec<PartialChatChoice>,
 }
 
-async fn respond_one(depot: &mut Depot, request: ChatRequest, res: &mut Response) {
+async fn respond_one(depot: &mut Depot, request: ChatRequest, res: &mut Response) -> StatusCode {
     let ThreadState { sender, .. } = depot.obtain::<ThreadState>().unwrap();
     let info = request_info(sender.clone(), SLEEP).await;
     let model_name = info.reload.model_path.to_string_lossy().into_owned();
@@ -210,9 +210,11 @@ async fn respond_one(depot: &mut Depot, request: ChatRequest, res: &mut Response
         counter: token_counter,
     });
     res.render(json);
+
+    StatusCode::OK
 }
 
-async fn respond_stream(depot: &mut Depot, request: ChatRequest, res: &mut Response) {
+async fn respond_stream(depot: &mut Depot, request: ChatRequest, res: &mut Response) -> StatusCode {
     let ThreadState { sender, .. } = depot.obtain::<ThreadState>().unwrap();
     let info = request_info(sender.clone(), SLEEP).await;
     let model_name = info.reload.model_path.to_string_lossy().into_owned();
@@ -261,16 +263,22 @@ async fn respond_stream(depot: &mut Depot, request: ChatRequest, res: &mut Respo
         }
     });
     salvo::sse::stream(res, stream);
+
+    StatusCode::CREATED
 }
 
 /// Generate chat completions with context.
 #[endpoint(
     responses(
         (status_code = 200, description = "Generate one response if `stream` is false.", body = ChatResponse),
-        (status_code = 201, description = "Generate SSE response if `stream` is true. `StatusCode` should be 200.", body = PartialChatResponse)
+        (status_code = 201, description = "Generate SSE response if `stream` is true.", body = PartialChatResponse)
     )
 )]
-pub async fn chat_completions(depot: &mut Depot, req: JsonBody<ChatRequest>, res: &mut Response) {
+pub async fn chat_completions(
+    depot: &mut Depot,
+    req: JsonBody<ChatRequest>,
+    res: &mut Response,
+) -> StatusCode {
     let request = req.0;
     match request.stream {
         true => respond_stream(depot, request, res).await,

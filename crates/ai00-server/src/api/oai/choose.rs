@@ -54,7 +54,8 @@ pub struct ChooseResponse {
     data: Vec<ChooseData>,
 }
 
-#[endpoint]
+/// Let the model choose from several options given a prompt.
+#[endpoint(responses((status_code = 200, body = ChooseResponse)))]
 pub async fn chooses(depot: &mut Depot, req: JsonBody<ChooseRequest>) -> Json<ChooseResponse> {
     let request = req.to_owned();
     let ThreadState { sender, .. } = depot.obtain::<ThreadState>().unwrap();

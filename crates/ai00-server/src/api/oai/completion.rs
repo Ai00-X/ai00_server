@@ -113,7 +113,11 @@ pub struct PartialCompletionResponse {
     choices: Vec<PartialCompletionChoice>,
 }
 
-async fn respond_one(depot: &mut Depot, request: CompletionRequest, res: &mut Response) {
+async fn respond_one(
+    depot: &mut Depot,
+    request: CompletionRequest,
+    res: &mut Response,
+) -> StatusCode {
     let ThreadState { sender, .. } = depot.obtain::<ThreadState>().unwrap();
     let info = request_info(sender.clone(), SLEEP).await;
     let model_name = info.reload.model_path.to_string_lossy().into_owned();
@@ -157,9 +161,15 @@ async fn respond_one(depot: &mut Depot, request: CompletionRequest, res: &mut Re
         counter: token_counter,
     });
     res.render(json);
+
+    StatusCode::OK
 }
 
-async fn respond_stream(depot: &mut Depot, request: CompletionRequest, res: &mut Response) {
+async fn respond_stream(
+    depot: &mut Depot,
+    request: CompletionRequest,
+    res: &mut Response,
+) -> StatusCode {
     let ThreadState { sender, .. } = depot.obtain::<ThreadState>().unwrap();
     let info = request_info(sender.clone(), SLEEP).await;
     let model_name = info.reload.model_path.to_string_lossy().into_owned();
@@ -196,16 +206,22 @@ async fn respond_stream(depot: &mut Depot, request: CompletionRequest, res: &mut
         }
     });
     salvo::sse::stream(res, stream);
+
+    StatusCode::CREATED
 }
 
 /// Generate completions for the given text.
 #[endpoint(
     responses(
         (status_code = 200, description = "Generate one response if `stream` is false.", body = CompletionResponse),
-        (status_code = 201, description = "Generate SSE response if `stream` is true. `StatusCode` should be 200.", body = PartialCompletionResponse)
+        (status_code = 201, description = "Generate SSE response if `stream` is true", body = PartialCompletionResponse)
     )
 )]
-pub async fn completions(depot: &mut Depot, req: JsonBody<CompletionRequest>, res: &mut Response) {
+pub async fn completions(
+    depot: &mut Depot,
+    req: JsonBody<CompletionRequest>,
+    res: &mut Response,
+) -> StatusCode {
     let request = req.0;
     match request.stream {
         true => respond_stream(depot, request, res).await,
