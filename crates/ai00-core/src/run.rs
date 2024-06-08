@@ -656,18 +656,13 @@ impl Runtime {
                 slots[batch] = state;
                 Ok(SlotResult::Fault(batch))
             }
-            // continue from an existing slot; no need backing as well
-            Some(SlotChoice::Continue(batch, len)) => {
+            // continue from an existing slot
+            Some(SlotChoice::Continue(batch, ..)) => {
                 log::info!("continue at slot {}", batch);
                 let checkout = self.checkout(context.request.state, &tokens, batch).await;
+                self.state.load(checkout.state, batch)?;
 
-                // retrieve the last output from the cache
-                assert!(checkout.prefix.len() <= len);
-                if checkout.prefix.len() < len {
-                    self.state.load(checkout.state, batch)?;
-                }
                 let len = checkout.prefix.len();
-
                 let state = SlotState::Wait(
                     GenerateContext {
                         prefix: Tokens(tokens[..len].to_vec()),
