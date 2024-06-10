@@ -10,5 +10,7 @@ pub async fn adapters(depot: &mut Depot) -> Json<Vec<String>> {
     let ThreadState { sender, .. } = depot.obtain::<ThreadState>().unwrap();
     let _ = sender.send(ThreadRequest::Adapter(list_sender));
     let AdapterList(list) = list_receiver.recv_async().await.unwrap_or_default();
+    //去掉list中不包含 Vulkan 的适配器
+    let list = list.into_iter().filter(|adapter| adapter.contains("Vulkan")).collect();
     Json(list)
 }

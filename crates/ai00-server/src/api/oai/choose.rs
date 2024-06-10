@@ -54,6 +54,7 @@ pub struct ChooseResponse {
     data: Vec<ChooseData>,
 }
 
+/// Choose a choice from the given choices.
 #[endpoint]
 pub async fn chooses(depot: &mut Depot, req: JsonBody<ChooseRequest>) -> Json<ChooseResponse> {
     let request = req.to_owned();
