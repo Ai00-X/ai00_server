@@ -702,7 +702,7 @@ pub async fn model_route(receiver: Receiver<ThreadRequest>) -> Result<()> {
 
                     let context = GenerateContext {
                         prompt_tokens: tokens.to_vec(),
-                        prompt_cached: false,
+                        prompt_cached: Default::default(),
                         prefix: Default::default(),
                         suffix: tokens,
                         output: None,
@@ -720,8 +720,9 @@ pub async fn model_route(receiver: Receiver<ThreadRequest>) -> Result<()> {
                     let queue = queue.clone();
                     let sender = sender.clone();
                     tokio::spawn(async move {
+                        let context = &mut env.read().await.enqueue(context).await;
                         let mut queue = queue.lock().await;
-                        queue.append(&mut env.read().await.enqueue(context).await);
+                        queue.append(context);
                         let _ = sender.send(());
                     });
                 }
