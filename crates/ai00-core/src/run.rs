@@ -791,13 +791,6 @@ impl Runtime {
                 );
             }
 
-            log::info!(
-                "slot {}, suffix: {}, output: {}",
-                batch,
-                context.suffix.len(),
-                context.output.is_some()
-            );
-
             let _ = context.sender.send(Token::Start);
             assert!(matches!(payloads[batch], Payload::Empty));
             payloads[batch] = Payload::Busy(context);
