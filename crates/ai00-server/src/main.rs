@@ -195,15 +195,6 @@ async fn main() {
         .allow_headers(AllowHeaders::any())
         .into_handler();
 
-    let auth_handler: JwtAuth<JwtClaims, _> =
-        JwtAuth::new(ConstDecoder::from_secret(config.listen.slot.as_bytes()))
-            .finders(vec![
-                Box::new(HeaderFinder::new()),
-                Box::new(QueryFinder::new("jwt_token")),
-                // Box::new(CookieFinder::new("jwt_token")),
-            ])
-            .force_passed(listen.force_pass.unwrap_or_default());
-
     let admin_auth: JwtAuth<JwtClaims, _> =
         JwtAuth::new(ConstDecoder::from_secret(config.listen.slot.as_bytes()))
             .finders(vec![
@@ -213,7 +204,7 @@ async fn main() {
             ])
             .force_passed(listen.force_pass.unwrap_or_default());
 
-    let admin_router = Router::with_hoop(auth_handler)
+    let admin_router = Router::with_hoop(admin_auth)
         .push(Router::with_path("/models/save").post(api::save))
         .push(Router::with_path("/models/load").post(api::load))
         .push(Router::with_path("/models/unload").get(api::unload))
@@ -223,7 +214,7 @@ async fn main() {
         .push(Router::with_path("/files/ls").post(api::dir))
         .push(Router::with_path("/files/config/load").post(api::load_config))
         .push(Router::with_path("/files/config/save").post(api::save_config));
-    let api_router = Router::with_hoop(admin_auth)
+    let api_router = Router::new()
         .push(Router::with_path("/adapters").get(api::adapters))
         .push(Router::with_path("/models/info").get(api::info))
         .push(Router::with_path("/models/list").get(api::models))
