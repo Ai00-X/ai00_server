@@ -44,8 +44,8 @@ slot = "permisionkey"
 tls = false
 
 [[listen.app_keys]] # Allow mutiple app keys.
-app_id = "JUSTAISERVER"
-secret_key = "JUSTSECRET_KEY"
+app_id = "admin"
+secret_key = "ai00_is_good"
 
 [web] # Remove this to disable WebUI.
 path = "assets/www/index.zip" # Path to the WebUI.

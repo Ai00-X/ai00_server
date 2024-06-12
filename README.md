@@ -141,7 +141,7 @@ It only supports Safetensors models with the `.st` extension now. Models saved w
 ## 📙Currently Available APIs
 
 The API service starts at port 65530, and the data input and output format follow the Openai API specification.
-Note that some APIs like `chat` and `completions` have additional optional fields for advanced functionalities. Visit http://localhost:65530/swagger-ui for API schema.
+Note that some APIs like `chat` and `completions` have additional optional fields for advanced functionalities. Visit http://localhost:65530/api-docs for API schema.
 
 *   `/api/oai/v1/models`
 *   `/api/oai/models`

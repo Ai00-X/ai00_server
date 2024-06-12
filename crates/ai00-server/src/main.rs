@@ -140,9 +140,13 @@ async fn main() {
 
     let serve_path = match config.web {
         Some(web) => {
-            let path = tempfile::tempdir()
-                .expect("create temp dir failed")
-                .into_path();
+            if Path::new("assets/temp").exists() {
+                std::fs::remove_dir_all("assets/temp").expect("delete temp dir failed");
+            }
+
+            std::fs::create_dir("assets/temp").expect("create plugins dir failed");
+            let path = PathBuf::from("assets/temp");
+
             load_web(web.path, &path)
                 .await
                 .expect("load frontend failed");
@@ -189,29 +193,30 @@ async fn main() {
         .allow_headers(AllowHeaders::any())
         .into_handler();
 
-    let auth_handler: JwtAuth<JwtClaims, _> =
+    let admin_auth: JwtAuth<JwtClaims, _> =
         JwtAuth::new(ConstDecoder::from_secret(config.listen.slot.as_bytes()))
             .finders(vec![
                 Box::new(HeaderFinder::new()),
-                Box::new(QueryFinder::new("_token")),
+                Box::new(QueryFinder::new("admin_token")),
                 // Box::new(CookieFinder::new("jwt_token")),
             ])
             .force_passed(listen.force_pass.unwrap_or_default());
 
-    let api_router = Router::with_hoop(auth_handler)
-        .push(Router::with_path("/adapters").get(api::adapter::adapters))
-        .push(Router::with_path("/models/info").get(api::model::info))
+    let admin_router = Router::with_hoop(admin_auth)
         .push(Router::with_path("/models/save").post(api::model::save))
         .push(Router::with_path("/models/load").post(api::model::load))
         .push(Router::with_path("/models/unload").get(api::model::unload))
         .push(Router::with_path("/models/state/load").post(api::model::load_state))
-        .push(Router::with_path("/models/state").get(api::model::state))
-        .push(Router::with_path("/models/list").get(api::file::models))
         .push(Router::with_path("/files/unzip").post(api::file::unzip))
         .push(Router::with_path("/files/dir").post(api::file::dir))
         .push(Router::with_path("/files/ls").post(api::file::dir))
         .push(Router::with_path("/files/config/load").post(api::file::load_config))
-        .push(Router::with_path("/files/config/save").post(api::file::save_config))
+        .push(Router::with_path("/files/config/save").post(api::file::save_config));
+    let api_router = Router::new()
+        .push(Router::with_path("/adapters").get(api::adapter::adapters))
+        .push(Router::with_path("/models/info").get(api::model::info))
+        .push(Router::with_path("/models/list").get(api::file::models))
+        .push(Router::with_path("/models/state").get(api::model::state))
         .push(Router::with_path("/oai/models").get(api::oai::models))
         .push(Router::with_path("/oai/v1/models").get(api::oai::models))
         .push(Router::with_path("/oai/completions").post(api::oai::completions))
@@ -237,13 +242,14 @@ async fn main() {
             Router::with_path("/api")
                 .push(Router::with_path("/auth/exchange").post(api::auth::exchange))
                 .push(api_router),
-        );
+        )
+        .push(Router::with_path("/admin").push(admin_router));
 
     let doc = OpenApi::new(bin_name, version).merge_router(&app);
 
     let app = app
-        .push(doc.into_router("/api-doc/openapi.json"))
-        .push(SwaggerUi::new("/api-doc/openapi.json").into_router("swagger-ui"));
+        .push(doc.into_router("/api-docs/openapi.json"))
+        .push(SwaggerUi::new("/api-docs/openapi.json").into_router("api-docs"));
     // this static serve should be after `swagger`
     let app = match serve_path {
         Some(path) => app
