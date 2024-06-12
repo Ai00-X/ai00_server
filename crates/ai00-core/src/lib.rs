@@ -172,11 +172,12 @@ pub struct GenerateRequest {
     pub state: StateId,
 }
 
-#[derive(Debug, Derivative, Clone, Serialize, Deserialize)]
+#[derive(Debug, Derivative, Clone, Serialize, Deserialize, ToSchema)]
 #[derivative(Default)]
 #[serde(default)]
 pub struct ReloadRequest {
     /// Path to the model.
+    #[salvo(schema(value_type = String))]
     pub model_path: PathBuf,
     /// List of LoRA blended on the model.
     pub lora: Vec<reload::Lora>,
@@ -185,6 +186,7 @@ pub struct ReloadRequest {
     /// Specify layers that needs to be quantized.
     pub quant: usize,
     /// Quantization type (`Int8` or `NF4`).
+    #[salvo(schema(value_type = sealed::Quant))]
     pub quant_type: Quant,
     /// Precision for intermediate tensors (`Fp16` or `Fp32`).
     pub precision: Precision,
@@ -195,8 +197,10 @@ pub struct ReloadRequest {
     #[derivative(Default(value = "8"))]
     pub max_batch: usize,
     /// Device to put the embed tensor.
+    #[salvo(schema(value_type = sealed::EmbedDevice))]
     pub embed_device: EmbedDevice,
     /// Path to the tokenizer.
+    #[salvo(schema(value_type = String))]
     pub tokenizer_path: PathBuf,
     /// BNF options.
     pub bnf: BnfOption,
@@ -204,11 +208,12 @@ pub struct ReloadRequest {
     pub adapter: AdapterOption,
 }
 
-#[derive(Debug, Default, Clone, Serialize, Deserialize)]
+#[derive(Debug, Default, Clone, Serialize, Deserialize, ToSchema)]
 #[serde(default)]
 pub struct SaveRequest {
     /// Path to save the model.
     #[serde(alias = "model_path")]
+    #[salvo(schema(value_type = String))]
     pub path: PathBuf,
 }
 
@@ -697,9 +702,10 @@ pub async fn model_route(receiver: Receiver<ThreadRequest>) -> Result<()> {
 
                     let context = GenerateContext {
                         prompt_tokens: tokens.to_vec(),
-                        prompt_cached: false,
+                        prompt_cached: Default::default(),
                         prefix: Default::default(),
                         suffix: tokens,
+                        output: None,
                         choices,
                         model_text: vec![],
                         buffer: vec![],
@@ -714,8 +720,9 @@ pub async fn model_route(receiver: Receiver<ThreadRequest>) -> Result<()> {
                     let queue = queue.clone();
                     let sender = sender.clone();
                     tokio::spawn(async move {
+                        let context = &mut env.read().await.enqueue(context).await;
                         let mut queue = queue.lock().await;
-                        queue.append(&mut env.read().await.enqueue(context).await);
+                        queue.append(context);
                         let _ = sender.send(());
                     });
                 }
@@ -742,5 +749,28 @@ pub async fn model_route(receiver: Receiver<ThreadRequest>) -> Result<()> {
         if let Err(err) = listen.await {
             log::error!("{err}");
         }
+    }
+}
+
+#[allow(dead_code)]
+mod sealed {
+    use salvo::oapi::ToSchema;
+
+    #[derive(Debug, Default, Clone, Copy, PartialEq, Eq, Hash, ToSchema)]
+    pub enum Quant {
+        /// No quantization.
+        #[default]
+        None,
+        /// Use `Int8` quantization.
+        Int8,
+        /// Use `NF4` quantization.
+        NF4,
+    }
+
+    #[derive(Debug, Default, Clone, Copy, PartialEq, Eq, ToSchema)]
+    pub enum EmbedDevice {
+        #[default]
+        Cpu,
+        Gpu,
     }
 }

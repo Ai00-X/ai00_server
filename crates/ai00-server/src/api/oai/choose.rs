@@ -15,6 +15,20 @@ use crate::{
 
 #[derive(Debug, Default, Clone, Deserialize, ToSchema, ToParameters)]
 #[serde(default)]
+#[salvo(schema(
+    example = json!({
+        "input": [
+            "The Eiffel Tower is located in the city of"
+        ],
+        "choices": [
+            " Paris",
+            " Seattle",
+            " San Francisco",
+            " Shanghai"
+        ],
+        "state": "00000000-0000-0000-0000-000000000000"
+    })
+))]
 pub struct ChooseRequest {
     input: Array<String>,
     choices: Vec<String>,
@@ -48,14 +62,50 @@ pub struct ChooseData {
 }
 
 #[derive(Debug, Serialize, ToSchema, ToResponse)]
+#[salvo(schema(
+    example = json!({
+        "object": "list",
+        "model": "assets/models\\RWKV-x060-World-3B-v2.1-20240417-ctx4096.st",
+        "data": [
+            {
+                "object": "choice",
+                "index": 0,
+                "rank": 0,
+                "choice": " Paris",
+                "perplexity": 0.031040953
+            },
+            {
+                "object": "choice",
+                "index": 2,
+                "rank": 1,
+                "choice": " San Francisco",
+                "perplexity": 6.299065
+            },
+            {
+                "object": "choice",
+                "index": 3,
+                "rank": 2,
+                "choice": " Shanghai",
+                "perplexity": 12.735298
+            },
+            {
+                "object": "choice",
+                "index": 1,
+                "rank": 3,
+                "choice": " Seattle",
+                "perplexity": 14.686427
+            }
+        ]
+    })
+))]
 pub struct ChooseResponse {
     object: String,
     model: String,
     data: Vec<ChooseData>,
 }
 
-/// Choose a choice from the given choices.
-#[endpoint]
+/// Let the model choose from several options given a prompt.
+#[endpoint(responses((status_code = 200, body = ChooseResponse)))]
 pub async fn chooses(depot: &mut Depot, req: JsonBody<ChooseRequest>) -> Json<ChooseResponse> {
     let request = req.to_owned();
     let ThreadState { sender, .. } = depot.obtain::<ThreadState>().unwrap();

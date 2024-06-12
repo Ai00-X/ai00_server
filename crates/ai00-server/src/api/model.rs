@@ -1,9 +1,10 @@
 use ai00_core::{
+    reload::State,
     run::{InitState, StateId},
     ReloadRequest, RuntimeInfo, SaveRequest, ThreadRequest,
 };
 use futures_util::StreamExt;
-use salvo::prelude::*;
+use salvo::{oapi::extract::JsonBody, prelude::*};
 use serde::Serialize;
 use web_rwkv::runtime::model::ModelInfo;
 
@@ -23,6 +24,7 @@ struct InitStateInfo {
     name: String,
 }
 
+/// Report the current runtime info.
 #[handler]
 pub async fn info(depot: &mut Depot) -> Json<InfoResponse> {
     let ThreadState { sender, .. } = depot.obtain::<ThreadState>().unwrap();
@@ -43,6 +45,8 @@ pub async fn info(depot: &mut Depot) -> Json<InfoResponse> {
     })
 }
 
+/// Report the current runtime info every half second.
+///
 /// `/api/models/state`.
 #[handler]
 pub async fn state(depot: &mut Depot, res: &mut Response) {
@@ -76,12 +80,14 @@ pub async fn state(depot: &mut Depot, res: &mut Response) {
     salvo::sse::stream(res, stream);
 }
 
+/// Load a runtime with models, LoRA, initial states, etc.
+///
 /// `/api/models/load`.
-#[handler]
-pub async fn load(depot: &mut Depot, req: &mut Request) -> StatusCode {
+#[endpoint]
+pub async fn load(depot: &mut Depot, req: JsonBody<ReloadRequest>) -> StatusCode {
     let ThreadState { sender, path } = depot.obtain::<ThreadState>().unwrap();
     let (result_sender, result_receiver) = flume::unbounded();
-    let mut request: ReloadRequest = req.parse_body().await.unwrap();
+    let mut request = req.0;
 
     // make sure that we are not visiting un-permitted path.
     request.model_path = match build_path(path, request.model_path) {
@@ -111,8 +117,10 @@ pub async fn load(depot: &mut Depot, req: &mut Request) -> StatusCode {
     }
 }
 
+/// Unload the current runtime.
+///
 /// `/api/models/unload`.
-#[handler]
+#[endpoint]
 pub async fn unload(depot: &mut Depot) -> StatusCode {
     let ThreadState { sender, .. } = depot.obtain::<ThreadState>().unwrap();
     let _ = sender.send(ThreadRequest::Unload);
@@ -120,12 +128,14 @@ pub async fn unload(depot: &mut Depot) -> StatusCode {
     StatusCode::OK
 }
 
+/// Load an initial state from the path.
+///
 /// `/api/models/state/load`.
-#[handler]
-pub async fn load_state(depot: &mut Depot, req: &mut Request) -> StatusCode {
+#[endpoint]
+pub async fn load_state(depot: &mut Depot, req: JsonBody<State>) -> StatusCode {
     let ThreadState { sender, path } = depot.obtain::<ThreadState>().unwrap();
     let (result_sender, result_receiver) = flume::unbounded();
-    let mut request: ai00_core::reload::State = req.parse_body().await.unwrap();
+    let mut request = req.0;
 
     request.path = match build_path(path, &request.path) {
         Ok(path) => path,
@@ -142,12 +152,14 @@ pub async fn load_state(depot: &mut Depot, req: &mut Request) -> StatusCode {
     }
 }
 
+/// Save the current model as a prefab.
+///
 /// `/api/models/save`.
-#[handler]
-pub async fn save(depot: &mut Depot, req: &mut Request) -> StatusCode {
+#[endpoint]
+pub async fn save(depot: &mut Depot, req: JsonBody<SaveRequest>) -> StatusCode {
     let ThreadState { sender, path } = depot.obtain::<ThreadState>().unwrap();
     let (result_sender, result_receiver) = flume::unbounded();
-    let mut request: SaveRequest = req.parse_body().await.unwrap();
+    let mut request = req.0;
 
     // make sure that we are not visiting un-permitted path.
     request.path = match build_path(path, request.path) {
