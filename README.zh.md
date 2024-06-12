@@ -123,7 +123,7 @@
 ## 📙目前可用的API
 
 API 服务开启于 65530 端口, 数据输入输出格式遵循 Openai API 规范。
-有一些 API，比如`chat`和`completions`有一些可选的额外字段，这些额外字段是为高级功能准备的。可以访问 http://localhost:65530/swagger-ui 查看具体的 API 参数。
+有一些 API，比如`chat`和`completions`有一些可选的额外字段，这些额外字段是为高级功能准备的。可以访问 http://localhost:65530/api-docs 查看具体的 API 参数。
 
 - `/api/oai/v1/models`
 - `/api/oai/models`

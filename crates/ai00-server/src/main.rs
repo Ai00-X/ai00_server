@@ -140,9 +140,7 @@ async fn main() {
 
     let serve_path = match config.web {
         Some(web) => {
-            
             if Path::new("assets/temp").exists() {
-                //如果存在则删除
                 std::fs::remove_dir_all("assets/temp").expect("delete temp dir failed");
             }
 
@@ -245,16 +243,13 @@ async fn main() {
                 .push(Router::with_path("/auth/exchange").post(api::auth::exchange))
                 .push(api_router),
         )
-        .push(
-            Router::with_path("/admin")
-                .push(admin_router),
-        );
+        .push(Router::with_path("/admin").push(admin_router));
 
     let doc = OpenApi::new(bin_name, version).merge_router(&app);
 
     let app = app
-        .push(doc.into_router("/api-doc/openapi.json"))
-        .push(SwaggerUi::new("/api-doc/openapi.json").into_router("api-doc"));
+        .push(doc.into_router("/api-docs/openapi.json"))
+        .push(SwaggerUi::new("/api-docs/openapi.json").into_router("api-docs"));
     // this static serve should be after `swagger`
     let app = match serve_path {
         Some(path) => app
