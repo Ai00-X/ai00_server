@@ -87,7 +87,7 @@ dependencies = [
 
 [[package]]
 name = "ai00-core"
-version = "0.5.2"
+version = "0.5.3"
 dependencies = [
  "anyhow",
  "bytemuck",
@@ -112,7 +112,7 @@ dependencies = [
 
 [[package]]
 name = "ai00-server"
-version = "0.5.2"
+version = "0.5.3"
 dependencies = [
  "ai00-core",
  "anyhow",
@@ -674,7 +674,7 @@ checksum = "245097e9a4535ee1e3e3931fcfcd55a796a44c643e8596ff6566d68f09b87bbc"
 
 [[package]]
 name = "converter"
-version = "0.5.2"
+version = "0.5.3"
 dependencies = [
  "anyhow",
  "clap",
