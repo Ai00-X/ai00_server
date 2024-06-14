@@ -8,7 +8,6 @@ use std::{
 };
 
 use anyhow::Result;
-use bnf_sampler::{grammar::Grammar, vocabulary::Vocabulary};
 use derivative::Derivative;
 use flume::{Receiver, Sender};
 use itertools::Itertools;
@@ -36,8 +35,6 @@ use crate::{
 const END_OF_LINE_TOKEN: u16 = 261;
 const MIN_PROMPT_CACHE_TOKENS: usize = 32;
 const MAX_CACHE_ITEMS: usize = 256;
-const SAMPLER_ARENA_CAPACITY: usize = 1048576;
-const GRAMMAR_ARENA_CAPACITY: usize = 1024;
 
 #[derive(Debug)]
 pub enum SlotResult {
@@ -401,7 +398,6 @@ pub struct Runtime {
     model: Arc<dyn ModelSerialize + Send + Sync>,
     runtime: JobRuntime<InferInput, InferOutput>,
     tokenizer: Arc<Tokenizer>,
-    vocab: Arc<Vocabulary>,
     slots: Mutex<Vec<SlotState>>,
     caches: Mutex<CacheHub>,
 }
@@ -413,7 +409,6 @@ impl Runtime {
         reload: ReloadRequest,
         states: Vec<InitState>,
         tokenizer: Tokenizer,
-        vocab: Vocabulary,
     ) -> Self
     where
         J: Job<Info = InferInfo, Input = InferChunk, Output = InferOutput>,
@@ -441,7 +436,7 @@ impl Runtime {
         let info = builder.info();
         let state = Arc::new(builder.state());
         let model = Arc::new(Model(builder.model()));
-        let runtime = JobRuntime::new(builder).await;
+        let runtime = JobRuntime::<InferInput, InferOutput>::new(builder).await;
 
         Self {
             context,
@@ -451,7 +446,6 @@ impl Runtime {
             model,
             runtime,
             tokenizer: Arc::new(tokenizer),
-            vocab: Arc::new(vocab),
             slots: Mutex::new(slots),
             caches: Mutex::new(caches),
         }
@@ -571,16 +565,7 @@ impl Runtime {
 
     /// Compile and cache the given schema into a BNF sampler.
     async fn compile_bnf_schema(&self, schema: String) -> Result<BnfSampler> {
-        let grammar = Grammar::new(&schema, self.vocab.clone(), GRAMMAR_ARENA_CAPACITY)?;
-        let start_nonterminal = self.reload.bnf.start_nonterminal.clone();
-        let sampler = bnf_sampler::sampler::Sampler::new(
-            grammar,
-            start_nonterminal,
-            self.vocab.clone(),
-            SAMPLER_ARENA_CAPACITY,
-            self.reload.bnf.enable_bytes_cache,
-        )?;
-        Ok(BnfSampler::new(sampler))
+        BnfSampler::new(&self.tokenizer, &schema)
     }
 
     /// Queue an inference task.
@@ -950,10 +935,10 @@ impl Runtime {
             };
 
             // update the transformer (BNF) state
-            let mut exhausted = false;
+            let mut halt = false;
             for transformer in context.transformers.iter() {
                 let mut transformer = transformer.write().await;
-                exhausted |= transformer.update(token);
+                halt |= transformer.update(token);
             }
 
             // here we detect if there is a stop word in our buffer
@@ -1045,7 +1030,7 @@ impl Runtime {
                 }
                 let _ = context.sender.send(Token::Choose(perplexities));
                 done = true;
-            } else if exhausted || stop_matched {
+            } else if halt || stop_matched {
                 let output = String::from_utf8_lossy(head);
                 let _ = context.sender.send(Token::Content(output.into()));
                 stop(FinishReason::Stop);
