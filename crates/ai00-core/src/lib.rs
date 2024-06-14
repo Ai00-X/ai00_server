@@ -5,7 +5,6 @@ use std::{
 };
 
 use anyhow::{anyhow, bail, Result};
-use bnf_sampler::{utils::U8ArrayWrapper, vocabulary::Vocabulary};
 use derivative::Derivative;
 use flume::{Receiver, Sender};
 use half::f16;
@@ -267,24 +266,6 @@ async fn load_tokenizer(path: impl AsRef<Path>) -> Result<Tokenizer> {
     Ok(Tokenizer::new(&contents)?)
 }
 
-fn load_vocab(tokenizer: &Tokenizer) -> Vocabulary {
-    let vocab = tokenizer.bytes_to_token_index();
-    let token_to_id = vocab
-        .iter()
-        .map(|(k, v)| (U8ArrayWrapper(k.clone().into_boxed_slice()), *v as u32))
-        .collect();
-    let id_to_token = vocab.iter().map(|(k, v)| (*v as u32, k.clone())).collect();
-    let id_to_token_string = vocab
-        .iter()
-        .map(|(k, v)| (*v as u32, String::from_utf8_lossy(k).to_string()))
-        .collect();
-    Vocabulary {
-        token_to_id,
-        id_to_token,
-        id_to_token_string,
-    }
-}
-
 async fn load_init_state<R: Reader>(
     context: &Context,
     info: &ModelInfo,
@@ -317,7 +298,6 @@ async fn load_runtime(
     } = reload.clone();
 
     let tokenizer = load_tokenizer(tokenizer_path).await?;
-    let vocab = load_vocab(&tokenizer);
 
     let file = File::open(model_path).await?;
     let data = unsafe { Mmap::map(&file) }?;
@@ -406,7 +386,7 @@ async fn load_runtime(
                             ($version, $precision) => {
                                 let model = Build::<$model>::build(builder).await?;
                                 let builder = <$runtime>::new(model, max_batch);
-                                Runtime::new(context, builder, reload, states, tokenizer, vocab).await
+                                Runtime::new(context, builder, reload, states, tokenizer).await
                             }
                         )+
                     }
@@ -441,7 +421,7 @@ async fn load_runtime(
                                 let seed: Seed<_, $model> = Seed::new(&context);
                                 let model = seed.deserialize(&mut deserializer)?;
                                 let builder = <$runtime>::new(model, reload.max_batch);
-                                Runtime::new(context, builder, reload, states, tokenizer, vocab).await
+                                Runtime::new(context, builder, reload, states, tokenizer).await
                             }
                         )+
                     }

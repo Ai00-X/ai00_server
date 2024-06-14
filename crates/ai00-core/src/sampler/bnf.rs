@@ -1,65 +1,46 @@
-use bit_set::BitSet;
-use bnf_sampler::sampler::{AcceptTokenResult, PossibleTokensResult, Sampler};
+use anyhow::Result;
+use kbnf::{
+    engine_like::AcceptTokenError, AcceptTokenResult, Engine, EngineLike, Token, Vocabulary,
+};
+use web_rwkv::tokenizer::Tokenizer;
 
 use super::Transformer;
 
 #[derive(Debug)]
-pub struct BnfSampler {
-    sampler: Sampler,
-    current_token_ids: BitSet,
-}
+pub struct BnfSampler(Engine);
 
 impl BnfSampler {
-    pub fn new(mut sampler: Sampler) -> Self {
-        let current_token_ids = match sampler.all_possible_next_tokens(None) {
-            Ok(PossibleTokensResult::Continue(tokens)) => tokens.clone(),
-            _ => BitSet::new(),
-        };
-        Self {
-            sampler,
-            current_token_ids,
-        }
-    }
-
-    #[inline]
-    pub fn current_token_ids(&self) -> &BitSet {
-        &self.current_token_ids
-    }
-}
-
-impl std::ops::Deref for BnfSampler {
-    type Target = Sampler;
-
-    fn deref(&self) -> &Self::Target {
-        &self.sampler
-    }
-}
-
-impl std::ops::DerefMut for BnfSampler {
-    fn deref_mut(&mut self) -> &mut Self::Target {
-        &mut self.sampler
+    pub fn new(tokenizer: &Tokenizer, schema: &str) -> Result<Self> {
+        let tokens = tokenizer
+            .token_index_to_bytes()
+            .iter()
+            .enumerate()
+            .map(|(k, v)| (k as u32, Token(v.clone().into_boxed_slice())))
+            .collect();
+        let strings = tokenizer
+            .token_index_to_bytes()
+            .iter()
+            .enumerate()
+            .map(|(k, v)| (k as u32, String::from_utf8_lossy(v).to_string()))
+            .collect();
+        let vocab = Vocabulary::new(tokens, strings)?;
+        let engine = Engine::new(schema, vocab)?;
+        Ok(Self(engine))
     }
 }
 
 impl Transformer for BnfSampler {
     fn transform(&self, output: &mut [f32]) {
-        output
-            .iter_mut()
-            .enumerate()
-            .filter(|&(token, _)| !self.current_token_ids().contains(token))
-            .for_each(|(_, logits)| *logits = f32::MIN)
+        self.0.mask_logits(output).expect("bnf transform error")
     }
 
     fn update(&mut self, token: u16) -> bool {
-        let token = Some(token as u32);
-        let accept = self.accept_a_token(token).expect("invalid input token");
-        self.current_token_ids = match self.sampler.all_possible_next_tokens(None) {
-            Ok(PossibleTokensResult::Continue(tokens)) => tokens.clone(),
-            _ => BitSet::new(),
+        let halt = match self.0.try_accept_new_token(token as u32) {
+            Ok(AcceptTokenResult::Finished) | Err(AcceptTokenError::Finished) => true,
+            Ok(AcceptTokenResult::Ongoing) => false,
+            Err(_) => self.0.is_finished(),
         };
-        match accept {
-            AcceptTokenResult::Continue => false,
-            AcceptTokenResult::End | AcceptTokenResult::Failed => true,
-        }
+        self.0.compute_allowed_token_ids();
+        halt
     }
 }
