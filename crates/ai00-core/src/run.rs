@@ -935,10 +935,10 @@ impl Runtime {
             };
 
             // update the transformer (BNF) state
-            let mut exhausted = false;
+            let mut halt = false;
             for transformer in context.transformers.iter() {
                 let mut transformer = transformer.write().await;
-                exhausted |= transformer.update(token);
+                halt |= transformer.update(token);
             }
 
             // here we detect if there is a stop word in our buffer
@@ -1030,7 +1030,7 @@ impl Runtime {
                 }
                 let _ = context.sender.send(Token::Choose(perplexities));
                 done = true;
-            } else if exhausted || stop_matched {
+            } else if halt || stop_matched {
                 let output = String::from_utf8_lossy(head);
                 let _ = context.sender.send(Token::Content(output.into()));
                 stop(FinishReason::Stop);
