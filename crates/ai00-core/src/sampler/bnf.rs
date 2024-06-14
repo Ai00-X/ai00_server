@@ -15,12 +15,14 @@ impl BnfSampler {
             .token_index_to_bytes()
             .iter()
             .enumerate()
+            .filter(|(_, v)| !v.is_empty())
             .map(|(k, v)| (k as u32, Token(v.clone().into_boxed_slice())))
             .collect();
         let strings = tokenizer
             .token_index_to_bytes()
             .iter()
             .enumerate()
+            .filter(|(_, v)| !v.is_empty())
             .map(|(k, v)| (k as u32, String::from_utf8_lossy(v).to_string()))
             .collect();
         let vocab = Vocabulary::new(tokens, strings)?;
@@ -31,6 +33,7 @@ impl BnfSampler {
 
 impl Transformer for BnfSampler {
     fn transform(&self, output: &mut [f32]) {
+        let output = &mut output[..self.0.vocab().vocab_size()];
         self.0.mask_logits(output).expect("bnf transform error")
     }
 

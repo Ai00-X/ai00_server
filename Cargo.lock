@@ -1659,9 +1659,9 @@ dependencies = [
 
 [[package]]
 name = "kbnf"
-version = "0.1.2"
+version = "0.1.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "e6d1722638274535080c14a131457152942c92534ed8989980d53aab4cf9da8a"
+checksum = "480e80d8fadff72f7a7267646177ac7ac3e29ada0f0a02241c35182913f406c4"
 dependencies = [
  "ahash 0.8.11",
  "displaydoc",
