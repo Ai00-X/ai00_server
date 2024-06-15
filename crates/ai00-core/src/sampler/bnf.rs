@@ -4,7 +4,7 @@ use kbnf::{
 };
 use web_rwkv::tokenizer::Tokenizer;
 
-use super::Transformer;
+use super::Formatter;
 
 #[derive(Debug)]
 pub struct BnfSampler(Engine);
@@ -31,7 +31,7 @@ impl BnfSampler {
     }
 }
 
-impl Transformer for BnfSampler {
+impl Formatter for BnfSampler {
     fn transform(&self, output: &mut [f32]) {
         let output = &mut output[..self.0.vocab().vocab_size()];
         self.0.mask_logits(output).expect("bnf transform error")

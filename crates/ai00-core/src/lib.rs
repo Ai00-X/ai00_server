@@ -690,7 +690,7 @@ pub async fn model_route(receiver: Receiver<ThreadRequest>) -> Result<()> {
                         model_text: vec![],
                         buffer: vec![],
                         model_tokens: vec![],
-                        transformers: vec![],
+                        formatters: vec![],
                         instant: None,
                         request,
                         sender: token_sender,

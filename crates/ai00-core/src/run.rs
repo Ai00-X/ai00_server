@@ -28,7 +28,7 @@ use web_rwkv::{
 };
 
 use crate::{
-    sampler::{bnf::BnfSampler, Transformer},
+    sampler::{bnf::BnfSampler, Formatter},
     Environment, FinishReason, GenerateKind, GenerateRequest, ReloadRequest, Token, TokenCounter,
 };
 
@@ -229,7 +229,7 @@ pub struct GenerateContext {
     pub model_tokens: Vec<u16>,
     /// Compiled BNF schema, if any.
     #[derivative(Debug = "ignore")]
-    pub transformers: Vec<Arc<RwLock<dyn Transformer + Send + Sync>>>,
+    pub formatters: Vec<Arc<RwLock<dyn Formatter + Send + Sync>>>,
     /// For measuring time used.
     pub instant: Option<Instant>,
     /// Generate request provided by the caller.
@@ -578,10 +578,10 @@ impl Runtime {
         }
 
         // compile the BNF schema.
-        let mut transformers = Vec::<Arc<RwLock<dyn Transformer + Send + Sync>>>::new();
+        let mut formatters = Vec::<Arc<RwLock<dyn Formatter + Send + Sync>>>::new();
         if let Some(schema) = context.request.bnf_schema.clone() {
             match self.compile_bnf_schema(schema).await {
-                Ok(bnf) => transformers.push(Arc::new(RwLock::new(bnf))),
+                Ok(bnf) => formatters.push(Arc::new(RwLock::new(bnf))),
                 Err(err) => return Ok(SlotResult::Error(err.to_string())),
             }
         }
@@ -614,7 +614,7 @@ impl Runtime {
                 GenerateContext {
                     prefix: Default::default(),
                     suffix: Tokens(tokens),
-                    transformers,
+                    formatters,
                     ..context
                 }
                 .into(),
@@ -634,7 +634,7 @@ impl Runtime {
                         prefix: Tokens(tokens[..len].to_vec()),
                         suffix: Tokens(tokens[len..].to_vec()),
                         output: checkout.output,
-                        transformers,
+                        formatters,
                         ..context
                     }
                     .into(),
@@ -658,7 +658,7 @@ impl Runtime {
                         prefix: Tokens(tokens[..len].to_vec()),
                         suffix: Tokens(tokens[len..].to_vec()),
                         output: checkout.output,
-                        transformers,
+                        formatters,
                         ..context
                     }
                     .into(),
@@ -681,7 +681,7 @@ impl Runtime {
                         prefix: Tokens(tokens[..len].to_vec()),
                         suffix: Tokens(tokens[len..].to_vec()),
                         output: checkout.output,
-                        transformers,
+                        formatters,
                         ..context
                     }
                     .into(),
@@ -803,7 +803,7 @@ impl Runtime {
 
             let num_vocab = self.info.num_vocab;
             let output = output;
-            let transformers = context.transformers.clone();
+            let formatters = context.formatters.clone();
             let sampler = context.request.sampler.clone();
             let bias = context.request.bias.clone();
             set.spawn(async move {
@@ -814,8 +814,8 @@ impl Runtime {
                 for (token, bias) in bias.iter() {
                     data[*token as usize] += *bias;
                 }
-                for transformer in transformers {
-                    transformer.read().await.transform(&mut data);
+                for formatter in formatters {
+                    formatter.read().await.transform(&mut data);
                 }
 
                 (batch, data)
@@ -934,11 +934,11 @@ impl Runtime {
                 done = true;
             };
 
-            // update the transformer (BNF) state
+            // update the formatter (BNF) state
             let mut halt = false;
-            for transformer in context.transformers.iter() {
-                let mut transformer = transformer.write().await;
-                halt |= transformer.update(token);
+            for formatter in context.formatters.iter() {
+                let mut formatter = formatter.write().await;
+                halt |= formatter.update(token);
             }
 
             // here we detect if there is a stop word in our buffer
