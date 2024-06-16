@@ -202,14 +202,15 @@ struct ChatResponse {
     counter: TokenCounter,
 }
 
-#[derive(Debug, Default, Serialize, ToSchema, ToResponse)]
+#[derive(Debug, Derivative, Serialize, ToSchema, ToResponse)]
+#[derivative(Default)]
 #[serde(rename_all = "snake_case")]
 enum PartialChatRecord {
-    #[default]
-    #[serde(rename = "")]
-    None,
     Role(Role),
     Content(String),
+    #[derivative(Default)]
+    #[serde(untagged)]
+    None(HashMap<String, String>),
 }
 
 #[derive(Debug, Default, Serialize, ToSchema, ToResponse)]
