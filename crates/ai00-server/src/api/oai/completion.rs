@@ -136,13 +136,14 @@ pub struct CompletionResponse {
     counter: TokenCounter,
 }
 
-#[derive(Debug, Default, Serialize, ToSchema, ToResponse)]
+#[derive(Debug, Derivative, Serialize, ToSchema, ToResponse)]
+#[derivative(Default)]
 #[serde(rename_all = "snake_case")]
 pub enum PartialCompletionRecord {
-    #[default]
-    #[serde(rename = "")]
-    None,
     Content(String),
+    #[derivative(Default)]
+    #[serde(untagged)]
+    None(HashMap<String, String>),
 }
 
 #[derive(Debug, Default, Serialize, ToSchema, ToResponse)]
