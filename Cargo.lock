@@ -101,7 +101,7 @@ dependencies = [
  "log",
  "memmap2",
  "qp-trie",
- "rustc-hash",
+ "rustc-hash 1.1.0",
  "safetensors",
  "salvo",
  "serde",
@@ -1700,7 +1700,7 @@ dependencies = [
  "nom",
  "parse-hyperlinks",
  "regex-syntax",
- "rustc-hash",
+ "rustc-hash 1.1.0",
  "serde",
  "string-interner",
  "thiserror",
@@ -1904,7 +1904,7 @@ dependencies = [
  "indexmap",
  "log",
  "num-traits",
- "rustc-hash",
+ "rustc-hash 1.1.0",
  "spirv",
  "termcolor",
  "thiserror",
@@ -2405,7 +2405,7 @@ dependencies = [
  "pin-project-lite",
  "quinn-proto",
  "quinn-udp",
- "rustc-hash",
+ "rustc-hash 1.1.0",
  "rustls 0.21.12",
  "thiserror",
  "tokio",
@@ -2421,7 +2421,7 @@ dependencies = [
  "bytes",
  "rand",
  "ring 0.16.20",
- "rustc-hash",
+ "rustc-hash 1.1.0",
  "rustls 0.21.12",
  "slab",
  "thiserror",
@@ -2742,6 +2742,12 @@ name = "rustc-hash"
 version = "1.1.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "08d43f7aa6b08d49f382cde6a7982047c3426db949b1424bc4b7ec9ae12c6ce2"
+
+[[package]]
+name = "rustc-hash"
+version = "2.0.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "583034fd73374156e66797ed8e5b0d5690409c9226b22d87cb7f19821c05d152"
 
 [[package]]
 name = "rusticata-macros"
@@ -4113,9 +4119,9 @@ dependencies = [
 
 [[package]]
 name = "web-rwkv"
-version = "0.8.15"
+version = "0.8.16"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "7b07d0e90883334311bcb2de94004cd84972027aa58906ec4e4b0fa22ef74ed3"
+checksum = "838d754c3d513b1d5ea12b51a542e963bf883f788ef6c880503e51d590b2a92b"
 dependencies = [
  "ahash 0.8.11",
  "anyhow",
@@ -4130,7 +4136,7 @@ dependencies = [
  "itertools",
  "log",
  "regex",
- "rustc-hash",
+ "rustc-hash 2.0.0",
  "safetensors",
  "serde",
  "serde_bytes",
@@ -4233,7 +4239,7 @@ dependencies = [
  "parking_lot",
  "profiling",
  "raw-window-handle",
- "rustc-hash",
+ "rustc-hash 1.1.0",
  "smallvec",
  "thiserror",
  "web-sys",
@@ -4277,7 +4283,7 @@ dependencies = [
  "range-alloc",
  "raw-window-handle",
  "renderdoc-sys",
- "rustc-hash",
+ "rustc-hash 1.1.0",
  "smallvec",
  "thiserror",
  "wasm-bindgen",

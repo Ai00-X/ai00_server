@@ -31,7 +31,7 @@ use web_rwkv::{
     },
     tensor::{serialization::Seed, TensorCpu},
     tokenizer::Tokenizer,
-    wgpu::{Backends, Maintain, PowerPreference},
+    wgpu::{Backends, PowerPreference},
 };
 
 use crate::{
@@ -541,12 +541,10 @@ pub async fn model_route(receiver: Receiver<ThreadRequest>) -> Result<()> {
                         // drop(mem::take(&mut *env));
                         'unload: {
                             let env = std::mem::take(&mut *env);
-                            let context = match env {
+                            let _context = match env {
                                 Environment::Loaded(runtime) => runtime.context().clone(),
                                 Environment::None => break 'unload,
                             };
-                            context.queue.submit(None);
-                            context.device.poll(Maintain::Wait);
                         }
 
                         let runtime = load_runtime(&context, &request, info, load).await?;
@@ -580,12 +578,10 @@ pub async fn model_route(receiver: Receiver<ThreadRequest>) -> Result<()> {
                         let env = std::mem::take(&mut *env);
                         log::info!("runtime unloaded");
 
-                        let context = match env {
+                        let _context = match env {
                             Environment::Loaded(runtime) => runtime.context().clone(),
                             Environment::None => return,
                         };
-                        context.queue.submit(None);
-                        context.device.poll(Maintain::Wait);
                     });
                 }
                 ThreadRequest::StateLoad { request, sender } => {
