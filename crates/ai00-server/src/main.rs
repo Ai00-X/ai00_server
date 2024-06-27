@@ -33,6 +33,78 @@ mod types;
 
 const SLEEP: Duration = Duration::from_millis(500);
 
+extern crate lazy_static;
+use fastembed::{EmbeddingModel, InitOptions, TextEmbedding};
+use std::{env,fs};
+use lazy_static::lazy_static;
+use serde::Deserialize;
+
+#[derive(Debug, Deserialize)]
+struct EmbeddingConfig {
+ 
+    model_name: String,
+    endpoint: String,
+    home_path: String,
+    //是否有前缀
+    has_prefix: bool,
+}
+
+lazy_static! {
+    #[derive(Debug)]
+    static ref EMBEDCONFIG: EmbeddingConfig = {
+        // 假设 config.json 在程序根目录
+        let config_str = fs::read_to_string("embed_config.json").expect("Unable to read config file");
+        serde_json::from_str(&config_str).expect("Unable to parse config file")
+    };
+    
+    static ref EMBEDMODEL: TextEmbedding = {
+        env::set_var("HF_ENDPOINT", EMBEDCONFIG.endpoint.clone());
+        env::set_var("HF_HOME", EMBEDCONFIG.home_path.clone());
+
+        println!("Loading embed_model: {}", EMBEDCONFIG.model_name);
+
+        TextEmbedding::try_new(InitOptions {
+            model_name: EmbeddingModel::from_name(&EMBEDCONFIG.model_name),
+            show_download_progress: true,
+            ..Default::default()
+        }).expect("Failed to initialize embed_model")
+    };
+}
+
+trait EmbeddingModelExt {
+    fn from_name(name: &str) -> Self;
+}
+
+impl EmbeddingModelExt for EmbeddingModel {
+    fn from_name(name: &str) -> Self {
+        match name {
+            "AllMiniLML6V2" => EmbeddingModel::AllMiniLML6V2,
+            "AllMiniLML6V2Q" => EmbeddingModel::AllMiniLML6V2Q,
+            "BGEBaseENV15" => EmbeddingModel::BGEBaseENV15,
+            "BGEBaseENV15Q" => EmbeddingModel::BGEBaseENV15Q,
+            "BGELargeENV15" => EmbeddingModel::BGELargeENV15,
+            "BGELargeENV15Q" => EmbeddingModel::BGELargeENV15Q,
+            "BGESmallENV15" => EmbeddingModel::BGESmallENV15,
+            "BGESmallENV15Q" => EmbeddingModel::BGESmallENV15Q,
+            "NomicEmbedTextV1" => EmbeddingModel::NomicEmbedTextV1,
+            "NomicEmbedTextV15" => EmbeddingModel::NomicEmbedTextV15,
+            "NomicEmbedTextV15Q" => EmbeddingModel::NomicEmbedTextV15Q,
+            "ParaphraseMLMiniLML12V2" => EmbeddingModel::ParaphraseMLMiniLML12V2,
+            "ParaphraseMLMiniLML12V2Q" => EmbeddingModel::ParaphraseMLMiniLML12V2,
+            "ParaphraseMLMpnetBaseV2" => EmbeddingModel::ParaphraseMLMpnetBaseV2,
+            "BGESmallZHV15" => EmbeddingModel::BGESmallZHV15,
+            "MultilingualE5Small" => EmbeddingModel::MultilingualE5Small,
+            "MultilingualE5Base" => EmbeddingModel::MultilingualE5Base,
+            "MultilingualE5Large" => EmbeddingModel::MultilingualE5Large,
+            "MxbaiEmbedLargeV1" => EmbeddingModel::MxbaiEmbedLargeV1,
+            "MxbaiEmbedLargeV1Q" => EmbeddingModel::MxbaiEmbedLargeV1Q,
+            _ => panic!("Unsupported model name"),
+        }
+        //没有match
+    }
+}
+
+
 pub fn build_path(path: impl AsRef<Path>, name: impl AsRef<Path>) -> Result<PathBuf> {
     let permitted = path.as_ref();
     let name = name.as_ref();
@@ -102,6 +174,7 @@ pub struct Args {
 
 #[tokio::main]
 async fn main() {
+
     simple_logger::SimpleLogger::new()
         .with_level(log::LevelFilter::Warn)
         .with_module_level("ai00_server", log::LevelFilter::Info)
@@ -121,6 +194,10 @@ async fn main() {
     let (sender, receiver) = flume::unbounded::<ThreadRequest>();
     tokio::spawn(model_route(receiver));
 
+    println!("{:?}", EMBEDCONFIG);
+    let _emb = EMBEDMODEL.embed(["ok"].to_vec(), None)
+    .expect("Failed to get embedding");
+
     let (listen, config) = {
         let path = args
             .config
@@ -131,6 +208,7 @@ async fn main() {
         let listen = config.listen.clone();
         (listen, config)
     };
+
 
     let request = Box::new(config.clone().try_into().expect("load model failed"));
     let _ = sender.send(ThreadRequest::Reload {
@@ -225,6 +303,8 @@ async fn main() {
         .push(Router::with_path("/oai/v1/chat/completions").post(api::oai::chat_completions))
         .push(Router::with_path("/oai/embeddings").post(api::oai::embeddings))
         .push(Router::with_path("/oai/v1/embeddings").post(api::oai::embeddings))
+        .push(Router::with_path("/oai/embeds").post(api::oai::embeds))
+        .push(Router::with_path("/oai/v1/embeds").post(api::oai::embeds))
         .push(Router::with_path("/oai/chooses").post(api::oai::chooses))
         .push(Router::with_path("/oai/v1/chooses").post(api::oai::chooses));
 

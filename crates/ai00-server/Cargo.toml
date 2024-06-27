@@ -22,6 +22,18 @@ simple_logger = { version = "5.0.0", features = ["stderr"] }
 tempfile = "3.6"
 toml = "0.8.6"
 zip-extract = "0.1"
+lazy_static = "1.4.0"
+
+# fastembed = "^3"
+fastembed = { version = "3.6.1", path = "../../../fastembed-rs" }
+tokenizers = { version = "^0.19.1", features = ["http"] }
+text-splitter = { version = "0.14.0", features = ["tokenizers", "markdown"] }
+hf-hub = { path = "../../../hf-hub" }
+ 
+[patch.crates-io] 
+hf-hub = { path = "../../../hf-hub" }
+# hf-hub = { git = "https://github.com/cgisky1980/hf-hub.git", branch = "main" }
+
 
 [dependencies.ai00-core]
 workspace = true
@@ -69,4 +81,4 @@ features = [
     "serve-static",
     "sse",
 ]
-version = "0.67"
+version = "0.68.3"
