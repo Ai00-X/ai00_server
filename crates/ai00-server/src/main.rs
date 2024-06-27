@@ -3,6 +3,9 @@ use std::{
     net::{IpAddr, Ipv4Addr, Ipv6Addr, SocketAddr},
     path::{Path, PathBuf},
     time::Duration,
+    error::Error,
+    fs,
+    env,
 };
 
 use ai00_core::{model_route, ThreadRequest};
@@ -35,9 +38,12 @@ const SLEEP: Duration = Duration::from_millis(500);
 
 extern crate lazy_static;
 use fastembed::{EmbeddingModel, InitOptions, TextEmbedding};
-use std::{env,fs};
 use lazy_static::lazy_static;
 use serde::Deserialize;
+
+use text_splitter::{ChunkConfig, TextSplitter};
+use tokenizers::Tokenizer;
+use hf_hub::api::sync::Api;
 
 #[derive(Debug, Deserialize)]
 struct EmbeddingConfig {
@@ -49,12 +55,135 @@ struct EmbeddingConfig {
     has_prefix: bool,
 }
 
+/// Data struct about the available models
+#[derive(Debug, Clone)]
+pub struct ModelInfo {
+    pub model: EmbeddingModel,
+    pub model_code: String,
+}
+
+pub fn models_list() -> Vec<ModelInfo> {
+    let models_list = vec![
+        ModelInfo {
+            model: EmbeddingModel::AllMiniLML6V2,
+            model_code: String::from("Qdrant/all-MiniLM-L6-v2-onnx"),
+        },
+        ModelInfo {
+            model: EmbeddingModel::AllMiniLML6V2Q,
+            model_code: String::from("Xenova/all-MiniLM-L6-v2"),
+        },
+        ModelInfo {
+            model: EmbeddingModel::BGEBaseENV15,
+            model_code: String::from("Xenova/bge-base-en-v1.5"),
+
+        },
+        ModelInfo {
+            model: EmbeddingModel::BGEBaseENV15Q,
+            model_code: String::from("Qdrant/bge-base-en-v1.5-onnx-Q"),
+        },
+        ModelInfo {
+            model: EmbeddingModel::BGELargeENV15,
+            model_code: String::from("Xenova/bge-large-en-v1.5"),
+        },
+        ModelInfo {
+            model: EmbeddingModel::BGELargeENV15Q,
+            model_code: String::from("Qdrant/bge-large-en-v1.5-onnx-Q"),
+        },
+        ModelInfo {
+            model: EmbeddingModel::BGESmallENV15,
+            model_code: String::from("Xenova/bge-small-en-v1.5"),
+        },
+        ModelInfo {
+            model: EmbeddingModel::BGESmallENV15Q,
+            model_code: String::from("Qdrant/bge-small-en-v1.5-onnx-Q"),
+        },
+        ModelInfo {
+            model: EmbeddingModel::NomicEmbedTextV1,
+            model_code: String::from("nomic-ai/nomic-embed-text-v1"),
+        },
+        ModelInfo {
+            model: EmbeddingModel::NomicEmbedTextV15,
+            model_code: String::from("nomic-ai/nomic-embed-text-v1.5"),
+        },
+        ModelInfo {
+            model: EmbeddingModel::NomicEmbedTextV15Q,
+            model_code: String::from("nomic-ai/nomic-embed-text-v1.5"),
+        },
+        ModelInfo {
+            model: EmbeddingModel::ParaphraseMLMiniLML12V2Q,
+            model_code: String::from("Qdrant/paraphrase-multilingual-MiniLM-L12-v2-onnx-Q"),
+        },
+        ModelInfo {
+            model: EmbeddingModel::ParaphraseMLMiniLML12V2,
+            model_code: String::from("Xenova/paraphrase-multilingual-MiniLM-L12-v2"),
+        },
+        ModelInfo {
+            model: EmbeddingModel::ParaphraseMLMpnetBaseV2,
+            model_code: String::from("Xenova/paraphrase-multilingual-mpnet-base-v2"),
+        },
+        ModelInfo {
+            model: EmbeddingModel::BGESmallZHV15,
+            model_code: String::from("Xenova/bge-small-zh-v1.5"),
+        },
+        ModelInfo {
+            model: EmbeddingModel::MultilingualE5Small,
+            model_code: String::from("intfloat/multilingual-e5-small"),
+        },
+        ModelInfo {
+            model: EmbeddingModel::MultilingualE5Base,
+            model_code: String::from("intfloat/multilingual-e5-base"),
+        },
+        ModelInfo {
+            model: EmbeddingModel::MultilingualE5Large,
+            model_code: String::from("Qdrant/multilingual-e5-large-onnx"),
+        },
+        ModelInfo {
+            model: EmbeddingModel::MxbaiEmbedLargeV1,
+            model_code: String::from("mixedbread-ai/mxbai-embed-large-v1"),
+        },
+        ModelInfo {
+            model: EmbeddingModel::MxbaiEmbedLargeV1Q,
+            model_code: String::from("mixedbread-ai/mxbai-embed-large-v1"),
+        },
+    ];
+
+    // TODO: Use when out in stable
+    // assert_eq!(
+    //     std::mem::variant_count::<EmbeddingModel>(),
+    //     models_list.len(),
+    //     "models::models() is not exhaustive"
+    // );
+
+    models_list
+}
 lazy_static! {
     #[derive(Debug)]
     static ref EMBEDCONFIG: EmbeddingConfig = {
         // 假设 config.json 在程序根目录
         let config_str = fs::read_to_string("embed_config.json").expect("Unable to read config file");
         serde_json::from_str(&config_str).expect("Unable to parse config file")
+    };
+
+    static ref EMBEDTOKENIZERS: Tokenizer = {
+        env::set_var("HF_ENDPOINT", EMBEDCONFIG.endpoint.clone());
+        env::set_var("HF_HOME", EMBEDCONFIG.home_path.clone());
+    
+        let models_list = models_list(); // 假设这个函数已经定义并可用
+        let identifier = models_list
+            .iter()
+            .find(|m| m.model == EmbeddingModel::from_name(&EMBEDCONFIG.model_name))
+            .map(|m| m.model_code.clone())
+            .unwrap();
+
+        let api = Api::new().unwrap();
+ 
+        let filename = api
+        .model(identifier)
+        .get("tokenizer.json")
+        .unwrap();
+
+        let tk = Tokenizer::from_file(filename).unwrap();
+        tk
     };
     
     static ref EMBEDMODEL: TextEmbedding = {
