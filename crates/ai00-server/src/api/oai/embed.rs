@@ -13,9 +13,13 @@ use crate::{EMBEDMODEL, EMBEDTOKENIZERS};
 #[derive(Debug, Default,Derivative, Clone, Deserialize, ToSchema, ToParameters)]
 #[serde(default)]
 pub struct EmbedRequest {
+    #[derivative(Default(value = "Ai00 is all your need!"))]
     input: String,
     #[derivative(Default(value = "510"))]
     max_tokens: usize,
+    #[derivative(Default(value = "query:"))]
+    prefix: String,
+ 
 }
 
 #[derive(Debug, Serialize, ToSchema, ToResponse)]
@@ -45,8 +49,18 @@ pub struct EmbedResponse {
 #[endpoint(responses((status_code = 200, body = EmbedResponse)))]
 pub async fn embeds(_depot: &mut Depot, req: JsonBody<EmbedRequest>) -> Json<EmbedResponse> {
     let future = async move {
-        let input = req.input.clone();
-        let max_tokens = req.max_tokens.clone();
+        let mut input = req.input.clone();
+        let mut max_tokens = req.max_tokens.clone();
+        if max_tokens <= 0 {
+            max_tokens = 1;
+        }else if max_tokens > 510 {
+            max_tokens = 510;
+        }
+
+        if input.is_empty() {
+            input = "Ai00 is all your need!".into();
+        }
+ 
         let mut embeddings_result: Vec<EmbedsData> = Vec::new();
 
         let tokenizer = EMBEDTOKENIZERS.clone();
@@ -55,7 +69,11 @@ pub async fn embeds(_depot: &mut Depot, req: JsonBody<EmbedRequest>) -> Json<Emb
 
         let chunks = splitter.chunks(&input);
         for chunk in chunks {
-            let pp = [chunk];
+            //在每个 chunk 之前加入 前缀
+            let chunk_b = format!("{}{}", req.prefix, chunk);
+ 
+            let pp = [chunk_b];
+
             let embedding_result = EMBEDMODEL
                 .embed(Vec::from(pp), None)
                 .expect("Failed to get embedding");

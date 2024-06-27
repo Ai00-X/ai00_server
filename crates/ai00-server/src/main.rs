@@ -3,7 +3,6 @@ use std::{
     net::{IpAddr, Ipv4Addr, Ipv6Addr, SocketAddr},
     path::{Path, PathBuf},
     time::Duration,
-    error::Error,
     fs,
     env,
 };
@@ -40,19 +39,15 @@ extern crate lazy_static;
 use fastembed::{EmbeddingModel, InitOptions, TextEmbedding};
 use lazy_static::lazy_static;
 use serde::Deserialize;
-
-use text_splitter::{ChunkConfig, TextSplitter};
 use tokenizers::Tokenizer;
 use hf_hub::api::sync::Api;
 
 #[derive(Debug, Deserialize)]
 struct EmbeddingConfig {
- 
+    open_embed: bool,
     model_name: String,
     endpoint: String,
     home_path: String,
-    //是否有前缀
-    has_prefix: bool,
 }
 
 /// Data struct about the available models
@@ -165,6 +160,7 @@ lazy_static! {
     };
 
     static ref EMBEDTOKENIZERS: Tokenizer = {
+
         env::set_var("HF_ENDPOINT", EMBEDCONFIG.endpoint.clone());
         env::set_var("HF_HOME", EMBEDCONFIG.home_path.clone());
     
@@ -324,8 +320,11 @@ async fn main() {
     tokio::spawn(model_route(receiver));
 
     println!("{:?}", EMBEDCONFIG);
-    let _emb = EMBEDMODEL.embed(["ok"].to_vec(), None)
-    .expect("Failed to get embedding");
+    if EMBEDCONFIG.open_embed{
+        let _emb = EMBEDMODEL.embed(["ok"].to_vec(), None)
+        .expect("Failed to get embedding");
+    }
+
 
     let (listen, config) = {
         let path = args
@@ -432,10 +431,15 @@ async fn main() {
         .push(Router::with_path("/oai/v1/chat/completions").post(api::oai::chat_completions))
         .push(Router::with_path("/oai/embeddings").post(api::oai::embeddings))
         .push(Router::with_path("/oai/v1/embeddings").post(api::oai::embeddings))
-        .push(Router::with_path("/oai/embeds").post(api::oai::embeds))
-        .push(Router::with_path("/oai/v1/embeds").post(api::oai::embeds))
         .push(Router::with_path("/oai/chooses").post(api::oai::chooses))
         .push(Router::with_path("/oai/v1/chooses").post(api::oai::chooses));
+
+    let mut api_embed = Router::new(); 
+    if EMBEDCONFIG.open_embed{
+        api_embed = api_embed
+            .push(Router::with_path("/oai/embeds").post(api::oai::embeds))
+            .push(Router::with_path("/oai/v1/embeds").post(api::oai::embeds));
+    } 
 
     let app = Router::new()
         //.hoop(CorsLayer::permissive())
@@ -450,7 +454,8 @@ async fn main() {
         .push(
             Router::with_path("/api")
                 .push(Router::with_path("/auth/exchange").post(api::auth::exchange))
-                .push(api_router),
+                .push(api_router)
+                .push(api_embed),
         )
         .push(Router::with_path("/admin").push(admin_router));
 
