@@ -1,5 +1,5 @@
 {
-    "open_embed": true,
+    "open_embed": false,
     "model_name": "MultilingualE5Small",
     "home_path": "./assets/models/hf_hub",
     "endpoint": "https://hf-mirror.com"
