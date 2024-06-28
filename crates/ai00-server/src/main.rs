@@ -1,10 +1,9 @@
 use std::{
+    env, fs,
     io::Cursor,
     net::{IpAddr, Ipv4Addr, Ipv6Addr, SocketAddr},
     path::{Path, PathBuf},
     time::Duration,
-    fs,
-    env,
 };
 
 use ai00_core::{model_route, ThreadRequest};
@@ -37,10 +36,10 @@ const SLEEP: Duration = Duration::from_millis(500);
 
 extern crate lazy_static;
 use fastembed::{EmbeddingModel, InitOptions, TextEmbedding};
+use hf_hub::api::sync::Api;
 use lazy_static::lazy_static;
 use serde::Deserialize;
 use tokenizers::Tokenizer;
-use hf_hub::api::sync::Api;
 
 #[derive(Debug, Deserialize)]
 struct EmbeddingConfig {
@@ -70,7 +69,6 @@ pub fn models_list() -> Vec<ModelInfo> {
         ModelInfo {
             model: EmbeddingModel::BGEBaseENV15,
             model_code: String::from("Xenova/bge-base-en-v1.5"),
-
         },
         ModelInfo {
             model: EmbeddingModel::BGEBaseENV15Q,
@@ -163,7 +161,7 @@ lazy_static! {
 
         env::set_var("HF_ENDPOINT", EMBEDCONFIG.endpoint.clone());
         env::set_var("HF_HOME", EMBEDCONFIG.home_path.clone());
-    
+
         let models_list = models_list(); // 假设这个函数已经定义并可用
         let identifier = models_list
             .iter()
@@ -172,7 +170,7 @@ lazy_static! {
             .unwrap();
 
         let api = Api::new().unwrap();
- 
+
         let filename = api
         .model(identifier)
         .get("tokenizer.json")
@@ -181,7 +179,7 @@ lazy_static! {
         let tk = Tokenizer::from_file(filename).unwrap();
         tk
     };
-    
+
     static ref EMBEDMODEL: TextEmbedding = {
         env::set_var("HF_ENDPOINT", EMBEDCONFIG.endpoint.clone());
         env::set_var("HF_HOME", EMBEDCONFIG.home_path.clone());
@@ -228,7 +226,6 @@ impl EmbeddingModelExt for EmbeddingModel {
         //没有match
     }
 }
-
 
 pub fn build_path(path: impl AsRef<Path>, name: impl AsRef<Path>) -> Result<PathBuf> {
     let permitted = path.as_ref();
@@ -299,7 +296,6 @@ pub struct Args {
 
 #[tokio::main]
 async fn main() {
-
     simple_logger::SimpleLogger::new()
         .with_level(log::LevelFilter::Warn)
         .with_module_level("ai00_server", log::LevelFilter::Info)
@@ -320,11 +316,11 @@ async fn main() {
     tokio::spawn(model_route(receiver));
 
     println!("{:?}", EMBEDCONFIG);
-    if EMBEDCONFIG.open_embed{
-        let _emb = EMBEDMODEL.embed(["ok"].to_vec(), None)
-        .expect("Failed to get embedding");
+    if EMBEDCONFIG.open_embed {
+        let _emb = EMBEDMODEL
+            .embed(["ok"].to_vec(), None)
+            .expect("Failed to get embedding");
     }
-
 
     let (listen, config) = {
         let path = args
@@ -336,7 +332,6 @@ async fn main() {
         let listen = config.listen.clone();
         (listen, config)
     };
-
 
     let request = Box::new(config.clone().try_into().expect("load model failed"));
     let _ = sender.send(ThreadRequest::Reload {
@@ -434,12 +429,12 @@ async fn main() {
         .push(Router::with_path("/oai/chooses").post(api::oai::chooses))
         .push(Router::with_path("/oai/v1/chooses").post(api::oai::chooses));
 
-    let mut api_embed = Router::new(); 
-    if EMBEDCONFIG.open_embed{
+    let mut api_embed = Router::new();
+    if EMBEDCONFIG.open_embed {
         api_embed = api_embed
             .push(Router::with_path("/oai/embeds").post(api::oai::embeds))
             .push(Router::with_path("/oai/v1/embeds").post(api::oai::embeds));
-    } 
+    }
 
     let app = Router::new()
         //.hoop(CorsLayer::permissive())

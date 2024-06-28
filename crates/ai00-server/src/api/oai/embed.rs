@@ -1,16 +1,14 @@
-
+use derivative::Derivative;
 use salvo::{
     oapi::{extract::JsonBody, ToParameters, ToResponse, ToSchema},
     prelude::*,
 };
 use serde::{Deserialize, Serialize};
-use derivative::Derivative;
-use text_splitter::{ChunkConfig, TextSplitter};
-
 
 use crate::{EMBEDMODEL, EMBEDTOKENIZERS};
+use text_splitter::{ChunkConfig, TextSplitter};
 
-#[derive(Debug, Default,Derivative, Clone, Deserialize, ToSchema, ToParameters)]
+#[derive(Debug, Default, Derivative, Clone, Deserialize, ToSchema, ToParameters)]
 #[serde(default)]
 pub struct EmbedRequest {
     #[derivative(Default(value = "Ai00 is all your need!"))]
@@ -19,7 +17,6 @@ pub struct EmbedRequest {
     max_tokens: usize,
     #[derivative(Default(value = "query:"))]
     prefix: String,
- 
 }
 
 #[derive(Debug, Serialize, ToSchema, ToResponse)]
@@ -42,9 +39,6 @@ pub struct EmbedResponse {
     data: Vec<EmbedData>,
 }
 
-
-
- 
 /// Generate a embedding vector for the given text, with layer number specified for producing the embedding.
 #[endpoint(responses((status_code = 200, body = EmbedResponse)))]
 pub async fn embeds(_depot: &mut Depot, req: JsonBody<EmbedRequest>) -> Json<EmbedResponse> {
@@ -53,14 +47,14 @@ pub async fn embeds(_depot: &mut Depot, req: JsonBody<EmbedRequest>) -> Json<Emb
         let mut max_tokens = req.max_tokens.clone();
         if max_tokens <= 0 {
             max_tokens = 1;
-        }else if max_tokens > 510 {
+        } else if max_tokens > 510 {
             max_tokens = 510;
         }
 
         if input.is_empty() {
             input = "Ai00 is all your need!".into();
         }
- 
+
         let mut embeddings_result: Vec<EmbedsData> = Vec::new();
 
         let tokenizer = EMBEDTOKENIZERS.clone();
@@ -71,7 +65,7 @@ pub async fn embeds(_depot: &mut Depot, req: JsonBody<EmbedRequest>) -> Json<Emb
         for chunk in chunks {
             //在每个 chunk 之前加入 前缀
             let chunk_b = format!("{}{}", req.prefix, chunk);
- 
+
             let pp = [chunk_b];
 
             let embedding_result = EMBEDMODEL
