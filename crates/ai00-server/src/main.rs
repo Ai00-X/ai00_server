@@ -149,8 +149,6 @@ pub fn models_list() -> Vec<ModelInfo> {
 
     models_list
 }
-
-
 lazy_static! {
     #[derive(Debug)]
     static ref EMBEDCONFIG: EmbeddingConfig = {
