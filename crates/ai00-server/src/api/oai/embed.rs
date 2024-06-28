@@ -44,12 +44,8 @@ pub struct EmbedResponse {
 pub async fn embeds(_depot: &mut Depot, req: JsonBody<EmbedRequest>) -> Json<EmbedResponse> {
     let future = async move {
         let mut input = req.input.clone();
-        let mut max_tokens = req.max_tokens.clone();
-        if max_tokens <= 0 {
-            max_tokens = 1;
-        } else if max_tokens > 510 {
-            max_tokens = 510;
-        }
+        let mut max_tokens = req.max_tokens;
+        max_tokens = max_tokens.clamp(1, 510);
 
         if input.is_empty() {
             input = "Ai00 is all your need!".into();

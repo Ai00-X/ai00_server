@@ -149,6 +149,8 @@ pub fn models_list() -> Vec<ModelInfo> {
 
     models_list
 }
+
+
 lazy_static! {
     #[derive(Debug)]
     static ref EMBEDCONFIG: EmbeddingConfig = {
@@ -157,6 +159,7 @@ lazy_static! {
         serde_json::from_str(&config_str).expect("Unable to parse config file")
     };
 
+    #[allow(clippy::let_and_return)]
     static ref EMBEDTOKENIZERS: Tokenizer = {
 
         env::set_var("HF_ENDPOINT", EMBEDCONFIG.endpoint.clone());
@@ -176,8 +179,7 @@ lazy_static! {
         .get("tokenizer.json")
         .unwrap();
 
-        let tk = Tokenizer::from_file(filename).unwrap();
-        tk
+        Tokenizer::from_file(filename).unwrap()
     };
 
     static ref EMBEDMODEL: TextEmbedding = {
