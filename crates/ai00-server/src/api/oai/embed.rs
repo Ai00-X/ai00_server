@@ -11,11 +11,11 @@ use text_splitter::{ChunkConfig, TextSplitter};
 #[derive(Debug, Default, Derivative, Clone, Deserialize, ToSchema, ToParameters)]
 #[serde(default)]
 pub struct EmbedRequest {
-    #[derivative(Default(value = "Ai00 is all your need!"))]
+    #[derivative(Default(value = "String::from(\"Ai00 is all your need!\")"))]
     input: String,
-    #[derivative(Default(value = "510"))]
+    #[derivative(Default(value = "510u16"))]
     max_tokens: usize,
-    #[derivative(Default(value = "query:"))]
+    #[derivative(Default(value = "String::from(\"query:\")"))]
     prefix: String,
 }
 
