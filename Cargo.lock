@@ -72,6 +72,7 @@ dependencies = [
  "cfg-if",
  "getrandom",
  "once_cell",
+ "serde",
  "version_check",
  "zerocopy",
 ]
@@ -1659,13 +1660,14 @@ dependencies = [
 
 [[package]]
 name = "kbnf"
-version = "0.1.3"
+version = "0.1.6"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "480e80d8fadff72f7a7267646177ac7ac3e29ada0f0a02241c35182913f406c4"
+checksum = "5c3af046fd2069ae28b943a26d0539f344cb18f522b21cdac2329e4504aab1ca"
 dependencies = [
  "ahash 0.8.11",
  "displaydoc",
  "fixedbitset-stack",
+ "getrandom",
  "jaggedarray",
  "kbnf-regex-automata",
  "kbnf-syntax",
@@ -1692,9 +1694,9 @@ dependencies = [
 
 [[package]]
 name = "kbnf-syntax"
-version = "0.1.0"
+version = "0.1.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "ef4c575a961efe76523068d29c9362744f6185e6a8d0de7d4563079fc7e0365b"
+checksum = "d45547018cff6095c33df1543d70076837390d40cabc924c069c39b84210c8bd"
 dependencies = [
  "kbnf-regex-automata",
  "nom",
