@@ -17,6 +17,7 @@ cbor4ii = { version = "0.3.2", features = ["serde1"] }
 fastrand = "2"
 half = "2.4"
 kbnf = "0.1.6"
+voracious_radix_sort = "1.2.0"
 qp-trie = "0.8"
 rustc-hash = "1.1.0"
 uuid = { version = "1.8.0", features = ["serde", "v4"] }

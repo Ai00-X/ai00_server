@@ -1,11 +1,11 @@
 use std::collections::HashMap;
 
+use super::{utils, Sampler};
 use derivative::Derivative;
 use itertools::Itertools;
 use salvo::oapi::ToSchema;
 use serde::{Deserialize, Serialize};
-
-use super::Sampler;
+use voracious_radix_sort::RadixSort;
 
 #[derive(Debug, Clone, Derivative, Serialize, Deserialize, ToSchema)]
 #[derivative(Default)]
@@ -68,18 +68,23 @@ impl Sampler for NucleusSampler {
 
     fn sample(&mut self, probs: &[f32]) -> u16 {
         let NucleusSampler { params, state } = self;
-
-        let sorted = probs
+        let mut sorted = probs
             .iter()
+            .copied()
             .enumerate()
-            .sorted_unstable_by(|(_, x), (_, y)| y.total_cmp(x))
+            .map(|(id, x)| utils::F32WithIndex(id, x))
+            .collect_vec();
+        sorted.voracious_sort();
+        let sorted = sorted
+            .into_iter()
+            .rev()
             .take(params.top_k)
-            .scan((0, 0.0, 0.0), |(_, cum, _), (id, x)| {
+            .scan((0, 0.0, 0.0), |(_, cum, _), utils::F32WithIndex(id, x)| {
                 if *cum > params.top_p {
                     None
                 } else {
                     *cum += x;
-                    Some((id, *cum, *x))
+                    Some((id, *cum, x))
                 }
             })
             .map(|(id, _, x)| (id, x.powf(1.0 / params.temperature)))
@@ -94,7 +99,6 @@ impl Sampler for NucleusSampler {
                 Some((id, *cum))
             })
             .collect_vec();
-
         let rand = fastrand::f32();
         let token = sorted
             .into_iter()
