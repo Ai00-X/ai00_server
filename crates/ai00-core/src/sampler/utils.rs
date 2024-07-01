@@ -20,7 +20,7 @@ impl Radixable<f32> for F32WithIndex {
     }
 }
 #[derive(Copy, Clone, Debug)]
-pub struct DoubleF32WithIndex(pub usize, pub f32,pub f32);
+pub struct DoubleF32WithIndex(pub usize, pub f32, pub f32);
 impl PartialOrd for DoubleF32WithIndex {
     fn partial_cmp(&self, other: &DoubleF32WithIndex) -> Option<Ordering> {
         self.2.partial_cmp(&other.2)
