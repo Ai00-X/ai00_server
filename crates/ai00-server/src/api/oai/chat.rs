@@ -26,7 +26,10 @@ pub enum Role {
     User,
     #[serde(alias = "assistant")]
     Assistant,
+    #[serde(alias = "observation")]
+    Observation,
 }
+
 
 impl std::fmt::Display for Role {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
@@ -34,6 +37,7 @@ impl std::fmt::Display for Role {
             Role::System => write!(f, "System"),
             Role::User => write!(f, "User"),
             Role::Assistant => write!(f, "Assistant"),
+            Role::Observation => write!(f, "Observation"),
         }
     }
 }
