@@ -26,6 +26,8 @@ pub enum Role {
     User,
     #[serde(alias = "assistant")]
     Assistant,
+    #[serde(alias = "observation")]
+    Observation,
 }
 
 impl std::fmt::Display for Role {
@@ -34,6 +36,7 @@ impl std::fmt::Display for Role {
             Role::System => write!(f, "System"),
             Role::User => write!(f, "User"),
             Role::Assistant => write!(f, "Assistant"),
+            Role::Observation => write!(f, "Observation"),
         }
     }
 }
