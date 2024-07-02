@@ -13,12 +13,14 @@ use tokio::sync::RwLock;
 mod chat;
 mod choose;
 mod completion;
+mod embed;
 mod embedding;
 mod info;
 
 pub use chat::chat_completions;
 pub use choose::chooses;
 pub use completion::completions;
+pub use embed::embeds;
 pub use embedding::embeddings;
 pub use info::models;
 

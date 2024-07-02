@@ -13,7 +13,7 @@ use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
 use web_rwkv::runtime::{loader::Loader, model::ModelInfo};
 
-use crate::{check_path_permitted, config::Config, types::ThreadState};
+use crate::check_path_permitted;
 
 const PERMITTED_PATHS: [&str; 4] = [
     "assets/models",
@@ -85,7 +85,7 @@ pub struct LoadRequest {
 #[derive(Debug, Clone, Deserialize, Extractible)]
 pub struct SaveRequest {
     path: PathBuf,
-    config: Config,
+    config: crate::config::Config,
 }
 
 async fn dir_inner(
@@ -165,9 +165,9 @@ pub async fn dir(depot: &mut Depot, req: &mut Request, res: &mut Response) {
 /// `/api/models/list`.
 #[handler]
 pub async fn models(depot: &mut Depot, res: &mut Response) {
-    let ThreadState { path, .. } = depot.obtain::<ThreadState>().unwrap();
+    let config = depot.obtain::<crate::config::Config>().unwrap();
     let request = FileInfoRequest {
-        path: path.clone(),
+        path: config.model.path.clone(),
         is_sha: true,
     };
     match dir_inner(depot, Json(request)).await {

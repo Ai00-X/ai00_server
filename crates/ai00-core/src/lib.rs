@@ -43,7 +43,7 @@ pub mod reload;
 pub mod run;
 pub mod sampler;
 
-pub const MAX_TOKENS: usize = 4096;
+pub const MAX_TOKENS: usize = usize::MAX;
 
 #[derive(Debug)]
 pub enum Token {

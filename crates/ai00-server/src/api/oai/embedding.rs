@@ -8,7 +8,7 @@ use serde::{Deserialize, Serialize};
 
 use crate::{
     api::request_info,
-    types::{Array, ThreadState},
+    types::{Array, ThreadSender},
     SLEEP,
 };
 
@@ -61,7 +61,7 @@ pub async fn embeddings(
     req: JsonBody<EmbeddingRequest>,
 ) -> Json<EmbeddingResponse> {
     let request = req.to_owned();
-    let ThreadState { sender, .. } = depot.obtain::<ThreadState>().unwrap();
+    let sender = depot.obtain::<ThreadSender>().unwrap();
     let info = request_info(sender.clone(), SLEEP).await;
     let model_name = info.reload.model_path.to_string_lossy().into_owned();
 
