@@ -9,7 +9,7 @@ use serde::Serialize;
 use web_rwkv::runtime::model::ModelInfo;
 
 use super::*;
-use crate::{build_path, types::ThreadState, SLEEP};
+use crate::{build_path, types::ThreadSender, SLEEP};
 
 #[derive(Debug, Clone, Serialize)]
 pub struct InfoResponse {
@@ -27,7 +27,7 @@ struct InitStateInfo {
 /// Report the current runtime info.
 #[handler]
 pub async fn info(depot: &mut Depot) -> Json<InfoResponse> {
-    let ThreadState { sender, .. } = depot.obtain::<ThreadState>().unwrap();
+    let sender = depot.obtain::<ThreadSender>().unwrap();
     let RuntimeInfo {
         reload,
         model,
@@ -50,7 +50,7 @@ pub async fn info(depot: &mut Depot) -> Json<InfoResponse> {
 /// `/api/models/state`.
 #[handler]
 pub async fn state(depot: &mut Depot, res: &mut Response) {
-    let ThreadState { sender, .. } = depot.obtain::<ThreadState>().unwrap();
+    let sender = depot.obtain::<ThreadSender>().unwrap();
     let (info_sender, info_receiver) = flume::unbounded();
     let task = request_info_stream(sender.to_owned(), info_sender, SLEEP);
     tokio::task::spawn(task);
@@ -85,23 +85,24 @@ pub async fn state(depot: &mut Depot, res: &mut Response) {
 /// `/api/models/load`.
 #[endpoint]
 pub async fn load(depot: &mut Depot, req: JsonBody<ReloadRequest>) -> StatusCode {
-    let ThreadState { sender, path } = depot.obtain::<ThreadState>().unwrap();
+    let sender = depot.obtain::<ThreadSender>().unwrap();
+    let config = depot.obtain::<crate::config::Config>().unwrap();
     let (result_sender, result_receiver) = flume::unbounded();
     let mut request = req.0;
 
     // make sure that we are not visiting un-permitted path.
-    request.model_path = match build_path(path, request.model_path) {
+    request.model_path = match build_path(&config.model.path, request.model_path) {
         Ok(path) => path,
         Err(_) => return StatusCode::NOT_FOUND,
     };
     for x in request.lora.iter_mut() {
-        x.path = match build_path(path, &x.path) {
+        x.path = match build_path(&config.model.path, &x.path) {
             Ok(path) => path,
             Err(_) => return StatusCode::NOT_FOUND,
         }
     }
     for x in request.state.iter_mut() {
-        x.path = match build_path(path, &x.path) {
+        x.path = match build_path(&config.model.path, &x.path) {
             Ok(path) => path,
             Err(_) => return StatusCode::NOT_FOUND,
         }
@@ -122,7 +123,7 @@ pub async fn load(depot: &mut Depot, req: JsonBody<ReloadRequest>) -> StatusCode
 /// `/api/models/unload`.
 #[endpoint]
 pub async fn unload(depot: &mut Depot) -> StatusCode {
-    let ThreadState { sender, .. } = depot.obtain::<ThreadState>().unwrap();
+    let sender = depot.obtain::<ThreadSender>().unwrap();
     let _ = sender.send(ThreadRequest::Unload);
     while try_request_info(sender.clone()).await.is_ok() {}
     StatusCode::OK
@@ -133,11 +134,12 @@ pub async fn unload(depot: &mut Depot) -> StatusCode {
 /// `/api/models/state/load`.
 #[endpoint]
 pub async fn load_state(depot: &mut Depot, req: JsonBody<State>) -> StatusCode {
-    let ThreadState { sender, path } = depot.obtain::<ThreadState>().unwrap();
+    let sender = depot.obtain::<ThreadSender>().unwrap();
+    let config = depot.obtain::<crate::config::Config>().unwrap();
     let (result_sender, result_receiver) = flume::unbounded();
     let mut request = req.0;
 
-    request.path = match build_path(path, &request.path) {
+    request.path = match build_path(&config.model.path, &request.path) {
         Ok(path) => path,
         Err(_) => return StatusCode::NOT_FOUND,
     };
@@ -157,12 +159,13 @@ pub async fn load_state(depot: &mut Depot, req: JsonBody<State>) -> StatusCode {
 /// `/api/models/save`.
 #[endpoint]
 pub async fn save(depot: &mut Depot, req: JsonBody<SaveRequest>) -> StatusCode {
-    let ThreadState { sender, path } = depot.obtain::<ThreadState>().unwrap();
+    let sender = depot.obtain::<ThreadSender>().unwrap();
+    let config = depot.obtain::<crate::config::Config>().unwrap();
     let (result_sender, result_receiver) = flume::unbounded();
     let mut request = req.0;
 
     // make sure that we are not visiting un-permitted path.
-    request.path = match build_path(path, request.path) {
+    request.path = match build_path(&config.model.path, request.path) {
         Ok(path) => path,
         Err(_) => return StatusCode::NOT_FOUND,
     };

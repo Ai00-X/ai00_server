@@ -4,7 +4,7 @@ use salvo::{
 };
 use serde::Serialize;
 
-use crate::{api::request_info, types::ThreadState, SLEEP};
+use crate::{api::request_info, types::ThreadSender, SLEEP};
 
 #[derive(Debug, Serialize, ToSchema)]
 struct ModelChoice {
@@ -20,7 +20,7 @@ pub struct ModelResponse {
 /// Model name and id of the current choice.
 #[endpoint(responses((status_code = 200, body = ModelResponse)))]
 pub async fn models(depot: &mut Depot) -> Json<ModelResponse> {
-    let ThreadState { sender, .. } = depot.obtain::<ThreadState>().unwrap();
+    let sender = depot.obtain::<ThreadSender>().unwrap();
     let info = request_info(sender.to_owned(), SLEEP).await;
     let model_name = info
         .reload

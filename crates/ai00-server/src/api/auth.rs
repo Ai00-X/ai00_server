@@ -7,7 +7,7 @@ use salvo::{
 };
 use serde::{Deserialize, Serialize};
 
-use crate::{config::ListenerOption, types::JwtClaims};
+use crate::types::JwtClaims;
 
 #[derive(Serialize, Deserialize, Debug, ToParameters, ToSchema)]
 #[salvo(extract(
@@ -36,16 +36,18 @@ struct AuthResponse {
     )
 )]
 pub fn exchange(depot: &mut Depot, req: JsonBody<AppKeyRequest>, res: &mut Response) {
-    let listen_option = depot.get::<ListenerOption>("listen").unwrap();
+    // let listen_option = depot.get::<ListenerOption>("listen").unwrap();
+    let config = depot.obtain::<crate::config::Config>().unwrap();
     let auth = req.0;
-    if listen_option
+    if config
+        .listen
         .app_keys
         .clone()
         .into_iter()
         .any(|p| p.app_id == auth.app_id.clone() && p.secret_key == auth.app_secret.clone())
     {
         let exp = OffsetDateTime::now_utc()
-            + Duration::seconds(listen_option.expire_sec.unwrap_or(86400u32) as i64);
+            + Duration::seconds(config.listen.expire_sec.unwrap_or(86400u32) as i64);
         let claim = JwtClaims {
             sid: auth.app_id,
             exp: exp.unix_timestamp(),
@@ -53,7 +55,7 @@ pub fn exchange(depot: &mut Depot, req: JsonBody<AppKeyRequest>, res: &mut Respo
         match jsonwebtoken::encode(
             &Header::default(),
             &claim,
-            &EncodingKey::from_secret(listen_option.slot.clone().as_bytes()),
+            &EncodingKey::from_secret(config.listen.slot.clone().as_bytes()),
         ) {
             Ok(token) => {
                 res.render(Json(AuthResponse {

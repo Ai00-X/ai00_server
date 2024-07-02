@@ -21,6 +21,7 @@ pub struct Config {
     pub tokenizer: Tokenizer,
     pub bnf: BnfOption,
     pub adapter: AdapterOption,
+    pub embed: EmbedOption,
     pub listen: ListenerOption,
     pub web: Option<WebOption>,
 }
@@ -76,6 +77,16 @@ impl TryFrom<Config> for ReloadRequest {
     }
 }
 
+#[derive(Debug, Derivative, Clone, Serialize, Deserialize)]
+#[derivative(Default)]
+#[serde(default)]
+pub struct EmbedOption {
+    #[derivative(Default(value = "\"https://huggingface.co\".into()"))]
+    pub endpoint: String,
+    #[derivative(Default(value = "\"assets/models/hf\".into()"))]
+    pub home: PathBuf,
+}
+
 #[derive(Debug, Default, Clone, Serialize, Deserialize)]
 pub struct AppKey {
     pub app_id: String,
@@ -84,6 +95,7 @@ pub struct AppKey {
 
 #[derive(Debug, Derivative, Clone, Serialize, Deserialize)]
 #[derivative(Default)]
+#[serde(default)]
 pub struct ListenerOption {
     /// Ip to listen to.
     #[derivative(Default(value = "IpAddr::V4(Ipv4Addr::new(0, 0, 0, 0))"))]
