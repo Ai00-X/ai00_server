@@ -34,3 +34,5 @@ nohup.out
 .vscode/
 *.prefab
 *.prefab
+*.log
+/assets/models/hf_hub
