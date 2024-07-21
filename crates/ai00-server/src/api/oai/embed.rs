@@ -92,6 +92,16 @@ pub struct EmbedResponse {
 /// Generate a embedding vector for the given text, with layer number specified for producing the embedding.
 #[endpoint(responses((status_code = 200, body = EmbedResponse)))]
 pub async fn embeds(depot: &mut Depot, req: JsonBody<EmbedRequest>) -> Json<EmbedResponse> {
+    let task = move || {
+        let input = match req.input.as_str() {
+            "" => "Ai00 is all your need!".into(),
+            _ => req.input.clone(),
+        };
+        let max_tokens = req.max_tokens.clamp(1, 510);
+    };
+
+    let handle = tokio::task::spawn_blocking(task);
+
     // let future = async move {
     //     let mut input = req.input.clone();
     //     let mut max_tokens = req.max_tokens;

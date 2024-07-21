@@ -239,14 +239,18 @@ pub fn check_path_permitted(path: impl AsRef<Path>, permitted: &[&str]) -> Resul
     bail!("path not permitted");
 }
 
-pub async fn load_web(path: impl AsRef<Path>, target: &Path) -> Result<()> {
+async fn load_embed_tokenizer() -> Result<tokenizers::Tokenizer> {
+    todo!()
+}
+
+async fn load_web(path: impl AsRef<Path>, target: &Path) -> Result<()> {
     let file = File::open(path).await?;
     let map = unsafe { Mmap::map(&file)? };
     zip_extract::extract(Cursor::new(&map), target, false)?;
     Ok(())
 }
 
-pub async fn load_plugin(path: impl AsRef<Path>, target: &Path, name: &String) -> Result<()> {
+async fn load_plugin(path: impl AsRef<Path>, target: &Path, name: &String) -> Result<()> {
     let file = File::open(path).await?;
     let map = unsafe { Mmap::map(&file)? };
     let root = target.join("plugins");
@@ -259,7 +263,7 @@ pub async fn load_plugin(path: impl AsRef<Path>, target: &Path, name: &String) -
     Ok(())
 }
 
-pub async fn load_config(path: impl AsRef<Path>) -> Result<config::Config> {
+async fn load_config(path: impl AsRef<Path>) -> Result<config::Config> {
     let file = File::open(path).await?;
     let mut reader = BufReader::new(file);
     let mut contents = String::new();
