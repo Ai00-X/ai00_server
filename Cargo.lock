@@ -1661,9 +1661,9 @@ dependencies = [
 
 [[package]]
 name = "kbnf"
-version = "0.1.6"
+version = "0.1.11"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "5c3af046fd2069ae28b943a26d0539f344cb18f522b21cdac2329e4504aab1ca"
+checksum = "4444c8b071614783b997149be6e9a5ea249181a6b0d4416caf7578200ece809b"
 dependencies = [
  "ahash 0.8.11",
  "displaydoc",
@@ -1684,9 +1684,9 @@ dependencies = [
 
 [[package]]
 name = "kbnf-regex-automata"
-version = "0.4.7"
+version = "0.4.10"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "499fe4f128763db90782429ea71d01a5503d177d53118589a36e41611286d8a0"
+checksum = "50a900e0a0e795744f6b18fe493500a1d773633972251f84f4be909edfb0d0f2"
 dependencies = [
  "aho-corasick",
  "memchr",
@@ -1695,18 +1695,19 @@ dependencies = [
 
 [[package]]
 name = "kbnf-syntax"
-version = "0.1.2"
+version = "0.1.5"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "d45547018cff6095c33df1543d70076837390d40cabc924c069c39b84210c8bd"
+checksum = "e0be7fc0a5a4e91ae599acbdb44055f12685a58df78dd5d94f2bee939a24b009"
 dependencies = [
  "kbnf-regex-automata",
  "nom",
  "parse-hyperlinks",
  "regex-syntax",
- "rustc-hash 1.1.0",
+ "rustc-hash 2.0.0",
  "serde",
  "string-interner",
  "thiserror",
+ "unescaper",
 ]
 
 [[package]]
@@ -3878,6 +3879,15 @@ dependencies = [
  "getrandom",
  "rand",
  "web-time",
+]
+
+[[package]]
+name = "unescaper"
+version = "0.1.5"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "c878a167baa8afd137494101a688ef8c67125089ff2249284bd2b5f9bfedb815"
+dependencies = [
+ "thiserror",
 ]
 
 [[package]]
