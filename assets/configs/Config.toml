@@ -49,3 +49,8 @@ secret_key = "ai00_is_good"
 
 [web] # Remove this to disable WebUI.
 path = "assets/www/index.zip" # Path to the WebUI.
+
+[embed] # Enable embed model.
+endpoint = "https://hf-mirror.com"
+home = "./assets/models/hf"
+name = { MultilingualE5Small = {} }

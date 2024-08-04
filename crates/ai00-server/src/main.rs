@@ -2,6 +2,7 @@ use std::{
     io::Cursor,
     net::{IpAddr, Ipv4Addr, Ipv6Addr, SocketAddr},
     path::{Path, PathBuf},
+    sync::Arc,
     time::Duration,
 };
 
@@ -33,184 +34,6 @@ mod types;
 
 const SLEEP: Duration = Duration::from_millis(500);
 
-// #[derive(Debug, Deserialize)]
-// struct EmbeddingConfig {
-//     open_embed: bool,
-//     model_name: String,
-//     endpoint: String,
-//     home_path: String,
-// }
-
-// /// Data struct about the available models
-// #[derive(Debug, Clone)]
-// pub struct ModelInfo {
-//     pub model: EmbeddingModel,
-//     pub model_code: String,
-// }
-
-// pub fn models_list() -> Vec<ModelInfo> {
-//     let models_list = vec![
-//         ModelInfo {
-//             model: EmbeddingModel::AllMiniLML6V2,
-//             model_code: String::from("Qdrant/all-MiniLM-L6-v2-onnx"),
-//         },
-//         ModelInfo {
-//             model: EmbeddingModel::AllMiniLML6V2Q,
-//             model_code: String::from("Xenova/all-MiniLM-L6-v2"),
-//         },
-//         ModelInfo {
-//             model: EmbeddingModel::BGEBaseENV15,
-//             model_code: String::from("Xenova/bge-base-en-v1.5"),
-//         },
-//         ModelInfo {
-//             model: EmbeddingModel::BGEBaseENV15Q,
-//             model_code: String::from("Qdrant/bge-base-en-v1.5-onnx-Q"),
-//         },
-//         ModelInfo {
-//             model: EmbeddingModel::BGELargeENV15,
-//             model_code: String::from("Xenova/bge-large-en-v1.5"),
-//         },
-//         ModelInfo {
-//             model: EmbeddingModel::BGELargeENV15Q,
-//             model_code: String::from("Qdrant/bge-large-en-v1.5-onnx-Q"),
-//         },
-//         ModelInfo {
-//             model: EmbeddingModel::BGESmallENV15,
-//             model_code: String::from("Xenova/bge-small-en-v1.5"),
-//         },
-//         ModelInfo {
-//             model: EmbeddingModel::BGESmallENV15Q,
-//             model_code: String::from("Qdrant/bge-small-en-v1.5-onnx-Q"),
-//         },
-//         ModelInfo {
-//             model: EmbeddingModel::NomicEmbedTextV1,
-//             model_code: String::from("nomic-ai/nomic-embed-text-v1"),
-//         },
-//         ModelInfo {
-//             model: EmbeddingModel::NomicEmbedTextV15,
-//             model_code: String::from("nomic-ai/nomic-embed-text-v1.5"),
-//         },
-//         ModelInfo {
-//             model: EmbeddingModel::NomicEmbedTextV15Q,
-//             model_code: String::from("nomic-ai/nomic-embed-text-v1.5"),
-//         },
-//         ModelInfo {
-//             model: EmbeddingModel::ParaphraseMLMiniLML12V2Q,
-//             model_code: String::from("Qdrant/paraphrase-multilingual-MiniLM-L12-v2-onnx-Q"),
-//         },
-//         ModelInfo {
-//             model: EmbeddingModel::ParaphraseMLMiniLML12V2,
-//             model_code: String::from("Xenova/paraphrase-multilingual-MiniLM-L12-v2"),
-//         },
-//         ModelInfo {
-//             model: EmbeddingModel::ParaphraseMLMpnetBaseV2,
-//             model_code: String::from("Xenova/paraphrase-multilingual-mpnet-base-v2"),
-//         },
-//         ModelInfo {
-//             model: EmbeddingModel::BGESmallZHV15,
-//             model_code: String::from("Xenova/bge-small-zh-v1.5"),
-//         },
-//         ModelInfo {
-//             model: EmbeddingModel::MultilingualE5Small,
-//             model_code: String::from("intfloat/multilingual-e5-small"),
-//         },
-//         ModelInfo {
-//             model: EmbeddingModel::MultilingualE5Base,
-//             model_code: String::from("intfloat/multilingual-e5-base"),
-//         },
-//         ModelInfo {
-//             model: EmbeddingModel::MultilingualE5Large,
-//             model_code: String::from("Qdrant/multilingual-e5-large-onnx"),
-//         },
-//         ModelInfo {
-//             model: EmbeddingModel::MxbaiEmbedLargeV1,
-//             model_code: String::from("mixedbread-ai/mxbai-embed-large-v1"),
-//         },
-//         ModelInfo {
-//             model: EmbeddingModel::MxbaiEmbedLargeV1Q,
-//             model_code: String::from("mixedbread-ai/mxbai-embed-large-v1"),
-//         },
-//     ];
-//     models_list
-// }
-
-// lazy_static! {
-// #[derive(Debug)]
-// static ref EMBEDCONFIG: EmbeddingConfig = {
-//     // 假设 config.json 在程序根目录
-//     let config_str = fs::read_to_string("embed_config.json").expect("Unable to read config file");
-//     serde_json::from_str(&config_str).expect("Unable to parse config file")
-// };
-
-// #[allow(clippy::let_and_return)]
-// static ref EMBEDTOKENIZERS: Tokenizer = {
-
-//     env::set_var("HF_ENDPOINT", EMBEDCONFIG.endpoint.clone());
-//     env::set_var("HF_HOME", EMBEDCONFIG.home_path.clone());
-
-//     let models_list = models_list(); // 假设这个函数已经定义并可用
-//     let identifier = models_list
-//         .iter()
-//         .find(|m| m.model == EmbeddingModel::from_name(&EMBEDCONFIG.model_name))
-//         .map(|m| m.model_code.clone())
-//         .unwrap();
-
-//     let api = Api::new().unwrap();
-
-//     let filename = api
-//     .model(identifier)
-//     .get("tokenizer.json")
-//     .unwrap();
-
-//     Tokenizer::from_file(filename).unwrap()
-// };
-
-// static ref EMBEDMODEL: TextEmbedding = {
-//     env::set_var("HF_ENDPOINT", EMBEDCONFIG.endpoint.clone());
-//     env::set_var("HF_HOME", EMBEDCONFIG.home_path.clone());
-
-//     println!("Loading embed_model: {}", EMBEDCONFIG.model_name);
-
-//     TextEmbedding::try_new(InitOptions {
-//         model_name: EmbeddingModel::from_name(&EMBEDCONFIG.model_name),
-//         show_download_progress: true,
-//         ..Default::default()
-//     }).expect("Failed to initialize embed_model")
-// };
-// }
-
-// trait EmbeddingModelExt {
-//     fn from_name(name: &str) -> Self;
-// }
-
-// impl EmbeddingModelExt for EmbeddingModel {
-//     fn from_name(name: &str) -> Self {
-//         match name {
-//             "AllMiniLML6V2" => EmbeddingModel::AllMiniLML6V2,
-//             "AllMiniLML6V2Q" => EmbeddingModel::AllMiniLML6V2Q,
-//             "BGEBaseENV15" => EmbeddingModel::BGEBaseENV15,
-//             "BGEBaseENV15Q" => EmbeddingModel::BGEBaseENV15Q,
-//             "BGELargeENV15" => EmbeddingModel::BGELargeENV15,
-//             "BGELargeENV15Q" => EmbeddingModel::BGELargeENV15Q,
-//             "BGESmallENV15" => EmbeddingModel::BGESmallENV15,
-//             "BGESmallENV15Q" => EmbeddingModel::BGESmallENV15Q,
-//             "NomicEmbedTextV1" => EmbeddingModel::NomicEmbedTextV1,
-//             "NomicEmbedTextV15" => EmbeddingModel::NomicEmbedTextV15,
-//             "NomicEmbedTextV15Q" => EmbeddingModel::NomicEmbedTextV15Q,
-//             "ParaphraseMLMiniLML12V2" => EmbeddingModel::ParaphraseMLMiniLML12V2,
-//             "ParaphraseMLMiniLML12V2Q" => EmbeddingModel::ParaphraseMLMiniLML12V2,
-//             "ParaphraseMLMpnetBaseV2" => EmbeddingModel::ParaphraseMLMpnetBaseV2,
-//             "BGESmallZHV15" => EmbeddingModel::BGESmallZHV15,
-//             "MultilingualE5Small" => EmbeddingModel::MultilingualE5Small,
-//             "MultilingualE5Base" => EmbeddingModel::MultilingualE5Base,
-//             "MultilingualE5Large" => EmbeddingModel::MultilingualE5Large,
-//             "MxbaiEmbedLargeV1" => EmbeddingModel::MxbaiEmbedLargeV1,
-//             "MxbaiEmbedLargeV1Q" => EmbeddingModel::MxbaiEmbedLargeV1Q,
-//             _ => panic!("Unsupported model name"),
-//         }
-//     }
-// }
-
 pub fn build_path(path: impl AsRef<Path>, name: impl AsRef<Path>) -> Result<PathBuf> {
     let permitted = path.as_ref();
     let name = name.as_ref();
@@ -239,10 +62,6 @@ pub fn check_path_permitted(path: impl AsRef<Path>, permitted: &[&str]) -> Resul
     bail!("path not permitted");
 }
 
-async fn load_embed_tokenizer() -> Result<tokenizers::Tokenizer> {
-    todo!()
-}
-
 async fn load_web(path: impl AsRef<Path>, target: &Path) -> Result<()> {
     let file = File::open(path).await?;
     let map = unsafe { Mmap::map(&file)? };
@@ -269,6 +88,35 @@ async fn load_config(path: impl AsRef<Path>) -> Result<config::Config> {
     let mut contents = String::new();
     reader.read_to_string(&mut contents).await?;
     Ok(toml::from_str(&contents)?)
+}
+
+pub struct TextEmbed {
+    pub tokenizer: tokenizers::Tokenizer,
+    pub model: fastembed::TextEmbedding,
+}
+
+fn load_embed(embed: config::EmbedOption) -> Result<TextEmbed> {
+    use fastembed::{InitOptions, TextEmbedding};
+    use hf_hub::api::sync::Api;
+
+    std::env::set_var("HF_ENDPOINT", embed.endpoint);
+    std::env::set_var("HF_HOME", embed.home);
+
+    let api = Api::new()?;
+    let info = TextEmbedding::get_model_info(&embed.model);
+
+    let file = api.model(info.model_code).get("tokenizer.json")?;
+    let tokenizer = tokenizers::Tokenizer::from_file(file).expect("failed to load tokenizer");
+
+    log::info!("loading embed model: {}", embed.model);
+
+    let model = TextEmbedding::try_new(InitOptions {
+        model_name: embed.model,
+        show_download_progress: true,
+        ..Default::default()
+    })?;
+
+    Ok(TextEmbed { tokenizer, model })
 }
 
 #[derive(Parser, Debug, Clone)]
@@ -303,13 +151,6 @@ async fn main() {
     let (sender, receiver) = flume::unbounded::<ThreadRequest>();
     tokio::spawn(model_route(receiver));
 
-    // println!("{:?}", EMBEDCONFIG);
-    // if EMBEDCONFIG.open_embed {
-    //     let _emb = EMBEDMODEL
-    //         .embed(["ok"].to_vec(), None)
-    //         .expect("Failed to get embedding");
-    // }
-
     let config = {
         let path = args
             .config
@@ -317,6 +158,14 @@ async fn main() {
             .unwrap_or("assets/configs/Config.toml".into());
         log::info!("reading config {}...", path.to_string_lossy());
         load_config(path).await.expect("load config failed")
+    };
+
+    let embed = match config.embed.clone() {
+        Some(embed) => {
+            let embed = load_embed(embed).expect("failed to load embed");
+            Some(Arc::new(embed))
+        }
+        None => None,
     };
 
     let request = Box::new(config.clone().try_into().expect("load model failed"));
@@ -421,7 +270,11 @@ async fn main() {
     let app = Router::new()
         //.hoop(CorsLayer::permissive())
         .hoop(Logger::new())
-        .hoop(affix::inject(sender).inject(config.clone()))
+        .hoop(
+            affix::inject(sender)
+                .inject(config.clone())
+                .insert("embed", embed),
+        )
         .push(
             Router::with_path("/api")
                 .push(Router::with_path("/auth/exchange").post(api::auth::exchange))
