@@ -72,6 +72,7 @@ dependencies = [
  "cfg-if",
  "getrandom",
  "once_cell",
+ "serde",
  "version_check",
  "zerocopy",
 ]
@@ -87,7 +88,7 @@ dependencies = [
 
 [[package]]
 name = "ai00-core"
-version = "0.5.3"
+version = "0.5.4"
 dependencies = [
  "anyhow",
  "bytemuck",
@@ -107,12 +108,13 @@ dependencies = [
  "serde",
  "tokio",
  "uuid",
+ "voracious_radix_sort",
  "web-rwkv",
 ]
 
 [[package]]
 name = "ai00-server"
-version = "0.5.3"
+version = "0.5.4"
 dependencies = [
  "ai00-core",
  "anyhow",
@@ -722,7 +724,7 @@ checksum = "245097e9a4535ee1e3e3931fcfcd55a796a44c643e8596ff6566d68f09b87bbc"
 
 [[package]]
 name = "converter"
-version = "0.5.3"
+version = "0.5.4"
 dependencies = [
  "anyhow",
  "clap",
@@ -1937,13 +1939,14 @@ dependencies = [
 
 [[package]]
 name = "kbnf"
-version = "0.1.5"
+version = "0.1.11"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "8c863b4d4890c6453a1495c11e3dc23b0dd6e0a7aa054d7a6459ae7c14aebad8"
+checksum = "4444c8b071614783b997149be6e9a5ea249181a6b0d4416caf7578200ece809b"
 dependencies = [
  "ahash 0.8.11",
  "displaydoc",
  "fixedbitset-stack",
+ "getrandom",
  "jaggedarray",
  "kbnf-regex-automata",
  "kbnf-syntax",
@@ -1959,9 +1962,9 @@ dependencies = [
 
 [[package]]
 name = "kbnf-regex-automata"
-version = "0.4.7"
+version = "0.4.10"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "499fe4f128763db90782429ea71d01a5503d177d53118589a36e41611286d8a0"
+checksum = "50a900e0a0e795744f6b18fe493500a1d773633972251f84f4be909edfb0d0f2"
 dependencies = [
  "aho-corasick",
  "memchr",
@@ -1970,18 +1973,19 @@ dependencies = [
 
 [[package]]
 name = "kbnf-syntax"
-version = "0.1.1"
+version = "0.1.5"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "b84fa827b78158195138394a0c755739f1d93861e967522770df0321140e6ce2"
+checksum = "e0be7fc0a5a4e91ae599acbdb44055f12685a58df78dd5d94f2bee939a24b009"
 dependencies = [
  "kbnf-regex-automata",
  "nom",
  "parse-hyperlinks",
  "regex-syntax",
- "rustc-hash 1.1.0",
+ "rustc-hash 2.0.0",
  "serde",
  "string-interner",
  "thiserror",
+ "unescaper",
 ]
 
 [[package]]
@@ -4390,6 +4394,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "unescaper"
+version = "0.1.5"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "c878a167baa8afd137494101a688ef8c67125089ff2249284bd2b5f9bfedb815"
+dependencies = [
+ "thiserror",
+]
+
+[[package]]
 name = "unicase"
 version = "2.7.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -4560,6 +4573,12 @@ name = "void"
 version = "1.0.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "6a02e4885ed3bc0f2de90ea6dd45ebcbb66dacffe03547fadbb0eeae2770887d"
+
+[[package]]
+name = "voracious_radix_sort"
+version = "1.2.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "446e7ffcb6c27a71d05af7e51ef2ee5b71c48424b122a832f2439651e1914899"
 
 [[package]]
 name = "walkdir"

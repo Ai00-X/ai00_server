@@ -1,8 +1,9 @@
-use super::Sampler;
+use super::{utils, Sampler};
 use derivative::Derivative;
 use itertools::Itertools;
 use salvo::oapi::ToSchema;
 use serde::{Deserialize, Serialize};
+use voracious_radix_sort::RadixSort;
 
 #[derive(Debug, Clone, Derivative, Serialize, Deserialize, ToSchema)]
 #[derivative(Default)]
@@ -44,11 +45,17 @@ impl Sampler for MirostatSampler {
         let MirostatSampler { params, state } = self;
 
         // sort the surprise values and truncate
-        let sorted = probs
+        let mut sorted = probs
             .iter()
+            .copied()
             .enumerate()
-            .sorted_unstable_by(|(_, x), (_, y)| y.total_cmp(x))
-            .scan((0, 0.0, 0.0), |(_, cum, _), (id, x)| {
+            .map(|(id, x)| utils::F32WithIndex(id, x))
+            .collect_vec();
+        sorted.voracious_sort();
+        let sorted = sorted
+            .into_iter()
+            .rev()
+            .scan((0, 0.0, 0.0), |(_, cum, _), utils::F32WithIndex(id, x)| {
                 // if *cum > params.top_p {
                 //     None
                 // } else {
@@ -56,7 +63,7 @@ impl Sampler for MirostatSampler {
                 //     Some((id, *cum, *x))
                 // }
                 *cum += x;
-                Some((id, *cum, *x))
+                Some((id, *cum, x))
             })
             .collect_vec();
         let k = sorted
