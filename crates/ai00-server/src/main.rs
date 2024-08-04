@@ -93,6 +93,7 @@ async fn load_config(path: impl AsRef<Path>) -> Result<config::Config> {
 pub struct TextEmbed {
     pub tokenizer: tokenizers::Tokenizer,
     pub model: fastembed::TextEmbedding,
+    pub info: fastembed::ModelInfo,
 }
 
 fn load_embed(embed: config::EmbedOption) -> Result<TextEmbed> {
@@ -105,7 +106,7 @@ fn load_embed(embed: config::EmbedOption) -> Result<TextEmbed> {
     let api = Api::new()?;
     let info = TextEmbedding::get_model_info(&embed.model);
 
-    let file = api.model(info.model_code).get("tokenizer.json")?;
+    let file = api.model(info.model_code.clone()).get("tokenizer.json")?;
     let tokenizer = tokenizers::Tokenizer::from_file(file).expect("failed to load tokenizer");
 
     log::info!("loading embed model: {}", embed.model);
@@ -116,7 +117,11 @@ fn load_embed(embed: config::EmbedOption) -> Result<TextEmbed> {
         ..Default::default()
     })?;
 
-    Ok(TextEmbed { tokenizer, model })
+    Ok(TextEmbed {
+        tokenizer,
+        model,
+        info,
+    })
 }
 
 #[derive(Parser, Debug, Clone)]

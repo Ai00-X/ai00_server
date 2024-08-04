@@ -1,5 +1,6 @@
-use std::{path::PathBuf, sync::Arc};
+use std::sync::Arc;
 
+use anyhow::Result;
 use derivative::Derivative;
 use salvo::{
     oapi::{extract::JsonBody, ToParameters, ToResponse, ToSchema},
@@ -11,7 +12,7 @@ use text_splitter::{ChunkConfig, TextSplitter};
 #[derive(Debug, Serialize, ToSchema, ToResponse)]
 struct ChunkData {
     chunk: String,
-    embeds: Vec<Vec<f32>>,
+    embed: Vec<Vec<f32>>,
 }
 
 #[derive(Debug, Serialize, ToSchema, ToResponse)]
@@ -55,62 +56,39 @@ pub async fn embeds(
         return Err(StatusCode::BAD_REQUEST);
     };
 
-    if req.input.as_str().is_empty() {
+    if req.input.is_empty() {
         return Err(StatusCode::BAD_REQUEST);
     }
 
-    let task = move || {
+    let model = embed.info.model_code.clone();
+
+    let task = move || -> Result<_> {
         let max_tokens = req.max_tokens.clamp(1, 510);
+        let splitter = TextSplitter::new(ChunkConfig::new(max_tokens).with_sizer(&embed.tokenizer));
+
+        let mut data = vec![];
+        let chunks = splitter.chunks(&req.input);
+        for chunk in chunks {
+            let text = format!("{}{}", req.prefix, chunk);
+            let embed = embed.model.embed(vec![text], None)?;
+            let chunk = chunk.to_string();
+            data.push(ChunkData { chunk, embed });
+        }
+
+        Ok(data)
     };
 
     let handle = tokio::task::spawn_blocking(task);
-
-    // let future = async move {
-    //     let mut input = req.input.clone();
-    //     let mut max_tokens = req.max_tokens;
-    //     max_tokens = max_tokens.clamp(1, 510);
-
-    //     if input.is_empty() {
-    //         input = "Ai00 is all your need!".into();
-    //     }
-
-    //     let mut result = vec![];
-
-    //     let tokenizer = EMBEDTOKENIZERS.clone();
-
-    //     let splitter = TextSplitter::new(ChunkConfig::new(max_tokens).with_sizer(tokenizer));
-
-    //     let chunks = splitter.chunks(&input);
-    //     for chunk in chunks {
-    //         let chunk_b = format!("{}{}", req.prefix, chunk);
-
-    //         let pp = [chunk_b];
-
-    //         let embedding_result = EMBEDMODEL
-    //             .embed(Vec::from(pp), None)
-    //             .expect("Failed to get embedding");
-
-    //         let embeds_data = ChunkData {
-    //             chunk: chunk.to_owned(),
-    //             embeds: embedding_result.clone(),
-    //         };
-    //         result.push(embeds_data);
-    //     }
-
-    //     result
-    // };
-
-    // let embedding_result = tokio::spawn(future).await.expect("spawn failed");
-
-    // Json(EmbedResponse {
-    //     object: "embeds".into(),
-    //     model: "multilingual-e5-small".into(),
-    //     data: vec![EmbedData {
-    //         object: "embed".into(),
-    //         index: 0,
-    //         chunks: embedding_result,
-    //     }],
-    // })
-
-    todo!()
+    match handle.await {
+        Ok(Ok(data)) => Ok(Json(EmbedResponse {
+            object: "embeds".into(),
+            model,
+            data: vec![EmbedData {
+                object: "embed".into(),
+                index: 0,
+                chunks: data,
+            }],
+        })),
+        _ => Err(StatusCode::INTERNAL_SERVER_ERROR),
+    }
 }
