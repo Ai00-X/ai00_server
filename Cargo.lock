@@ -102,7 +102,7 @@ dependencies = [
  "log",
  "memmap2",
  "qp-trie",
- "rustc-hash 1.1.0",
+ "rustc-hash 2.0.0",
  "safetensors",
  "salvo",
  "serde",
@@ -1922,9 +1922,9 @@ dependencies = [
 
 [[package]]
 name = "kbnf"
-version = "0.1.11"
+version = "0.1.12"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "4444c8b071614783b997149be6e9a5ea249181a6b0d4416caf7578200ece809b"
+checksum = "c9ad731c527112fc21dc939dd1654945695f074cd7f75ed4457bc132bd6d7c76"
 dependencies = [
  "ahash 0.8.11",
  "displaydoc",
@@ -2054,9 +2054,9 @@ dependencies = [
 
 [[package]]
 name = "log"
-version = "0.4.21"
+version = "0.4.22"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "90ed8c1e510134f979dbc4f070f87d4313098b704861a105fe34231c70a3901c"
+checksum = "a7a70ba024b9dc04c27ea2f0c0548feb474ec5c54bba33a7f72f873a39d07b24"
 
 [[package]]
 name = "macro_rules_attribute"
