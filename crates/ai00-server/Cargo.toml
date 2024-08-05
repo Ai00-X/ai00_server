@@ -24,8 +24,8 @@ tempfile = "3.6"
 toml = "0.8.6"
 zip-extract = "0.1"
 
-fastembed = "3.6.1"
-hf-hub = { git = "https://github.com/cgisky1980/hf-hub.git", branch = "main" }
+fastembed = "3.14"
+hf-hub = "0.3"
 text-splitter = { version = "0.14.0", features = ["markdown", "tokenizers"] }
 tokenizers = { version = "0.19.1", features = ["http"] }
 

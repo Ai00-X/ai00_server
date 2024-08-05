@@ -124,6 +124,14 @@ pub enum EmbeddingModel {
     MxbaiEmbedLargeV1,
     /// Quantized mixedbread-ai/mxbai-embed-large-v1
     MxbaiEmbedLargeV1Q,
+    /// Alibaba-NLP/gte-base-en-v1.5
+    GTEBaseENV15,
+    /// Quantized Alibaba-NLP/gte-base-en-v1.5
+    GTEBaseENV15Q,
+    /// Alibaba-NLP/gte-large-en-v1.5
+    GTELargeENV15,
+    /// Quantized Alibaba-NLP/gte-large-en-v1.5
+    GTELargeENV15Q,
 }
 
 #[derive(Debug, Derivative, Clone, Serialize, Deserialize)]

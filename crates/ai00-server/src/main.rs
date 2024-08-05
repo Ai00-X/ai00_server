@@ -93,7 +93,7 @@ async fn load_config(path: impl AsRef<Path>) -> Result<config::Config> {
 pub struct TextEmbed {
     pub tokenizer: tokenizers::Tokenizer,
     pub model: fastembed::TextEmbedding,
-    pub info: fastembed::ModelInfo,
+    pub info: fastembed::ModelInfo<fastembed::EmbeddingModel>,
 }
 
 fn load_embed(embed: config::EmbedOption) -> Result<TextEmbed> {
