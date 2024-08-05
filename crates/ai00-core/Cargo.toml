@@ -55,4 +55,4 @@ workspace = true
 [dependencies.salvo]
 default-features = false
 features = ["oapi"]
-version = "0.67"
+version = "0.68"

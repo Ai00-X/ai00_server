@@ -1,5 +1,3 @@
-use std::path::PathBuf;
-
 use ai00_core::ThreadRequest;
 use flume::Sender;
 use salvo::oapi::ToSchema;
@@ -24,11 +22,7 @@ impl<T> From<Array<T>> for Vec<T> {
     }
 }
 
-#[derive(Clone)]
-pub struct ThreadState {
-    pub sender: Sender<ThreadRequest>,
-    pub path: PathBuf,
-}
+pub type ThreadSender = Sender<ThreadRequest>;
 
 #[derive(Debug, Serialize, Deserialize)]
 pub struct JwtClaims {

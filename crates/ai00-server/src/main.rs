@@ -2,6 +2,7 @@ use std::{
     io::Cursor,
     net::{IpAddr, Ipv4Addr, Ipv6Addr, SocketAddr},
     path::{Path, PathBuf},
+    sync::Arc,
     time::Duration,
 };
 
@@ -25,7 +26,7 @@ use tokio::{
     io::{AsyncReadExt, BufReader},
 };
 
-use crate::types::{JwtClaims, ThreadState};
+use crate::types::JwtClaims;
 
 mod api;
 mod config;
@@ -61,14 +62,14 @@ pub fn check_path_permitted(path: impl AsRef<Path>, permitted: &[&str]) -> Resul
     bail!("path not permitted");
 }
 
-pub async fn load_web(path: impl AsRef<Path>, target: &Path) -> Result<()> {
+async fn load_web(path: impl AsRef<Path>, target: &Path) -> Result<()> {
     let file = File::open(path).await?;
     let map = unsafe { Mmap::map(&file)? };
     zip_extract::extract(Cursor::new(&map), target, false)?;
     Ok(())
 }
 
-pub async fn load_plugin(path: impl AsRef<Path>, target: &Path, name: &String) -> Result<()> {
+async fn load_plugin(path: impl AsRef<Path>, target: &Path, name: &String) -> Result<()> {
     let file = File::open(path).await?;
     let map = unsafe { Mmap::map(&file)? };
     let root = target.join("plugins");
@@ -81,12 +82,46 @@ pub async fn load_plugin(path: impl AsRef<Path>, target: &Path, name: &String) -
     Ok(())
 }
 
-pub async fn load_config(path: impl AsRef<Path>) -> Result<config::Config> {
+async fn load_config(path: impl AsRef<Path>) -> Result<config::Config> {
     let file = File::open(path).await?;
     let mut reader = BufReader::new(file);
     let mut contents = String::new();
     reader.read_to_string(&mut contents).await?;
     Ok(toml::from_str(&contents)?)
+}
+
+pub struct TextEmbed {
+    pub tokenizer: tokenizers::Tokenizer,
+    pub model: fastembed::TextEmbedding,
+    pub info: fastembed::ModelInfo<fastembed::EmbeddingModel>,
+}
+
+fn load_embed(embed: config::EmbedOption) -> Result<TextEmbed> {
+    use fastembed::{InitOptions, TextEmbedding};
+    use hf_hub::api::sync::Api;
+
+    std::env::set_var("HF_ENDPOINT", embed.endpoint);
+    std::env::set_var("HF_HOME", embed.home);
+
+    let api = Api::new()?;
+    let info = TextEmbedding::get_model_info(&embed.model);
+
+    let file = api.model(info.model_code.clone()).get("tokenizer.json")?;
+    let tokenizer = tokenizers::Tokenizer::from_file(file).expect("failed to load tokenizer");
+
+    log::info!("loading embed model: {}", embed.model);
+
+    let model = TextEmbedding::try_new(InitOptions {
+        model_name: embed.model,
+        show_download_progress: true,
+        ..Default::default()
+    })?;
+
+    Ok(TextEmbed {
+        tokenizer,
+        model,
+        info,
+    })
 }
 
 #[derive(Parser, Debug, Clone)]
@@ -121,15 +156,21 @@ async fn main() {
     let (sender, receiver) = flume::unbounded::<ThreadRequest>();
     tokio::spawn(model_route(receiver));
 
-    let (listen, config) = {
+    let config = {
         let path = args
             .config
             .clone()
             .unwrap_or("assets/configs/Config.toml".into());
         log::info!("reading config {}...", path.to_string_lossy());
-        let config = load_config(path).await.expect("load config failed");
-        let listen = config.listen.clone();
-        (listen, config)
+        load_config(path).await.expect("load config failed")
+    };
+
+    let embed = match config.embed.clone() {
+        Some(embed) => {
+            let embed = load_embed(embed).expect("failed to load embed");
+            Some(Arc::new(embed))
+        }
+        None => None,
     };
 
     let request = Box::new(config.clone().try_into().expect("load model failed"));
@@ -138,7 +179,7 @@ async fn main() {
         sender: None,
     });
 
-    let serve_path = match config.web {
+    let serve_path = match config.web.clone() {
         Some(web) => {
             if Path::new("assets/temp").exists() {
                 std::fs::remove_dir_all("assets/temp").expect("delete temp dir failed");
@@ -200,7 +241,7 @@ async fn main() {
                 Box::new(QueryFinder::new("admin_token")),
                 // Box::new(CookieFinder::new("jwt_token")),
             ])
-            .force_passed(listen.force_pass.unwrap_or_default());
+            .force_passed(config.listen.force_pass.unwrap_or_default());
 
     let admin_router = Router::with_hoop(admin_auth)
         .push(Router::with_path("/models/save").post(api::model::save))
@@ -227,21 +268,23 @@ async fn main() {
         .push(Router::with_path("/oai/v1/embeddings").post(api::oai::embeddings))
         .push(Router::with_path("/oai/chooses").post(api::oai::chooses))
         .push(Router::with_path("/oai/v1/chooses").post(api::oai::chooses));
+    let api_embed = Router::new()
+        .push(Router::with_path("/oai/embeds").post(api::oai::embeds))
+        .push(Router::with_path("/oai/v1/embeds").post(api::oai::embeds));
 
     let app = Router::new()
         //.hoop(CorsLayer::permissive())
         .hoop(Logger::new())
         .hoop(
-            affix::inject(ThreadState {
-                sender,
-                path: config.model.path,
-            })
-            .insert("listen", listen.clone()),
+            affix::inject(sender)
+                .inject(config.clone())
+                .insert("embed", embed),
         )
         .push(
             Router::with_path("/api")
                 .push(Router::with_path("/auth/exchange").post(api::auth::exchange))
-                .push(api_router),
+                .push(api_router)
+                .push(api_embed),
         )
         .push(Router::with_path("/admin").push(admin_router));
 
@@ -258,15 +301,15 @@ async fn main() {
     };
 
     let service = Service::new(app).hoop(cors);
-    let ip_addr = args.ip.unwrap_or(listen.ip);
+    let ip_addr = args.ip.unwrap_or(config.listen.ip);
     let (ipv4_addr, ipv6_addr) = match ip_addr {
         IpAddr::V4(addr) => (addr, None),
         IpAddr::V6(addr) => (Ipv4Addr::UNSPECIFIED, Some(addr)),
     };
-    let port = args.port.unwrap_or(listen.port);
-    let (acme, tls) = match listen.domain.as_str() {
-        "local" => (false, listen.tls),
-        _ => (listen.acme, true),
+    let port = args.port.unwrap_or(config.listen.port);
+    let (acme, tls) = match config.listen.domain.as_str() {
+        "local" => (false, config.listen.tls),
+        _ => (config.listen.acme, true),
     };
     let ipv4_addr = SocketAddr::new(IpAddr::V4(ipv4_addr), port);
 
@@ -285,14 +328,14 @@ async fn main() {
         let listener = TcpListener::new(ipv4_addr)
             .acme()
             .cache_path("assets/certs")
-            .add_domain(&listen.domain)
+            .add_domain(&config.listen.domain)
             .quinn(ipv4_addr);
         if let Some(ipv6_addr) = ipv6_addr {
             let ipv6_addr = SocketAddr::new(IpAddr::V6(ipv6_addr), port);
             let ipv6_listener = TcpListener::new(ipv6_addr)
                 .acme()
                 .cache_path("assets/certs")
-                .add_domain(&listen.domain)
+                .add_domain(&config.listen.domain)
                 .quinn(ipv6_addr);
             #[cfg(not(target_os = "windows"))]
             let acceptor = ipv6_listener.bind().await;

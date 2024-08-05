@@ -23,6 +23,7 @@ pub struct Config {
     pub adapter: AdapterOption,
     pub listen: ListenerOption,
     pub web: Option<WebOption>,
+    pub embed: Option<EmbedOption>,
 }
 
 impl TryFrom<Config> for ReloadRequest {
@@ -76,6 +77,76 @@ impl TryFrom<Config> for ReloadRequest {
     }
 }
 
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(remote = "fastembed::EmbeddingModel")]
+pub enum EmbeddingModel {
+    /// sentence-transformers/all-MiniLM-L6-v2
+    AllMiniLML6V2,
+    /// Quantized sentence-transformers/all-MiniLM-L6-v2
+    AllMiniLML6V2Q,
+    /// sentence-transformers/all-MiniLM-L12-v2
+    AllMiniLML12V2,
+    /// Quantized sentence-transformers/all-MiniLM-L12-v2
+    AllMiniLML12V2Q,
+    /// BAAI/bge-base-en-v1.5
+    BGEBaseENV15,
+    /// Quantized BAAI/bge-base-en-v1.5
+    BGEBaseENV15Q,
+    /// BAAI/bge-large-en-v1.5
+    BGELargeENV15,
+    /// Quantized BAAI/bge-large-en-v1.5
+    BGELargeENV15Q,
+    /// BAAI/bge-small-en-v1.5 - Default
+    BGESmallENV15,
+    /// Quantized BAAI/bge-small-en-v1.5
+    BGESmallENV15Q,
+    /// nomic-ai/nomic-embed-text-v1
+    NomicEmbedTextV1,
+    /// nomic-ai/nomic-embed-text-v1.5
+    NomicEmbedTextV15,
+    /// Quantized v1.5 nomic-ai/nomic-embed-text-v1.5
+    NomicEmbedTextV15Q,
+    /// sentence-transformers/paraphrase-MiniLM-L6-v2
+    ParaphraseMLMiniLML12V2,
+    /// Quantized sentence-transformers/paraphrase-MiniLM-L6-v2
+    ParaphraseMLMiniLML12V2Q,
+    /// sentence-transformers/paraphrase-mpnet-base-v2
+    ParaphraseMLMpnetBaseV2,
+    /// BAAI/bge-small-zh-v1.5
+    BGESmallZHV15,
+    /// intfloat/multilingual-e5-small
+    MultilingualE5Small,
+    /// intfloat/multilingual-e5-base
+    MultilingualE5Base,
+    /// intfloat/multilingual-e5-large
+    MultilingualE5Large,
+    /// mixedbread-ai/mxbai-embed-large-v1
+    MxbaiEmbedLargeV1,
+    /// Quantized mixedbread-ai/mxbai-embed-large-v1
+    MxbaiEmbedLargeV1Q,
+    /// Alibaba-NLP/gte-base-en-v1.5
+    GTEBaseENV15,
+    /// Quantized Alibaba-NLP/gte-base-en-v1.5
+    GTEBaseENV15Q,
+    /// Alibaba-NLP/gte-large-en-v1.5
+    GTELargeENV15,
+    /// Quantized Alibaba-NLP/gte-large-en-v1.5
+    GTELargeENV15Q,
+}
+
+#[derive(Debug, Derivative, Clone, Serialize, Deserialize)]
+#[derivative(Default)]
+#[serde(default)]
+pub struct EmbedOption {
+    #[serde(with = "EmbeddingModel")]
+    #[derivative(Default(value = "fastembed::EmbeddingModel::MultilingualE5Small"))]
+    pub model: fastembed::EmbeddingModel,
+    #[derivative(Default(value = "\"https://huggingface.co\".into()"))]
+    pub endpoint: String,
+    #[derivative(Default(value = "\"assets/models/hf\".into()"))]
+    pub home: PathBuf,
+}
+
 #[derive(Debug, Default, Clone, Serialize, Deserialize)]
 pub struct AppKey {
     pub app_id: String,
@@ -84,6 +155,7 @@ pub struct AppKey {
 
 #[derive(Debug, Derivative, Clone, Serialize, Deserialize)]
 #[derivative(Default)]
+#[serde(default)]
 pub struct ListenerOption {
     /// Ip to listen to.
     #[derivative(Default(value = "IpAddr::V4(Ipv4Addr::new(0, 0, 0, 0))"))]

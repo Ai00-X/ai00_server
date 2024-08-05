@@ -18,12 +18,16 @@ assets/configs/Config.toml
 assets/frpc/
 assets/unzip/
 assets/temp/
+assets/models/
 
 *.st
 *.state
 *.lora
 *.pth
 *.exe
+*.prefab
+*.log
+
 qdrant/
 .qdrant-initialized
 run.bat
@@ -32,7 +36,3 @@ docs/.vitepress/dist
 docs/.vitepress/cache
 nohup.out
 .vscode/
-*.prefab
-*.prefab
-*.log
-/assets/models/hf_hub

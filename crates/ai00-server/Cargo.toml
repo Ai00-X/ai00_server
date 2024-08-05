@@ -15,6 +15,7 @@ version.workspace = true
 clap = { version = "4.3", features = ["derive"] }
 futures-util = "0.3"
 jsonwebtoken = "9.1"
+lazy_static = "1.4.0"
 regex = "1.8"
 serde_json = "1"
 sha2 = "0.10.8"
@@ -22,6 +23,11 @@ simple_logger = { version = "5.0.0", features = ["stderr"] }
 tempfile = "3.6"
 toml = "0.8.6"
 zip-extract = "0.1"
+
+fastembed = "3.14"
+hf-hub = "0.3"
+text-splitter = { version = "0.14.0", features = ["markdown", "tokenizers"] }
+tokenizers = { version = "0.19.1", features = ["http"] }
 
 [dependencies.ai00-core]
 workspace = true
@@ -69,4 +75,4 @@ features = [
     "serve-static",
     "sse",
 ]
-version = "0.67"
+version = "0.68"

@@ -13,7 +13,7 @@ use serde::{Deserialize, Serialize};
 use super::*;
 use crate::{
     api::request_info,
-    types::{Array, ThreadState},
+    types::{Array, ThreadSender},
     SLEEP,
 };
 
@@ -246,7 +246,7 @@ struct PartialChatResponse {
 }
 
 async fn respond_one(depot: &mut Depot, request: ChatRequest, res: &mut Response) {
-    let ThreadState { sender, .. } = depot.obtain::<ThreadState>().unwrap();
+    let sender = depot.obtain::<ThreadSender>().unwrap();
     let info = request_info(sender.clone(), SLEEP).await;
     let model_name = info.reload.model_path.to_string_lossy().into_owned();
 
@@ -295,7 +295,7 @@ async fn respond_one(depot: &mut Depot, request: ChatRequest, res: &mut Response
 }
 
 async fn respond_stream(depot: &mut Depot, request: ChatRequest, res: &mut Response) {
-    let ThreadState { sender, .. } = depot.obtain::<ThreadState>().unwrap();
+    let sender = depot.obtain::<ThreadSender>().unwrap();
     let info = request_info(sender.clone(), SLEEP).await;
     let model_name = info.reload.model_path.to_string_lossy().into_owned();
 
