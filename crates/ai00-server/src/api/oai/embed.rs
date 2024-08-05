@@ -26,7 +26,6 @@ struct EmbedData {
 #[derivative(Default)]
 #[serde(default)]
 pub struct EmbedRequest {
-    #[derivative(Default(value = "\"Ai00 is all your need!\".into()"))]
     input: String,
     #[derivative(Default(value = "510"))]
     max_tokens: usize,
