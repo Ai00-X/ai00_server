@@ -11,6 +11,10 @@ repository = "https://github.com/cgisky1980/ai00_rwkv_server"
 rust-version.workspace = true
 version.workspace = true
 
+[features]
+default = ["embed"]
+embed = ["dep:fastembed", "dep:hf-hub", "dep:text-splitter", "dep:tokenizers"]
+
 [dependencies]
 clap = { version = "4.3", features = ["derive"] }
 futures-util = "0.3"
@@ -24,10 +28,22 @@ tempfile = "3.6"
 toml = "0.8.6"
 zip-extract = "0.1"
 
-fastembed = "3.14"
-hf-hub = "0.3"
-text-splitter = { version = "0.14.0", features = ["markdown", "tokenizers"] }
-tokenizers = { version = "0.19.1", features = ["http"] }
+[dependencies.fastembed]
+optional = true
+version = "3.14"
+
+[dependencies.hf-hub]
+optional = true
+version = "0.3"
+
+[dependencies.text-splitter]
+features = ["markdown", "tokenizers"]
+optional = true
+version = "0.14"
+
+[dependencies.tokenizers]
+optional = true
+version = "0.19"
 
 [dependencies.ai00-core]
 workspace = true
@@ -75,4 +91,4 @@ features = [
     "serve-static",
     "sse",
 ]
-version = "0.68"
+version = "0.69"

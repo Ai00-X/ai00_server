@@ -23,6 +23,7 @@ pub struct Config {
     pub adapter: AdapterOption,
     pub listen: ListenerOption,
     pub web: Option<WebOption>,
+    #[cfg(feature = "embed")]
     pub embed: Option<EmbedOption>,
 }
 
@@ -77,6 +78,7 @@ impl TryFrom<Config> for ReloadRequest {
     }
 }
 
+#[cfg(feature = "embed")]
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(remote = "fastembed::EmbeddingModel")]
 pub enum EmbeddingModel {
@@ -134,6 +136,7 @@ pub enum EmbeddingModel {
     GTELargeENV15Q,
 }
 
+#[cfg(feature = "embed")]
 #[derive(Debug, Derivative, Clone, Serialize, Deserialize)]
 #[derivative(Default)]
 #[serde(default)]

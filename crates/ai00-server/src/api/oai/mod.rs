@@ -13,16 +13,19 @@ use tokio::sync::RwLock;
 mod chat;
 mod choose;
 mod completion;
-mod embed;
 mod embedding;
 mod info;
 
 pub use chat::chat_completions;
 pub use choose::chooses;
 pub use completion::completions;
-pub use embed::embeds;
 pub use embedding::embeddings;
 pub use info::models;
+
+#[cfg(feature = "embed")]
+mod embed;
+#[cfg(feature = "embed")]
+pub use embed::embeds;
 
 #[derive(Debug, Clone, Serialize, Deserialize, ToSchema)]
 #[serde(tag = "type")]

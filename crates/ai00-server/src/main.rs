@@ -2,7 +2,6 @@ use std::{
     io::Cursor,
     net::{IpAddr, Ipv4Addr, Ipv6Addr, SocketAddr},
     path::{Path, PathBuf},
-    sync::Arc,
     time::Duration,
 };
 
@@ -90,12 +89,14 @@ async fn load_config(path: impl AsRef<Path>) -> Result<config::Config> {
     Ok(toml::from_str(&contents)?)
 }
 
+#[cfg(feature = "embed")]
 pub struct TextEmbed {
     pub tokenizer: tokenizers::Tokenizer,
     pub model: fastembed::TextEmbedding,
     pub info: fastembed::ModelInfo<fastembed::EmbeddingModel>,
 }
 
+#[cfg(feature = "embed")]
 fn load_embed(embed: config::EmbedOption) -> Result<TextEmbed> {
     use fastembed::{InitOptions, TextEmbedding};
     use hf_hub::api::sync::Api;
@@ -165,13 +166,16 @@ async fn main() {
         load_config(path).await.expect("load config failed")
     };
 
+    #[cfg(feature = "embed")]
     let embed = match config.embed.clone() {
         Some(embed) => {
             let embed = load_embed(embed).expect("failed to load embed");
-            Some(Arc::new(embed))
+            Some(std::sync::Arc::new(embed))
         }
         None => None,
     };
+    #[cfg(not(feature = "embed"))]
+    let embed: Option<()> = None;
 
     let request = Box::new(config.clone().try_into().expect("load model failed"));
     let _ = sender.send(ThreadRequest::Reload {
@@ -268,9 +272,12 @@ async fn main() {
         .push(Router::with_path("/oai/v1/embeddings").post(api::oai::embeddings))
         .push(Router::with_path("/oai/chooses").post(api::oai::chooses))
         .push(Router::with_path("/oai/v1/chooses").post(api::oai::chooses));
+    #[cfg(feature = "embed")]
     let api_embed = Router::new()
         .push(Router::with_path("/oai/embeds").post(api::oai::embeds))
         .push(Router::with_path("/oai/v1/embeds").post(api::oai::embeds));
+    #[cfg(not(feature = "embed"))]
+    let api_embed = Router::new();
 
     let app = Router::new()
         //.hoop(CorsLayer::permissive())
