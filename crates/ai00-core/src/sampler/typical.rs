@@ -6,7 +6,7 @@ use salvo::oapi::ToSchema;
 use serde::{Deserialize, Serialize};
 use voracious_radix_sort::RadixSort;
 
-use super::{utils, Sampler};
+use super::{radix, Sampler};
 
 #[derive(Debug, Clone, Derivative, Serialize, Deserialize, ToSchema)]
 #[derivative(Default)]
@@ -79,13 +79,12 @@ impl Sampler for TypicalSampler {
         let entropy = probs.iter().map(|(_, x, y)| x * y).sum::<f32>();
         let mut sorted = probs
             .into_iter()
-            .map(|(id, x, y)| utils::DoubleF32WithIndex(id, x, (y - entropy).abs()))
+            .map(|(id, x, y)| radix::DoubleF32WithIndex(id, x, (y - entropy).abs()))
             .collect_vec();
         sorted.voracious_sort();
         let sorted = sorted
             .into_iter()
-            .rev()
-            .map(|utils::DoubleF32WithIndex(id, x, _)| (id, x))
+            .map(|radix::DoubleF32WithIndex(id, x, _)| (id, x))
             .take(params.top_k)
             .scan((0, 0.0, 0.0), |(_, cum, _), (id, x)| {
                 if *cum > params.tau {
