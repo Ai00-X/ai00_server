@@ -2,7 +2,9 @@ pub mod bnf;
 pub mod mirostat;
 pub mod nucleus;
 pub mod typical;
-mod utils;
+
+mod radix;
+
 pub trait Sampler {
     /// Initialize the sampler state.
     fn init(&mut self, model_tokens: &[u16]);

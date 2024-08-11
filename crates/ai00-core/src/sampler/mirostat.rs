@@ -1,4 +1,4 @@
-use super::{utils, Sampler};
+use super::{radix, Sampler};
 use derivative::Derivative;
 use itertools::Itertools;
 use salvo::oapi::ToSchema;
@@ -49,13 +49,13 @@ impl Sampler for MirostatSampler {
             .iter()
             .copied()
             .enumerate()
-            .map(|(id, x)| utils::F32WithIndex(id, x))
+            .map(|(id, x)| radix::F32WithIndex(id, x))
             .collect_vec();
         sorted.voracious_sort();
         let sorted = sorted
             .into_iter()
             .rev()
-            .scan((0, 0.0, 0.0), |(_, cum, _), utils::F32WithIndex(id, x)| {
+            .scan((0, 0.0, 0.0), |(_, cum, _), radix::F32WithIndex(id, x)| {
                 // if *cum > params.top_p {
                 //     None
                 // } else {
