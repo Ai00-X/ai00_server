@@ -36,3 +36,6 @@ docs/.vitepress/dist
 docs/.vitepress/cache
 nohup.out
 .vscode/
+/modelscope
+up_models_modelscope.py
+test.py
