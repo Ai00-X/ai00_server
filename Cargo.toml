@@ -34,7 +34,7 @@ path = "crates/ai00-core"
 # path = "../web-rwkv"
 default-features = false
 features = ["native"]
-version = "0.8.16"
+version = "0.8.18"
 
 [patch.crates-io]
 hf-hub = { git = "https://github.com/cgisky1980/hf-hub.git", branch = "main" }
