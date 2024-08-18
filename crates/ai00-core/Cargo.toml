@@ -16,7 +16,7 @@ bytemuck = "1"
 cbor4ii = { version = "0.3.2", features = ["serde1"] }
 fastrand = "2"
 half = "2.4"
-kbnf = "0.3.4"
+kbnf = "0.4.1"
 voracious_radix_sort = "1.2.0"
 qp-trie = "0.8"
 rustc-hash = "2.0.0"
@@ -53,6 +53,7 @@ workspace = true
 workspace = true
 
 [dependencies.salvo]
+# git = "https://github.com/salvo-rs/salvo"
 default-features = false
 features = ["oapi"]
-version = "0.69"
+version = "0.71.1"

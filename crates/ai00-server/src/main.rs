@@ -10,7 +10,7 @@ use anyhow::{bail, Result};
 use clap::{command, CommandFactory, Parser};
 use memmap2::Mmap;
 use salvo::{
-    affix,
+    affix_state,
     conn::rustls::{Keycert, RustlsConfig},
     cors::{AllowHeaders, AllowOrigin, Cors},
     http::Method,
@@ -283,7 +283,7 @@ async fn main() {
         //.hoop(CorsLayer::permissive())
         .hoop(Logger::new())
         .hoop(
-            affix::inject(sender)
+            affix_state::inject(sender)
                 .inject(config.clone())
                 .insert("embed", embed),
         )
