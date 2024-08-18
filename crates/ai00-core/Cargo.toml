@@ -53,6 +53,7 @@ workspace = true
 workspace = true
 
 [dependencies.salvo]
+# git = "https://github.com/salvo-rs/salvo"
 default-features = false
 features = ["oapi"]
-version = "0.69"
+version = "0.71.1"

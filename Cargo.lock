@@ -1735,7 +1735,7 @@ dependencies = [
  "pin-project-lite",
  "socket2",
  "tokio",
- "tower",
+ "tower 0.4.13",
  "tower-service",
  "tracing",
 ]
@@ -3082,7 +3082,7 @@ dependencies = [
  "serde",
  "serde_json",
  "serde_urlencoded",
- "sync_wrapper",
+ "sync_wrapper 1.0.1",
  "system-configuration",
  "tokio",
  "tokio-native-tls",
@@ -3309,9 +3309,9 @@ dependencies = [
 
 [[package]]
 name = "salvo"
-version = "0.69.0"
+version = "0.71.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "82fd72dd9b0ffe175ce8920e25d274886bade1504cbd45043b476b7a8bafd2c9"
+checksum = "6527c3fac9820daa1f4b66c0558f99f42d41d511fd5381dbcd53c07f397013ea"
 dependencies = [
  "salvo-cors",
  "salvo-jwt-auth",
@@ -3324,9 +3324,9 @@ dependencies = [
 
 [[package]]
 name = "salvo-cors"
-version = "0.69.0"
+version = "0.71.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "f93c61e9b181369333dc723c75d8da773bb290728a1b2a65b23a30e87f1f15aa"
+checksum = "6fa554d148a63f9d251d897356929b1e135d0ea5f14c95471613808c54c98b9b"
 dependencies = [
  "bytes",
  "salvo_core",
@@ -3353,9 +3353,9 @@ dependencies = [
 
 [[package]]
 name = "salvo-jwt-auth"
-version = "0.69.0"
+version = "0.71.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "da88c92e6866bf6cda2adab5c9a63e2fee6fe74a8c7ad8f3ce42ff6e13234ced"
+checksum = "c4d347adf539c996a16e7eca24d254a840f09f30ede6196fa2c22ef0be874ddd"
 dependencies = [
  "base64 0.22.1",
  "bytes",
@@ -3373,9 +3373,9 @@ dependencies = [
 
 [[package]]
 name = "salvo-oapi"
-version = "0.69.0"
+version = "0.71.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "4320c950a028707ba44099065775cbd9d6bb2f6e6bbf0927bd74e6748f34dd28"
+checksum = "922155eb1ccb5f4653aa367c3bd9a84f1fe742dff21d4b43fa535059e82903ff"
 dependencies = [
  "base64 0.22.1",
  "bytes",
@@ -3406,9 +3406,9 @@ dependencies = [
 
 [[package]]
 name = "salvo-oapi-macros"
-version = "0.69.0"
+version = "0.71.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "6a9ea4e450fe596eba81d6540075e48f5e908b3c3ec2981c224e45fa314f5f64"
+checksum = "3b3e39d4fdceefc3d9876a529e8b1824c200d89d60fc0d6b100451861757235e"
 dependencies = [
  "proc-macro-crate",
  "proc-macro2",
@@ -3421,9 +3421,9 @@ dependencies = [
 
 [[package]]
 name = "salvo-proxy"
-version = "0.69.0"
+version = "0.71.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "055a3e344158f79277bf9b2041e1877ab82aaf452e0db8b5ab5d7b145e470fda"
+checksum = "ca52a800cdbe4081dccc3e692b24edb643f8aa2e13b905f3367ce1506a543a08"
 dependencies = [
  "fastrand",
  "futures-util",
@@ -3439,9 +3439,9 @@ dependencies = [
 
 [[package]]
 name = "salvo-serde-util"
-version = "0.69.0"
+version = "0.71.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "537e473dd2f54263329cdea3be148877b9e2296c0778e806b62f726481c9c88f"
+checksum = "020a02e832a763c1c8bc4626027e7ba512fe5e68d9539e36d7f87553d972167e"
 dependencies = [
  "proc-macro2",
  "quote",
@@ -3450,9 +3450,9 @@ dependencies = [
 
 [[package]]
 name = "salvo-serve-static"
-version = "0.69.0"
+version = "0.71.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "0ef4a04c42659125f3247a624e61085dbcdcc404f994b43c4c1940ff0ea68c60"
+checksum = "33421a8fe96abe9aa35e2163d22b56b828dd137eaf225acf1c30c8823788912f"
 dependencies = [
  "hex",
  "mime",
@@ -3470,9 +3470,9 @@ dependencies = [
 
 [[package]]
 name = "salvo_core"
-version = "0.69.0"
+version = "0.71.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "4bf49279c4e79053930412770b4de8cf3ef54955c0c1ac5debf4fd19414f2fd0"
+checksum = "f1e93cc42557d09e6cf20f5e87339f40d8c5e81c9466f5d60f67c9123a08dbb5"
 dependencies = [
  "async-trait",
  "base64 0.22.1",
@@ -3512,7 +3512,7 @@ dependencies = [
  "serde-xml-rs",
  "serde_json",
  "serde_urlencoded",
- "sync_wrapper",
+ "sync_wrapper 1.0.1",
  "tempfile",
  "thiserror",
  "tokio",
@@ -3526,13 +3526,14 @@ dependencies = [
 
 [[package]]
 name = "salvo_extra"
-version = "0.69.0"
+version = "0.71.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "0b8fe07ac0059a08ab391d28f88e6c29a281d1ce00d64c54a68dd1546f7688c6"
+checksum = "99c0133d1a4cb17f9262c6871f30466e113af2371b0dffc98f9392cfc17d378f"
 dependencies = [
  "base64 0.22.1",
  "etag",
  "futures-util",
+ "http-body-util",
  "hyper",
  "pin-project",
  "salvo_core",
@@ -3540,15 +3541,16 @@ dependencies = [
  "serde_json",
  "tokio",
  "tokio-tungstenite",
+ "tower 0.5.0",
  "tracing",
  "ulid",
 ]
 
 [[package]]
 name = "salvo_macros"
-version = "0.69.0"
+version = "0.71.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "8f99555799c8f124dd67e02c4d6da26d1b622ef5371a8871da468adcd7778726"
+checksum = "acaac9df10ca8df373381a6a46faa9ae7cadd53f07307c7c208920ba02dc4a78"
 dependencies = [
  "proc-macro-crate",
  "proc-macro2",
@@ -3933,6 +3935,12 @@ dependencies = [
 
 [[package]]
 name = "sync_wrapper"
+version = "0.1.2"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "2047c6ded9c721764247e62cd3b03c09ffc529b2ba5b10ec482ae507a4a70160"
+
+[[package]]
+name = "sync_wrapper"
 version = "1.0.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "a7065abeca94b6a8a577f9bd45aa0867a2238b74e8eb67cf10d492bc39351394"
@@ -4260,6 +4268,23 @@ dependencies = [
  "tokio",
  "tower-layer",
  "tower-service",
+]
+
+[[package]]
+name = "tower"
+version = "0.5.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "36b837f86b25d7c0d7988f00a54e74739be6477f2aac6201b8f429a7569991b7"
+dependencies = [
+ "futures-core",
+ "futures-util",
+ "pin-project-lite",
+ "sync_wrapper 0.1.2",
+ "tokio",
+ "tokio-util",
+ "tower-layer",
+ "tower-service",
+ "tracing",
 ]
 
 [[package]]
