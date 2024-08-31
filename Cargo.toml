@@ -24,6 +24,7 @@ itertools = "0.13"
 log = "0.4"
 memmap2 = "0.9"
 safetensors = "0.4"
+salvo = "0.71.1"
 serde = { version = "1", features = ["derive"] }
 tokio = { version = "1", features = ["full"] }
 

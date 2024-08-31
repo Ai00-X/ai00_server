@@ -148,6 +148,9 @@ pub struct EmbedOption {
     pub endpoint: String,
     #[derivative(Default(value = "\"assets/models/hf\".into()"))]
     pub home: PathBuf,
+    #[cfg(target_os = "windows")]
+    #[derivative(Default(value = "\"assets/ort/onnxruntime.dll\".into()"))]
+    pub lib: PathBuf,
 }
 
 #[derive(Debug, Default, Clone, Serialize, Deserialize)]

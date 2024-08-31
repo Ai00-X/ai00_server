@@ -26,11 +26,16 @@ sha2 = "0.10.8"
 simple_logger = { version = "5.0.0", features = ["stderr"] }
 tempfile = "3.6"
 toml = "0.8.6"
-zip-extract = "0.1"
+zip-extract = "0.2"
 
 [dependencies.fastembed]
 optional = true
-version = "3.14"
+version = "4"
+
+[target.'cfg(windows)'.dependencies.fastembed]
+features = ["ort-load-dynamic"]
+optional = true
+version = "4"
 
 [dependencies.hf-hub]
 optional = true
@@ -39,11 +44,11 @@ version = "0.3"
 [dependencies.text-splitter]
 features = ["markdown", "tokenizers"]
 optional = true
-version = "0.14"
+version = "0.15"
 
 [dependencies.tokenizers]
 optional = true
-version = "0.19"
+version = "0.20"
 
 [dependencies.ai00-core]
 workspace = true
@@ -79,8 +84,6 @@ workspace = true
 workspace = true
 
 [dependencies.salvo]
-# git = "https://github.com/salvo-rs/salvo"
-default-features = true
 features = [
     "acme",
     "affix-state",
@@ -92,4 +95,4 @@ features = [
     "serve-static",
     "sse",
 ]
-version = "0.71.1"
+workspace = true

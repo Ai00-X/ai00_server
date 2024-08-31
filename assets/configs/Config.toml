@@ -50,7 +50,8 @@ secret_key = "ai00_is_good"
 [web] # Remove this to disable WebUI.
 path = "assets/www/index.zip" # Path to the WebUI.
 
-# [embed] # Enable embed model, which is based on fast-embedding onnx models.
-# endpoint = "https://hf-mirror.com"
-# home = "./assets/models/hf"
-# name = { MultilingualE5Small = {} }
+[embed] # Enable embed model, which is based on fast-embedding onnx models.
+endpoint = "https://hf-mirror.com"
+home = "assets/models/hf"
+lib = "assets/ort/onnxruntime.dll"  # Only used under windows.
+name = { MultilingualE5Small = {} }
