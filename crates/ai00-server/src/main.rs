@@ -103,20 +103,19 @@ fn load_embed(embed: config::EmbedOption) -> Result<TextEmbed> {
 
     std::env::set_var("HF_ENDPOINT", embed.endpoint);
     std::env::set_var("HF_HOME", embed.home);
+    #[cfg(target_os = "windows")]
+    std::env::set_var("ORT_DYLIB_PATH", embed.lib);
 
     let api = Api::new()?;
-    let info = TextEmbedding::get_model_info(&embed.model);
+    let info = TextEmbedding::get_model_info(&embed.model)?.clone();
 
     let file = api.model(info.model_code.clone()).get("tokenizer.json")?;
     let tokenizer = tokenizers::Tokenizer::from_file(file).expect("failed to load tokenizer");
 
     log::info!("loading embed model: {}", embed.model);
 
-    let model = TextEmbedding::try_new(InitOptions {
-        model_name: embed.model,
-        show_download_progress: true,
-        ..Default::default()
-    })?;
+    let model =
+        TextEmbedding::try_new(InitOptions::new(embed.model).with_show_download_progress(true))?;
 
     Ok(TextEmbed {
         tokenizer,
