@@ -131,7 +131,7 @@ jobs:
           7z a -tzip ./${{ env.RELEASE_DIR }}/${{ env.RELEASE_BIN }}-${{ steps.get_version.outputs.VERSION }}-${{ env.MACOS_ARM64_TARGET }}.zip ./dist
 
       - name: Upload Zip
-        uses: actions/upload-artifact@v1
+        uses: actions/upload-artifact@v4
         with:
           name: ${{ matrix.build }}
           path: ./${{ env.RELEASE_DIR }}
@@ -158,22 +158,22 @@ jobs:
           release_name: ${{ steps.get_version.outputs.VERSION }}
 
       - name: Download Linux tarball
-        uses: actions/download-artifact@v1
+        uses: actions/download-artifact@v4
         with:
           name: linux
 
       - name: Download Windows tarball
-        uses: actions/download-artifact@v1
+        uses: actions/download-artifact@v4
         with:
           name: windows
 
       - name: Download MacOS tarball
-        uses: actions/download-artifact@v1
+        uses: actions/download-artifact@v4
         with:
           name: macos
 
       - name: Download MacOS ARM64 tarball
-        uses: actions/download-artifact@v1
+        uses: actions/download-artifact@v4
         with:
           name: macos_arm64
 
