@@ -77,13 +77,11 @@ jobs:
       - name: Build (MacOS)
         if: matrix.build == 'macos'
         run: cargo build --release --workspace
-      - name: Build for macOS ARM64
+      - name: Build (MacOS ARM64)
         if: matrix.build == 'macos_arm64'
         run: |
           rustup target add ${{ env.MACOS_ARM64_TARGET }}
-          cargo build --release --target=${{ env.MACOS_ARM64_TARGET }} --workspace
-
-
+          cargo build --release --workspace --target ${{ env.MACOS_ARM64_TARGET }}
       - name: Build (Windows)
         if: matrix.build == 'windows'
         run: cargo build --release --workspace
@@ -125,7 +123,7 @@ jobs:
         run: |
           for bin in ${{ env.RELEASE_BINS }}
           do
-            mv ./target/release/${bin} ./dist/${bin}
+            mv ./target/release/${{ env.MACOS_TARGET }}/${bin} ./dist/${bin}
           done
           mv ${{ env.RELEASE_ADDS }} ./dist
           7z a -tzip ./${{ env.RELEASE_DIR }}/${{ env.RELEASE_BIN }}-${{ steps.get_version.outputs.VERSION }}-${{ env.MACOS_ARM64_TARGET }}.zip ./dist
