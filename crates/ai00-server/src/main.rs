@@ -162,33 +162,41 @@ async fn main() {
             .clone()
             .unwrap_or("assets/configs/Config.toml".into());
         log::info!("reading config {}...", path.to_string_lossy());
-        load_config(path).await.expect("load config failed")
+        load_config(path).await.expect("failed to startup")
     };
 
     #[cfg(feature = "embed")]
-    let embed = match config.embed.clone() {
-        Some(embed) => {
-            let embed = load_embed(embed).expect("failed to load embed");
-            Some(std::sync::Arc::new(embed))
-        }
-        None => None,
-    };
+    let embed = config
+        .embed
+        .clone()
+        .and_then(|embed| match load_embed(embed) {
+            Ok(embed) => Some(std::sync::Arc::new(embed)),
+            Err(err) => {
+                log::error!("failed to load embed model: {}", err);
+                None
+            }
+        });
     #[cfg(not(feature = "embed"))]
     let embed: Option<()> = None;
 
-    let request = Box::new(config.clone().try_into().expect("load model failed"));
-    let _ = sender.send(ThreadRequest::Reload {
-        request,
-        sender: None,
-    });
+    match config.clone().try_into() {
+        Ok(request) => {
+            let request = ThreadRequest::Reload {
+                request: Box::new(request),
+                sender: None,
+            };
+            let _ = sender.send(request);
+        }
+        Err(err) => log::error!("failed to load model: {}", err),
+    }
 
     let serve_path = match config.web.clone() {
         Some(web) => {
             if Path::new("assets/temp").exists() {
-                std::fs::remove_dir_all("assets/temp").expect("delete temp dir failed");
+                std::fs::remove_dir_all("assets/temp").expect("failed to delete temp dir");
             }
 
-            std::fs::create_dir("assets/temp").expect("create plugins dir failed");
+            std::fs::create_dir("assets/temp").expect("failed to create plugins dir");
             let path = PathBuf::from("assets/temp");
 
             load_web(web.path, &path)
@@ -197,7 +205,7 @@ async fn main() {
 
             // create `assets/www/plugins` if it doesn't exist
             if !Path::new("assets/www/plugins").exists() {
-                std::fs::create_dir("assets/www/plugins").expect("create plugins dir failed");
+                std::fs::create_dir("assets/www/plugins").expect("failed create plugins dir");
             }
 
             // extract and load all plugins under `assets/www/plugins`
