@@ -201,11 +201,11 @@ async fn main() {
 
             load_web(web.path, &path)
                 .await
-                .expect("load frontend failed");
+                .expect("failed to load frontend");
 
             // create `assets/www/plugins` if it doesn't exist
             if !Path::new("assets/www/plugins").exists() {
-                std::fs::create_dir("assets/www/plugins").expect("failed create plugins dir");
+                std::fs::create_dir("assets/www/plugins").expect("failed to create plugins dir");
             }
 
             // extract and load all plugins under `assets/www/plugins`
