@@ -123,7 +123,7 @@ jobs:
         run: |
           for bin in ${{ env.RELEASE_BINS }}
           do
-            mv ./target/release/${{ env.MACOS_TARGET }}/${bin} ./dist/${bin}
+            mv ./target/${{ env.MACOS_TARGET }}/release/${bin} ./dist/${bin}
           done
           mv ${{ env.RELEASE_ADDS }} ./dist
           7z a -tzip ./${{ env.RELEASE_DIR }}/${{ env.RELEASE_BIN }}-${{ steps.get_version.outputs.VERSION }}-${{ env.MACOS_ARM64_TARGET }}.zip ./dist
