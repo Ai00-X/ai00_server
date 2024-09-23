@@ -6,7 +6,7 @@ use std::{
 };
 
 use ai00_core::{model_route, ThreadRequest};
-use anyhow::{bail, Result};
+use anyhow::{anyhow, bail, Result};
 use clap::{command, CommandFactory, Parser};
 use memmap2::Mmap;
 use salvo::{
@@ -108,14 +108,13 @@ fn load_embed(embed: config::EmbedOption) -> Result<TextEmbed> {
 
     let api = Api::new()?;
     let info = TextEmbedding::get_model_info(&embed.model)?.clone();
-
-    let file = api.model(info.model_code.clone()).get("tokenizer.json")?;
-    let tokenizer = tokenizers::Tokenizer::from_file(file).expect("failed to load tokenizer");
-
     log::info!("loading embed model: {}", embed.model);
 
-    let model =
-        TextEmbedding::try_new(InitOptions::new(embed.model).with_show_download_progress(true))?;
+    let options = InitOptions::new(embed.model).with_show_download_progress(true);
+    let model = TextEmbedding::try_new(options)?;
+
+    let file = api.model(info.model_code.clone()).get("tokenizer.json")?;
+    let tokenizer = tokenizers::Tokenizer::from_file(file).map_err(|err| anyhow!("{err}"))?;
 
     Ok(TextEmbed {
         tokenizer,
