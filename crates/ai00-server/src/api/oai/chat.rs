@@ -26,7 +26,7 @@ pub enum Role {
     User,
     #[serde(alias = "assistant")]
     Assistant,
-    #[serde(alias = "observation")]
+    #[serde(alias = "observation", alias = "tool", alias = "Tool")]
     Observation,
 }
 
