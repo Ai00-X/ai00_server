@@ -22,35 +22,16 @@ rustc-hash = "2.0.0"
 uuid = { version = "1.8.0", features = ["serde", "v4"] }
 voracious_radix_sort = "1.2.0"
 
-[dependencies.anyhow]
-workspace = true
-
-[dependencies.derivative]
-workspace = true
-
-[dependencies.flume]
-workspace = true
-
-[dependencies.itertools]
-workspace = true
-
-[dependencies.memmap2]
-workspace = true
-
-[dependencies.log]
-workspace = true
-
-[dependencies.safetensors]
-workspace = true
-
-[dependencies.serde]
-workspace = true
-
-[dependencies.tokio]
-workspace = true
-
-[dependencies.web-rwkv]
-workspace = true
+anyhow.workspace = true
+derivative.workspace = true
+flume.workspace = true
+itertools.workspace = true
+log.workspace = true
+memmap2.workspace = true
+safetensors.workspace = true
+serde.workspace = true
+tokio.workspace = true
+web-rwkv.workspace = true
 
 [dependencies.salvo]
 features = ["oapi"]
