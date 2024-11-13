@@ -64,7 +64,7 @@ QQ Group for communication: 30920262
     
 2.  After [downloading the model](#👻other), place the model in the `assets/models/` path, for example, `assets/models/RWKV-x060-World-3B-v2-20240228-ctx4096.st`
 
-3.  Optionally modify [`assets/Config.toml`](./assets/Config.toml) for model configurations like model path, quantization layers, etc.
+3.  Optionally modify [`assets/configs/Config.toml`](./assets/configs/Config.toml) for model configurations like model path, quantization layers, etc.
     
 4.  Run in the command line
     
@@ -128,12 +128,12 @@ It only supports Safetensors models with the `.st` extension now. Models saved w
   $ cargo run --release --package converter -- --input /path/to/model.pth --output /path/to/model.st
   ```
 
-4. Just like the steps mentioned above, place the model in the `.st` model in the `assets/models/` path and modify the model path in [`assets/Config.toml`](./assets/Config.toml)
+4. Just like the steps mentioned above, place the model in the `.st` model in the `assets/models/` path and modify the model path in [`assets/configs/Config.toml`](./assets/configs/Config.toml)
     
 
 ## 📝Supported Arguments
 
-*   `--config`: Configure file path (default: `assets/Config.toml`)
+*   `--config`: Configure file path (default: `assets/configs/Config.toml`)
 *   `--ip`: The IP address the server is bound to
 *   `--port`: Running port
 

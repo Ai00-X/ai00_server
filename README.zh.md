@@ -111,11 +111,11 @@
     $ ./web-rwkv-converter --input /path/to/model.pth --output /path/to/model.st
     ```
 
-5. 根据上文步骤，将转换所得的`.st`模型文件放在`assets/models/`路径下，并修改  [`assets/Config.toml`](./assets/Config.toml) 中的模型路径
+5. 根据上文步骤，将转换所得的`.st`模型文件放在`assets/models/`路径下，并修改  [`assets/configs/Config.toml`](./assets/configs/Config.toml) 中的模型路径
 
 
 ## 📝支持的启动参数
-- `--config`: 模型配置文件路径（默认`assets/Config.toml`）
+- `--config`: 模型配置文件路径（默认`assets/configs/Config.toml`）
 - `--ip`: 服务器绑定的IP地址
 - `--port`: 运行端口
 
