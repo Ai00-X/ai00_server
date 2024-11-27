@@ -55,7 +55,7 @@ Ai00 Server 目前仅支持 `.st` 后缀的 Safetensors 模型，有两种方法
 
 下载完成后，在文件夹中找到 `.pth` 模型:
 
-![ai00-model-list](./imgs/ai00-model-list.png)
+![ai00-model-list](./doc_img/ai00-model-list.png)
 
 在 Ai00 解压的目录中，可以找到名为 “`converter.exe`” 的模型转换工具。在 Ai00 目录启动终端并执行以下命令，可以将指定路径的 `.pth` 模型转化成 `.st` 模型：
 ```
