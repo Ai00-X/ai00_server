@@ -85,6 +85,15 @@
         "code",
         "security"
       ]
+    },
+    {
+      "login": "shoumenchougou",
+      "name": "luoqiqi",
+      "avatar_url": "https://avatars.githubusercontent.com/u/70496206?v=4",
+      "profile": "https://github.com/shoumenchougou",
+      "contributions": [
+        "doc"
+      ]
     }
   ],
   "contributorsPerLine": 7,
