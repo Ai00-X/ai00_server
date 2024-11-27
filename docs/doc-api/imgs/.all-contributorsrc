@@ -1,0 +1,106 @@
+{
+  "files": [
+    "README.md"
+  ],
+  "imageSize": 100,
+  "commit": false,
+  "commitType": "docs",
+  "commitConvention": "angular",
+  "contributors": [
+    {
+      "login": "cgisky1980",
+      "name": "顾真牛",
+      "avatar_url": "https://avatars.githubusercontent.com/u/82481660?v=4",
+      "profile": "https://github.com/cgisky1980",
+      "contributions": [
+        "doc",
+        "code",
+        "content",
+        "design",
+        "mentoring"
+      ]
+    },
+    {
+      "login": "cryscan",
+      "name": "研究社交",
+      "avatar_url": "https://avatars.githubusercontent.com/u/16053640?v=4",
+      "profile": "http://cryscan.github.io/profile",
+      "contributions": [
+        "code",
+        "example",
+        "ideas",
+        "maintenance",
+        "review",
+        "platform"
+      ]
+    },
+    {
+      "login": "josStorer",
+      "name": "josc146",
+      "avatar_url": "https://avatars.githubusercontent.com/u/13366013?v=4",
+      "profile": "https://github.com/josStorer",
+      "contributions": [
+        "bug",
+        "code",
+        "ideas",
+        "tool"
+      ]
+    },
+    {
+      "login": "l15y",
+      "name": "l15y",
+      "avatar_url": "https://avatars.githubusercontent.com/u/11372524?v=4",
+      "profile": "https://github.com/l15y",
+      "contributions": [
+        "tool",
+        "plugin",
+        "code"
+      ]
+    },
+    {
+      "login": "cahya-wirawan",
+      "name": "Cahya Wirawan",
+      "avatar_url": "https://avatars.githubusercontent.com/u/7669893?v=4",
+      "profile": "https://www.linkedin.com/in/cahyawirawan/",
+      "contributions": [
+        "bug"
+      ]
+    },
+    {
+      "login": "yuunnn-w",
+      "name": "yuunnn_w",
+      "avatar_url": "https://avatars.githubusercontent.com/u/91336323?v=4",
+      "profile": "https://github.com/yuunnn-w",
+      "contributions": [
+        "doc",
+        "test"
+      ]
+    },
+    {
+      "login": "longzou",
+      "name": "longzou",
+      "avatar_url": "https://avatars.githubusercontent.com/u/59821454?v=4",
+      "profile": "https://github.com/longzou",
+      "contributions": [
+        "code",
+        "security"
+      ]
+    },
+    {
+      "login": "shoumenchougou",
+      "name": "shoumenchougou",
+      "avatar_url": "https://avatars.githubusercontent.com/u/70496206?v=4",
+      "profile": "https://github.com/shoumenchougou",
+      "contributions": [
+        "doc",
+        "test"
+      ]
+    }
+  ],
+  "contributorsPerLine": 8,
+  "skipCi": true,
+  "repoType": "github",
+  "repoHost": "https://github.com",
+  "projectName": "ai00_server",
+  "projectOwner": "Ai00-X"
+}
