@@ -18,10 +18,10 @@ use tokio::sync::{Mutex, RwLock};
 use web_rwkv::{
     context::Context,
     runtime::{
-        infer::{InferChunk, InferInfo, InferInput, InferInputBatch, InferOption, InferOutput},
-        model::{ModelInfo, ModelRuntime, State},
+        infer::{InferInfo, InferInput, InferInputBatch, InferOption, InferOutput},
+        model::{Bundle, ModelInfo, State},
         softmax::softmax,
-        Job, JobBuilder, JobRuntime,
+        Dispatcher, Job, TokioRuntime,
     },
     tensor::{TensorCpu, TensorInit},
     tokenizer::Tokenizer,
@@ -396,7 +396,7 @@ pub struct Runtime {
     info: ModelInfo,
     state: Arc<dyn State + Send + Sync>,
     model: Arc<dyn ModelSerialize + Send + Sync>,
-    runtime: JobRuntime<InferInput, InferOutput>,
+    runtime: TokioRuntime<InferInput, InferOutput>,
     tokenizer: Arc<Tokenizer>,
     slots: Mutex<Vec<SlotState>>,
     caches: Mutex<CacheHub>,
@@ -405,14 +405,14 @@ pub struct Runtime {
 impl Runtime {
     pub async fn new<J, B>(
         context: Context,
-        builder: B,
+        bundle: B,
         reload: ReloadRequest,
         states: Vec<InitState>,
         tokenizer: Tokenizer,
     ) -> Self
     where
-        J: Job<Info = InferInfo, Input = InferChunk, Output = InferOutput>,
-        B: JobBuilder<J, Info = InferInfo> + ModelRuntime,
+        J: Job<Input = InferInput, Output = InferOutput> + Send + 'static,
+        B: Dispatcher<J, Info = InferInfo> + Bundle + Clone + Send + 'static,
     {
         let slots = (0..reload.max_batch)
             .map(|_| SlotState::default())
@@ -433,10 +433,10 @@ impl Runtime {
             caches.backed.insert(id, item);
         }
 
-        let info = builder.info();
-        let state = Arc::new(builder.state());
-        let model = Arc::new(Model(builder.model()));
-        let runtime = JobRuntime::<InferInput, InferOutput>::new(builder).await;
+        let info = bundle.info();
+        let state = Arc::new(bundle.state());
+        let model = Arc::new(Model(bundle.model()));
+        let runtime = TokioRuntime::<InferInput, InferOutput>::new(bundle).await;
 
         Self {
             context,
@@ -802,7 +802,6 @@ impl Runtime {
             };
 
             let num_vocab = self.info.num_vocab;
-            let output = output;
             let formatters = context.formatters.clone();
             let sampler = context.request.sampler.clone();
             let bias = context.request.bias.clone();
@@ -1006,7 +1005,7 @@ impl Runtime {
                         if input.batches[batch].tokens.is_empty() {
                             break;
                         }
-                        let (input, InferOutput(output)) = self.runtime.infer(input).await;
+                        let (input, InferOutput(output)) = self.runtime.infer(input).await?;
                         inference.replace(input);
 
                         let output = output[batch].0.clone().split(1)?;
@@ -1070,7 +1069,7 @@ impl Runtime {
         // run the model until there is at least one slot finished
         let outputs = loop {
             let input = inference.take().unwrap();
-            let (input, output) = self.runtime.infer(input).await;
+            let (input, output) = self.runtime.infer(input).await?;
             inference.replace(input);
 
             if output.iter().any(|batch| batch.len() > 0) {

@@ -134,6 +134,8 @@ pub enum EmbeddingModel {
     GTELargeENV15,
     /// Quantized Alibaba-NLP/gte-large-en-v1.5
     GTELargeENV15Q,
+    /// Qdrant/clip-ViT-B-32-text
+    ClipVitB32,
 }
 
 #[cfg(feature = "embed")]

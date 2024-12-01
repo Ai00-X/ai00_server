@@ -4,7 +4,7 @@ use std::{
     sync::Arc,
 };
 
-use anyhow::{anyhow, bail, Result};
+use anyhow::{bail, Result};
 use derivative::Derivative;
 use flume::{Receiver, Sender};
 use half::f16;
@@ -24,9 +24,7 @@ use web_rwkv::{
     context::{Context, ContextBuilder, InstanceExt},
     runtime::{
         loader::{Loader, Lora, LoraBlend, Reader},
-        model::{
-            Build, ContextAutoLimits, EmbedDevice, ModelBuilder, ModelInfo, ModelVersion, Quant,
-        },
+        model::{ContextAutoLimits, EmbedDevice, ModelBuilder, ModelInfo, ModelVersion, Quant},
         v4, v5, v6,
     },
     tensor::{serialization::Seed, TensorCpu},
@@ -272,9 +270,10 @@ async fn load_init_state<R: Reader>(
     model: R,
 ) -> Result<TensorCpu<f32>> {
     let state = match info.version {
-        ModelVersion::V4 => Err(anyhow!("v4 does not support init state yet")),
+        ModelVersion::V4 => bail!("v4 does not support init state yet"),
         ModelVersion::V5 => v5::read_state(context, info, model).await,
         ModelVersion::V6 => v6::read_state(context, info, model).await,
+        ModelVersion::V7 => bail!("v7 is not supported yet"),
     };
     state.map_err(Into::into)
 }
@@ -380,27 +379,28 @@ async fn load_runtime(
             let reload = reload.clone();
 
             macro_rules! match_safe_tensors {
-                (($v:expr, $p:expr), { $(($version:path, $precision:path, $model:ty, $runtime:ty)),+ }) => {
+                (($v:expr, $p:expr), { $(($version:path, $precision:path, $model:ty, $build:ident, $bundle:ty)),+ }) => {
                     match ($v, $p) {
                         $(
                             ($version, $precision) => {
-                                let model = Build::<$model>::build(builder).await?;
-                                let builder = <$runtime>::new(model, max_batch);
-                                Runtime::new(context, builder, reload, states, tokenizer).await
+                                let model = builder.$build().await?;
+                                let bundle = <$bundle>::new(model, max_batch);
+                                Runtime::new(context, bundle, reload, states, tokenizer).await
                             }
                         )+
+                        (version, _) => bail!("unsupported version: {:?}", version)
                     }
                 }
             }
             match_safe_tensors!(
                 (info.version, reload.precision),
                 {
-                    (ModelVersion::V4, Precision::Fp16, v4::Model, v4::ModelRuntime::<f16>),
-                    (ModelVersion::V5, Precision::Fp16, v5::Model, v5::ModelRuntime::<f16>),
-                    (ModelVersion::V6, Precision::Fp16, v6::Model, v6::ModelRuntime::<f16>),
-                    (ModelVersion::V4, Precision::Fp32, v4::Model, v4::ModelRuntime::<f32>),
-                    (ModelVersion::V5, Precision::Fp32, v5::Model, v5::ModelRuntime::<f32>),
-                    (ModelVersion::V6, Precision::Fp32, v6::Model, v6::ModelRuntime::<f32>)
+                    (ModelVersion::V4, Precision::Fp16, v4::Model, build_v4, v4::Bundle::<f16>),
+                    (ModelVersion::V5, Precision::Fp16, v5::Model, build_v5, v5::Bundle::<f16>),
+                    (ModelVersion::V6, Precision::Fp16, v6::Model, build_v6, v6::Bundle::<f16>),
+                    (ModelVersion::V4, Precision::Fp32, v4::Model, build_v4, v4::Bundle::<f32>),
+                    (ModelVersion::V5, Precision::Fp32, v5::Model, build_v5, v5::Bundle::<f32>),
+                    (ModelVersion::V6, Precision::Fp32, v6::Model, build_v6, v6::Bundle::<f32>)
                 }
             )
         }
@@ -414,28 +414,29 @@ async fn load_runtime(
             let reload = reload.clone();
 
             macro_rules! match_prefab {
-                (($v:expr, $p:expr), { $(($version:path, $precision:path, $model:ty, $runtime:ty)),+ }) => {
+                (($v:expr, $p:expr), { $(($version:path, $precision:path, $model:ty, $bundle:ty)),+ }) => {
                     match ($v, $p) {
                         $(
                             ($version, $precision) => {
                                 let seed: Seed<_, $model> = Seed::new(&context);
                                 let model = seed.deserialize(&mut deserializer)?;
-                                let builder = <$runtime>::new(model, reload.max_batch);
-                                Runtime::new(context, builder, reload, states, tokenizer).await
+                                let bundle = <$bundle>::new(model, reload.max_batch);
+                                Runtime::new(context, bundle, reload, states, tokenizer).await
                             }
                         )+
+                        (version, _) => bail!("unsupported version: {:?}", version)
                     }
                 }
             }
             match_prefab!(
                 (info.version, reload.precision),
                 {
-                    (ModelVersion::V4, Precision::Fp16, v4::Model, v4::ModelRuntime::<f16>),
-                    (ModelVersion::V5, Precision::Fp16, v5::Model, v5::ModelRuntime::<f16>),
-                    (ModelVersion::V6, Precision::Fp16, v6::Model, v6::ModelRuntime::<f16>),
-                    (ModelVersion::V4, Precision::Fp32, v4::Model, v4::ModelRuntime::<f32>),
-                    (ModelVersion::V5, Precision::Fp32, v5::Model, v5::ModelRuntime::<f32>),
-                    (ModelVersion::V6, Precision::Fp32, v6::Model, v6::ModelRuntime::<f32>)
+                    (ModelVersion::V4, Precision::Fp16, v4::Model, v4::Bundle::<f16>),
+                    (ModelVersion::V5, Precision::Fp16, v5::Model, v5::Bundle::<f16>),
+                    (ModelVersion::V6, Precision::Fp16, v6::Model, v6::Bundle::<f16>),
+                    (ModelVersion::V4, Precision::Fp32, v4::Model, v4::Bundle::<f32>),
+                    (ModelVersion::V5, Precision::Fp32, v5::Model, v5::Bundle::<f32>),
+                    (ModelVersion::V6, Precision::Fp32, v6::Model, v6::Bundle::<f32>)
                 }
             )
         }

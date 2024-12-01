@@ -50,7 +50,7 @@ version = "4"
 [target.'cfg(windows)'.dependencies.fastembed]
 features = ["ort-load-dynamic"]
 optional = true
-version = "4"
+version = "4.3.0"
 
 [dependencies.hf-hub]
 optional = true
