@@ -10,7 +10,7 @@
 [![Rust Version](https://img.shields.io/badge/Rust-1.78.0+-blue)](https://releases.rs/docs/1.75.0)
 ![PRs welcome](https://img.shields.io/badge/PRs-Welcome-brightgreen)     
 <!-- ALL-CONTRIBUTORS-BADGE:START - Do not remove or modify this section -->
-[![All Contributors](https://img.shields.io/badge/all_contributors-7-orange.svg?style=flat-square)](#contributors-)
+[![All Contributors](https://img.shields.io/badge/all_contributors-8-orange.svg?style=flat-square)](#contributors-)
 <!-- ALL-CONTRIBUTORS-BADGE:END -->
 
 [![en](https://img.shields.io/badge/lang-en-red.svg)](README.md)
@@ -64,7 +64,7 @@ QQ Group for communication: 30920262
     
 2.  After [downloading the model](#👻other), place the model in the `assets/models/` path, for example, `assets/models/RWKV-x060-World-3B-v2-20240228-ctx4096.st`
 
-3.  Optionally modify [`assets/Config.toml`](./assets/Config.toml) for model configurations like model path, quantization layers, etc.
+3.  Optionally modify [`assets/configs/Config.toml`](./assets/configs/Config.toml) for model configurations like model path, quantization layers, etc.
     
 4.  Run in the command line
     
@@ -128,12 +128,12 @@ It only supports Safetensors models with the `.st` extension now. Models saved w
   $ cargo run --release --package converter -- --input /path/to/model.pth --output /path/to/model.st
   ```
 
-4. Just like the steps mentioned above, place the model in the `.st` model in the `assets/models/` path and modify the model path in [`assets/Config.toml`](./assets/Config.toml)
+4. Just like the steps mentioned above, place the model in the `.st` model in the `assets/models/` path and modify the model path in [`assets/configs/Config.toml`](./assets/configs/Config.toml)
     
 
 ## 📝Supported Arguments
 
-*   `--config`: Configure file path (default: `assets/Config.toml`)
+*   `--config`: Configure file path (default: `assets/configs/Config.toml`)
 *   `--ip`: The IP address the server is bound to
 *   `--port`: Running port
 
@@ -335,12 +335,15 @@ Thank you to these awesome individuals who are insightful and outstanding for th
   <tbody>
     <tr>
       <td align="center" valign="top" width="14.28%"><a href="https://github.com/cgisky1980"><img src="https://avatars.githubusercontent.com/u/82481660?v=4?s=100" width="100px;" alt="顾真牛"/><br /><sub><b>顾真牛</b></sub></a><br /><a href="https://github.com/Ai00-X/ai00_server/commits?author=cgisky1980" title="Documentation">📖</a> <a href="https://github.com/Ai00-X/ai00_server/commits?author=cgisky1980" title="Code">💻</a> <a href="#content-cgisky1980" title="Content">🖋</a> <a href="#design-cgisky1980" title="Design">🎨</a> <a href="#mentoring-cgisky1980" title="Mentoring">🧑‍🏫</a></td>
-      <td align="center" valign="top" width="14.28%"><a href="https://cryscan.github.io/profile"><img src="https://avatars.githubusercontent.com/u/16053640?v=4?s=100" width="100px;" alt="研究社交"/><br /><sub><b>研究社交</b></sub></a><br /><a href="https://github.com/Ai00-X/ai00_server/commits?author=cryscan" title="Code">💻</a> <a href="#example-cryscan" title="Examples">💡</a> <a href="#ideas-cryscan" title="Ideas, Planning, & Feedback">🤔</a> <a href="#maintenance-cryscan" title="Maintenance">🚧</a> <a href="https://github.com/Ai00-X/ai00_server/pulls?q=is%3Apr+reviewed-by%3Acryscan" title="Reviewed Pull Requests">👀</a> <a href="#platform-cryscan" title="Packaging/porting to new platform">📦</a></td>
+      <td align="center" valign="top" width="14.28%"><a href="http://cryscan.github.io/profile"><img src="https://avatars.githubusercontent.com/u/16053640?v=4?s=100" width="100px;" alt="研究社交"/><br /><sub><b>研究社交</b></sub></a><br /><a href="https://github.com/Ai00-X/ai00_server/commits?author=cryscan" title="Code">💻</a> <a href="#example-cryscan" title="Examples">💡</a> <a href="#ideas-cryscan" title="Ideas, Planning, & Feedback">🤔</a> <a href="#maintenance-cryscan" title="Maintenance">🚧</a> <a href="https://github.com/Ai00-X/ai00_server/pulls?q=is%3Apr+reviewed-by%3Acryscan" title="Reviewed Pull Requests">👀</a> <a href="#platform-cryscan" title="Packaging/porting to new platform">📦</a></td>
       <td align="center" valign="top" width="14.28%"><a href="https://github.com/josStorer"><img src="https://avatars.githubusercontent.com/u/13366013?v=4?s=100" width="100px;" alt="josc146"/><br /><sub><b>josc146</b></sub></a><br /><a href="https://github.com/Ai00-X/ai00_server/issues?q=author%3AjosStorer" title="Bug reports">🐛</a> <a href="https://github.com/Ai00-X/ai00_server/commits?author=josStorer" title="Code">💻</a> <a href="#ideas-josStorer" title="Ideas, Planning, & Feedback">🤔</a> <a href="#tool-josStorer" title="Tools">🔧</a></td>
       <td align="center" valign="top" width="14.28%"><a href="https://github.com/l15y"><img src="https://avatars.githubusercontent.com/u/11372524?v=4?s=100" width="100px;" alt="l15y"/><br /><sub><b>l15y</b></sub></a><br /><a href="#tool-l15y" title="Tools">🔧</a> <a href="#plugin-l15y" title="Plugin/utility libraries">🔌</a> <a href="https://github.com/Ai00-X/ai00_server/commits?author=l15y" title="Code">💻</a></td>
       <td align="center" valign="top" width="14.28%"><a href="https://www.linkedin.com/in/cahyawirawan/"><img src="https://avatars.githubusercontent.com/u/7669893?v=4?s=100" width="100px;" alt="Cahya Wirawan"/><br /><sub><b>Cahya Wirawan</b></sub></a><br /><a href="https://github.com/Ai00-X/ai00_server/issues?q=author%3Acahya-wirawan" title="Bug reports">🐛</a></td>
       <td align="center" valign="top" width="14.28%"><a href="https://github.com/yuunnn-w"><img src="https://avatars.githubusercontent.com/u/91336323?v=4?s=100" width="100px;" alt="yuunnn_w"/><br /><sub><b>yuunnn_w</b></sub></a><br /><a href="https://github.com/Ai00-X/ai00_server/commits?author=yuunnn-w" title="Documentation">📖</a> <a href="https://github.com/Ai00-X/ai00_server/commits?author=yuunnn-w" title="Tests">⚠️</a></td>
       <td align="center" valign="top" width="14.28%"><a href="https://github.com/longzou"><img src="https://avatars.githubusercontent.com/u/59821454?v=4?s=100" width="100px;" alt="longzou"/><br /><sub><b>longzou</b></sub></a><br /><a href="https://github.com/Ai00-X/ai00_server/commits?author=longzou" title="Code">💻</a> <a href="#security-longzou" title="Security">🛡️</a></td>
+    </tr>
+    <tr>
+      <td align="center" valign="top" width="14.28%"><a href="https://github.com/shoumenchougou"><img src="https://avatars.githubusercontent.com/u/70496206?v=4?s=100" width="100px;" alt="luoqiqi"/><br /><sub><b>luoqiqi</b></sub></a><br /><a href="https://github.com/Ai00-X/ai00_server/commits?author=shoumenchougou" title="Documentation">📖</a></td>
     </tr>
   </tbody>
 </table>

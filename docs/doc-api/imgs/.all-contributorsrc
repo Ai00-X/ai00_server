@@ -88,15 +88,16 @@
     },
     {
       "login": "shoumenchougou",
-      "name": "luoqiqi",
+      "name": "shoumenchougou",
       "avatar_url": "https://avatars.githubusercontent.com/u/70496206?v=4",
       "profile": "https://github.com/shoumenchougou",
       "contributions": [
-        "doc"
+        "doc",
+        "test"
       ]
     }
   ],
-  "contributorsPerLine": 7,
+  "contributorsPerLine": 8,
   "skipCi": true,
   "repoType": "github",
   "repoHost": "https://github.com",

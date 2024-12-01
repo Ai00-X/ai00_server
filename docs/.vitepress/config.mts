@@ -6,6 +6,7 @@ export default defineConfig({
   description: "Awesome AI",
   base: '/ai00_server/',
   lastUpdated: true,
+  ignoreDeadLinks: true,
   cleanUrls: true,
   appearance: 'dark',
   markdown: {

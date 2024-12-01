@@ -1,5 +1,4 @@
 
-
 ## 下载与安装
 
 对于新手来说，我们建议直接从 Ai00 Server 的 [Release 页面](https://github.com/Ai00-X/ai00_server/releases)下载最新版本。
@@ -7,33 +6,6 @@
 在每个版本发布的 Assets 版块可以找到已经打包好的 Ai00 Server 压缩包，下载并解压即可使用。
 
 ![ai00-download](./doc_img/ai00-download.png)
-
-* `aarch64-apple-darwin`: 适用于 Apple M 系列芯片的 macOS 系统
-* `x86_64-apple-darwin`: 适用于 Intel 芯片的 macOS 系统
-* `x86_64-pc-windows-msvc`: 适用于 Windows 64位系统
-* `x86_64-unknown-linux-gnu`: 适用于 Linux 64位系统
-
-## Ai00 的显存需求
-
-以下是 Ai00 不同量化方式的显存需求：
-
-<Callout type="info" emoji="ℹ️">
-测试环境：
-
-- CPU ：i7-10870H
-- GPU： RTX 4090 ，24G 显存
-- 内存：32GB
-</Callout>
-
-| 量化方式 | 1B6 模型 | 3B 模型 | 7B 模型 | 14B 模型 |
-| --- | --- | --- | --- | --- |
-| FP16 | 3.2GB 显存 | 6.5GB 显存 | 14.4GB 显存 | 约 29G 显存 |
-| INT8 | 2GB 显存 | 4.4GB 显存 | 8.2GB 显存 | 14.8GB 显存 |
-| NF4 | 1.3GB 显存 | 2.6GB 显存 | 5.2GB 显存 | 10.4GB 显存 |
-
-
-> 默认量化所有层。量化层数越高，显存占用越低，但模型效果可能变差。
-
 
 ## 下载/转换 RWKV 模型
 
@@ -57,21 +29,43 @@ Ai00 Server 目前仅支持 `.st` 后缀的 Safetensors 模型，有两种方法
 
 ![ai00-model-list](./doc_img/ai00-model-list.png)
 
-在 Ai00 解压的目录中，可以找到名为 “`converter.exe`” 的模型转换工具。在 Ai00 目录启动终端并执行以下命令，可以将指定路径的 `.pth` 模型转化成 `.st` 模型：
+在 Ai00 Server 解压的文件夹中，可以找到名为 “`convert.exe`” 的模型转换工具。
+
+在 Ai00 目录启动终端并执行以下命令，可以将指定路径的 `.pth` 模型转化成 `.st` 模型：
+
 ```
-./converter --input /path/to/model.pth
+$ ./converter --input /path/to/model.pth
 ```
+请将上述命令中的 `/path/to/model.pth` 改成需要转换的模型文件路径。
 
-请将上述命令中的 `/path/to/model.pth` 改成需要转换的 `.pth` 模型文件路径。
+获得 `.st` 后缀的 RWKV 模型后，我们需要在 `assets` 文件夹中新建一个 `models` 文件夹，并将 RWKV 模型放在此文件夹中。
 
+## Ai00 的显存需求
 
-获得 `.st` 后缀的 RWKV 模型后，在 Ai00 的 `dist/assets` 目录中新建一个 `models` 文件夹，并将 RWKV 模型放在此文件夹中。
+以下是 Ai00 不同量化方式的显存需求：
+
+<Callout type="info" emoji="ℹ️">
+测试环境：
+
+- CPU ：i7-10870H
+- GPU： RTX 4090 ，24G 显存
+- 内存：32GB
+</Callout>
+
+| 量化方式 | 1B6 模型 | 3B 模型 | 7B 模型 | 14B 模型 |
+| --- | --- | --- | --- | --- |
+| FP16 | 3.2GB 显存 | 6.5GB 显存 | 14.4GB 显存 | 约 29G 显存 |
+| INT8 | 2GB 显存 | 4.4GB 显存 | 8.2GB 显存 | 14.8GB 显存 |
+| NF4 | 1.3GB 显存 | 2.6GB 显存 | 5.2GB 显存 | 10.4GB 显存 |
+
 
 ## 调整配置参数
 
-Ai00 程序会按照 `assets/configs/Config.toml` 配置文件中的参数运行 `RWKV` 模型。可以通过文本编辑软件（如记事本等）修改 `Config.toml` 的配置项，调整模型的运行效果。
+Ai00 程序会按照 `assets/configs/Config.toml` 配置文件中的参数启动服务并运行 `RWKV` 模型。可以通过文本编辑软件（如记事本等）修改 `Config.toml` 的配置项，调整模型的运行效果。
 
-下面是一组示例 `Config.toml` 配置。
+下面是一组推荐的 `Config.toml` 配置。
+
+**注意：** 除非你了解其具体作用，否则不要随意改动带有 `【不建议更改】` 标注的配置项。
 
 ``` bash copy
 [model]
