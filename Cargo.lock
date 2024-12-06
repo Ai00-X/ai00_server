@@ -4683,9 +4683,9 @@ dependencies = [
 
 [[package]]
 name = "tokio"
-version = "1.41.1"
+version = "1.42.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "22cfb5bee7a6a52939ca9224d6ac897bb669134078daa8735560897f69de4d33"
+checksum = "5cec9b21b0450273377fc97bd4c33a8acffc8c996c987a7c5b319a0083707551"
 dependencies = [
  "backtrace",
  "bytes",
@@ -5215,9 +5215,9 @@ dependencies = [
 
 [[package]]
 name = "web-rwkv"
-version = "0.9.0"
+version = "0.9.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "4b8351958dfbd2b7b47eb0b3dc69c977c1047ae7922e02354001dd60e0b8898c"
+checksum = "4c482ff588650ef7ef13ab584266cebdf2197086f9a08c8701f0f9ae07645e95"
 dependencies = [
  "ahash 0.8.11",
  "anyhow",
