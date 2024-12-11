@@ -25,7 +25,7 @@ use web_rwkv::{
     runtime::{
         loader::{Loader, Lora, LoraBlend, Reader},
         model::{ContextAutoLimits, EmbedDevice, ModelBuilder, ModelInfo, ModelVersion, Quant},
-        v4, v5, v6,
+        v4, v5, v6, v7,
     },
     tensor::{serialization::Seed, TensorCpu},
     tokenizer::Tokenizer,
@@ -273,7 +273,7 @@ async fn load_init_state<R: Reader>(
         ModelVersion::V4 => bail!("v4 does not support init state yet"),
         ModelVersion::V5 => v5::read_state(context, info, model).await,
         ModelVersion::V6 => v6::read_state(context, info, model).await,
-        ModelVersion::V7 => bail!("v7 is not supported yet"),
+        ModelVersion::V7 => v7::read_state(context, info, model).await,
     };
     state.map_err(Into::into)
 }
@@ -388,7 +388,6 @@ async fn load_runtime(
                                 Runtime::new(context, bundle, reload, states, tokenizer).await
                             }
                         )+
-                        (version, _) => bail!("unsupported version: {:?}", version)
                     }
                 }
             }
@@ -398,9 +397,11 @@ async fn load_runtime(
                     (ModelVersion::V4, Precision::Fp16, v4::Model, build_v4, v4::Bundle::<f16>),
                     (ModelVersion::V5, Precision::Fp16, v5::Model, build_v5, v5::Bundle::<f16>),
                     (ModelVersion::V6, Precision::Fp16, v6::Model, build_v6, v6::Bundle::<f16>),
+                    (ModelVersion::V7, Precision::Fp16, v7::Model, build_v7, v7::Bundle::<f16>),
                     (ModelVersion::V4, Precision::Fp32, v4::Model, build_v4, v4::Bundle::<f32>),
                     (ModelVersion::V5, Precision::Fp32, v5::Model, build_v5, v5::Bundle::<f32>),
-                    (ModelVersion::V6, Precision::Fp32, v6::Model, build_v6, v6::Bundle::<f32>)
+                    (ModelVersion::V6, Precision::Fp32, v6::Model, build_v6, v6::Bundle::<f32>),
+                    (ModelVersion::V7, Precision::Fp32, v7::Model, build_v7, v7::Bundle::<f32>)
                 }
             )
         }
