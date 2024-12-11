@@ -1,3 +1,5 @@
+#!/usr/bin/python
+
 import collections
 import numpy
 import os
@@ -65,6 +67,7 @@ def convert_file(pt_filename: str, sf_filename: str, rename={}, transpose_names=
                 if transpose_name in new_k:
                     dims = len(v.shape)
                     v = v.transpose(dims - 2, dims - 1)
+                    break
             print(f"{new_k}\t{v.shape}\t{v.dtype}")
             loaded[new_k] = {
                 "dtype": str(v.dtype).split(".")[-1],
@@ -92,5 +95,8 @@ if __name__ == "__main__":
     convert_file(args.input, args.output,
                  rename={"time_faaaa": "time_first", "time_maa": "time_mix",
                          "lora_A": "lora.0", "lora_B": "lora.1"},
-                 transpose_names=["time_mix_w1", "time_mix_w2", "time_decay_w1", "time_decay_w2", "time_state", "lora.0"])
+                 transpose_names=[
+                     "time_mix_w1", "time_mix_w2", "time_decay_w1", "time_decay_w2",
+                     "w1", "w2", "a1", "a2", "g1", "g2", "v1", "v2",
+                     "time_state", "lora.0"])
     print(f"Saved to {args.output}")

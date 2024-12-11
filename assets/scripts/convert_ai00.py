@@ -218,15 +218,13 @@ if __name__ == "__main__":
 
     print(f"正在转换模型: {model_info}")
 
-    convert_file(
-        args.input,
-        args.output,
-        rename={"time_faaaa": "time_first", "time_maa": "time_mix",
-                "lora_A": "lora.0", "lora_B": "lora.1"},
-        transpose_names=["time_mix_w1", "time_mix_w2",
-                         "time_decay_w1", "time_decay_w2", "time_state", "lora.0"],
-        model_info=model_info
-    )
+    convert_file(args.input, args.output,
+                 rename={"time_faaaa": "time_first", "time_maa": "time_mix",
+                         "lora_A": "lora.0", "lora_B": "lora.1"},
+                 transpose_names=[
+                     "time_mix_w1", "time_mix_w2", "time_decay_w1", "time_decay_w2",
+                     "w1", "w2", "a1", "a2", "g1", "g2", "v1", "v2",
+                     "time_state", "lora.0"])
     print(f"Saved to {args.output}")
 
     print(f"{args.output} __metadata__ :\n")

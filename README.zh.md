@@ -97,12 +97,12 @@
 
 1. [下载pth模型](https://huggingface.co/BlinkDL)
 
-2. 克隆或下载本仓库下[convert2ai00.py](./convert2ai00.py)或[convert_safetensors.py](./convert_safetensors.py)程序，并安装相应的依赖库（`torch`和`safetensors`）
+2. 克隆或下载本仓库下[convert_ai00.py](./assets/scripts/convert_ai00.py)或[convert_safetensors.py](./assets/scripts/convert_safetensors.py)程序，并安装相应的依赖库（`torch`和`safetensors`）
 
 3. 运行上述程序，并指定输入输出路径
 
     ```bash
-    $ python convert_safetensors.py --input ./filename.pth --output ./filename.st
+    $ python assets/scripts/convert_safetensors.py --input ./filename.pth --output ./filename.st
     ```
 
 4. 如果你不想安装 Python 或 Torch，可以前往[`web-rwkv`](https://github.com/cryscan/web-rwkv/releases)并下载不依赖于 Python 或 Torch 的转换器`web-rwkv-converter`

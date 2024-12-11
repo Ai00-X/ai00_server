@@ -108,10 +108,10 @@ It only supports Safetensors models with the `.st` extension now. Models saved w
 
 1. [Download the `.pth` model](https://huggingface.co/BlinkDL)
 
-2. (Recommended) Run the python script `convert2ai00.py` or `convert_safetensors.py`:
+2. (Recommended) Run the python script `convert_ai00.py` or `convert_safetensors.py`:
 
     ```bash
-    $ python ./convert2ai00.py --input /path/to/model.pth --output /path/to/model.st
+    $ python assets/scripts/convert_ai00.py --input /path/to/model.pth --output /path/to/model.st
     ```
 
     Requirements: Python, with `torch` and `safetensors` installed.
