@@ -16,7 +16,7 @@ bytemuck = "1"
 cbor4ii = { version = "0.3.2", features = ["serde1"] }
 fastrand = "2"
 half = "2.4"
-kbnf = "0.5.4"
+kbnf = "0.5.6"
 qp-trie = "0.8"
 rustc-hash = "2.0.0"
 uuid = { version = "1.8.0", features = ["serde", "v4"] }
