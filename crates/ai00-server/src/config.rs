@@ -136,6 +136,8 @@ pub enum EmbeddingModel {
     GTELargeENV15Q,
     /// Qdrant/clip-ViT-B-32-text
     ClipVitB32,
+    /// jinaai/jina-embeddings-v2-base-code
+    JinaEmbeddingsV2BaseCode,
 }
 
 #[cfg(feature = "embed")]

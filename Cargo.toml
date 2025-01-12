@@ -20,10 +20,10 @@ version = "0.5.12"
 anyhow = "1"
 derivative = "2.2.0"
 flume = "0.11.0"
-itertools = "0.13"
+itertools = "0.14"
 log = "0.4"
 memmap2 = "0.9"
-safetensors = "0.4"
+safetensors = "0.5"
 salvo = "0.75.0"
 serde = { version = "1", features = ["derive"] }
 tokio = { version = "1", features = ["full"] }
@@ -35,7 +35,7 @@ path = "crates/ai00-core"
 # path = "../web-rwkv"
 default-features = false
 features = ["native"]
-version = "0.10.5"
+version = "0.10.6"
 
 [patch.crates-io]
 hf-hub = { git = "https://github.com/cgisky1980/hf-hub.git", branch = "main" }
