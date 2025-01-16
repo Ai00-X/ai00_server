@@ -335,7 +335,7 @@ async fn main() {
         true => format!("https://{url}:{port}"),
         false => format!("http://{url}:{port}"),
     };
-    log::info!("visit WebUI at {url}");
+    log::info!("open frontend at {url}");
 
     if acme {
         let listener = TcpListener::new(ipv4_addr)
