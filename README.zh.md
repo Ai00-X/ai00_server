@@ -1,4 +1,5 @@
 # 💯AI00 Server
+
 <p align='center'>
 <image src="docs/public/logo.gif" />
 </p>
@@ -24,30 +25,28 @@
 
 支持`Vulkan`/`Dx12`/`OpenGL`作为推理后端，无需臃肿的`pytorch`、`CUDA`等运行环境，小巧身材，开箱即用！
 
-兼容OpenAI的ChatGPT API接口。
+兼容 OpenAI 的 ChatGPT API 接口。
 
-100% 开源可商用，采用MIT协议。
+100% 开源可商用，采用 MIT 协议。
 
-如果你是想要在自己的应用程序中内嵌一个LLM，且对用户的机器要求不那么苛刻（6GB以上GRAM的显卡）, `AI00 Server`无疑是一个很好的选择。
+如果你是想要在自己的应用程序中内嵌一个 LLM，且对用户的机器要求不那么苛刻（6GB 以上 GRAM 的显卡）, `AI00 Server`无疑是一个很好的选择。
 
-立即加入`AI00 RWKV Server`社区，体验AI的魅力！
+立即加入`AI00 RWKV Server`社区，体验 AI 的魅力！
 
-交流QQ群：30920262
+交流 QQ 群：30920262
 
 - [什么是 AI00](docs/ai00.md)
-- [为什么只支持RWKV](docs/rwkv.md)
+- [为什么只支持 RWKV](docs/rwkv.md)
 
-
-### ⭕模型下载和转换
+### ⭕ 模型下载和转换
 
 你必须[下载模型](https://huggingface.co/BlinkDL)并将其放置在`assets/models`中。
 
 你可以在这里下载已经转换好的模型： [V5](https://huggingface.co/cgisky/AI00_RWKV_V5) 或者 [V6](https://huggingface.co/cgisky/ai00_rwkv_x060)
 
-
 ## 安装、编译和使用
 
-### 📦直接下载安装
+### 📦 直接下载安装
 
 1. 直接从 [Release](https://github.com/cgisky1980/ai00_rwkv_server/releases) 下载最新版本
 
@@ -57,70 +56,63 @@
 
 4. 在命令行运行
 
-    ```bash     
-    ./ai00_rwkv_server
-    ```
+   ```bash
+   ./ai00_rwkv_server
+   ```
 
-5. 打开浏览器，访问WebUI http://localhost:65530（如果开启了`tls`，访问 https://localhost:65530）
+5. 打开浏览器，访问 WebUI http://localhost:65530（如果开启了`tls`，访问 https://localhost:65530）
 
-### 📜从源码编译
+### 📜 从源码编译
 
-1. [安装Rust](https://www.rust-lang.org/)
+1. [安装 Rust](https://www.rust-lang.org/)
 
 2. 克隆本仓库
 
-    ```bash
-    git clone https://github.com/cgisky1980/ai00_rwkv_server.git
-    cd ai00_rwkv_server
-    ```
-    
+   ```bash
+   git clone https://github.com/cgisky1980/ai00_rwkv_server.git
+   cd ai00_rwkv_server
+   ```
+
 3. [下载模型](https://huggingface.co/cgisky/RWKV-safetensors-fp16)后把模型放在
-`assets/models/`路径下，例如`assets/models/RWKV-x060-World-3B-v2-20240228-ctx4096.st`
+   `assets/models/`路径下，例如`assets/models/RWKV-x060-World-3B-v2-20240228-ctx4096.st`
 
 4. 编译
 
-    ```bash
-    cargo build --release
-    ```
-     
-5. 编译完成后运行
-   
-    ```bash     
-    cargo run --release
-    ```
-   
-6. 打开浏览器，访问WebUI http://localhost:65530（如果开启了`tls`，访问 https://localhost:65530）
+   ```bash
+   cargo build --release
+   ```
 
-### 📒模型转换
+5. 编译完成后运行
+
+   ```bash
+   cargo run --release
+   ```
+
+6. 打开浏览器，访问 WebUI http://localhost:65530（如果开启了`tls`，访问 https://localhost:65530）
+
+### 📒 模型转换
 
 本项目目前仅支持`.st`后缀的 Safetensors 模型，通过`torch`保存的`.pth`后缀模型需要在使用前进行转换。
 
-1. [下载pth模型](https://huggingface.co/BlinkDL)
+1. [下载 pth 模型](https://huggingface.co/BlinkDL)
 
 2. 克隆或下载本仓库下[convert_ai00.py](./assets/scripts/convert_ai00.py)或[convert_safetensors.py](./assets/scripts/convert_safetensors.py)程序，并安装相应的依赖库（`torch`和`safetensors`）
 
 3. 运行上述程序，并指定输入输出路径
 
-    ```bash
-    $ python assets/scripts/convert_safetensors.py --input ./filename.pth --output ./filename.st
-    ```
+   ```bash
+   $ python assets/scripts/convert_safetensors.py --input ./filename.pth --output ./filename.st
+   ```
 
-4. 如果你不想安装 Python 或 Torch，可以前往[`web-rwkv`](https://github.com/cryscan/web-rwkv/releases)并下载不依赖于 Python 或 Torch 的转换器`web-rwkv-converter`
+4. 根据上文步骤，将转换所得的`.st`模型文件放在`assets/models/`路径下，并修改 [`assets/configs/Config.toml`](./assets/configs/Config.toml) 中的模型路径
 
-    ```bash
-    $ ./web-rwkv-converter --input /path/to/model.pth --output /path/to/model.st
-    ```
+## 📝 支持的启动参数
 
-5. 根据上文步骤，将转换所得的`.st`模型文件放在`assets/models/`路径下，并修改  [`assets/configs/Config.toml`](./assets/configs/Config.toml) 中的模型路径
-
-
-## 📝支持的启动参数
 - `--config`: 模型配置文件路径（默认`assets/configs/Config.toml`）
-- `--ip`: 服务器绑定的IP地址
+- `--ip`: 服务器绑定的 IP 地址
 - `--port`: 运行端口
 
-
-## 📙目前可用的API
+## 📙 目前可用的 API
 
 API 服务开启于 65530 端口, 数据输入输出格式遵循 Openai API 规范。
 有一些 API，比如`chat`和`completions`有一些可选的额外字段，这些额外字段是为高级功能准备的。可以访问 http://localhost:65530/api-docs 查看具体的 API 参数。
@@ -146,7 +138,7 @@ class Ai00:
         self.ctx = []
         self.params = {
             "system_name": "System",
-            "user_name": "User", 
+            "user_name": "User",
             "assistant_name": "Assistant",
             "model": model,
             "max_tokens": 4096,
@@ -157,16 +149,16 @@ class Ai00:
             "half_life": 400,
             "stop": ['\x00','\n\n']
         }
-        
+
     def set_params(self,**kwargs):
         self.params.update(kwargs)
-        
+
     def clear_ctx(self):
         self.ctx = []
-        
+
     def get_ctx(self):
         return self.ctx
-    
+
     def continuation(self, message):
         response = openai.Completion.create(
             model=self.params['model'],
@@ -181,13 +173,13 @@ class Ai00:
         )
         result = response.choices[0].text
         return result
-    
+
     def append_ctx(self,role,content):
         self.ctx.append({
             "role": role,
             "content": content
         })
-        
+
     def send_message(self, message,role="user"):
         self.ctx.append({
             "role": role,
@@ -215,7 +207,7 @@ class Ai00:
             "content": result
         })
         return result
-    
+
 ai00 = Ai00()
 ai00.set_params(
     max_tokens = 4096,
@@ -263,11 +255,11 @@ print(ai00.continuation("i like"))
 
 <image src="img/chat.gif" />
 
-### 续写功能  
+### 续写功能
 
 <image src="img/continuation.gif" />
 
-### 写论文功能  
+### 写论文功能
 
 <image src="img/paper.gif" />
 
@@ -283,19 +275,19 @@ print(ai00.continuation("i like"))
 - [x] 支持加载微调的初始状态
 - [ ] `LoRA`模型热加载、切换
 - [x] 初始状态动态加载、切换
-- [x] BNF采样
+- [x] BNF 采样
 
 ## 👥Join Us
 
 我们一直在寻找有兴趣帮助我们改进项目的人。如果你对以下任何一项感兴趣，请加入我们！
 
-- 💀编写代码
-- 💬提供反馈
-- 🔆提出想法或需求
-- 🔍测试新功能
-- ✏翻译文档
-- 📣推广项目
-- 🏅其他任何会对我们有所帮助的事
+- 💀 编写代码
+- 💬 提供反馈
+- 🔆 提出想法或需求
+- 🔍 测试新功能
+- ✏ 翻译文档
+- 📣 推广项目
+- 🏅 其他任何会对我们有所帮助的事
 
 无论你的技能水平如何，我们都欢迎你加入我们。你可以通过以下方式加入我们：
 
@@ -303,13 +295,13 @@ print(ai00.continuation("i like"))
 - 加入我们的 QQ 群
 - 在 GitHub 上提交问题或拉取请求
 - 在我们的网站上留下反馈
-  
+
 我们迫不及待地想与你合作，让这个项目变得更好！希望项目对你有帮助！
 
 ## Thanks
 
 [![cryscan](https://avatars.githubusercontent.com/u/16053640?s=32&v=4)](https://github.com/cryscan)
-感谢cryscan的辛勤付出，为项目做出了杰出的贡献。
+感谢 cryscan 的辛勤付出，为项目做出了杰出的贡献。
 
 ### 感谢下面项目的编写者们做出的杰出工作
 
@@ -332,25 +324,18 @@ print(ai00.continuation("i like"))
 
 <!-- ALL-CONTRIBUTORS-LIST:END -->
 
-
-
-
 ### 感谢下面又好看又有眼光又优秀的杰出人士对项目的支持和无私奉献
 
 - 来自 QQ 群
 
-    ![image](https://github.com/cgisky1980/ai00_rwkv_server/assets/82481660/6e324617-6d0c-49fd-ab1e-fd9cf02df51e)
+  ![image](https://github.com/cgisky1980/ai00_rwkv_server/assets/82481660/6e324617-6d0c-49fd-ab1e-fd9cf02df51e)
 
-- 来自 Github 
+- 来自 Github
 
 - 来自 Discord
 
 我们很感激您的帮助，我们很高兴能与您合作。
 
-
 ## Stargazers over time
 
 [![Stargazers over time](https://starchart.cc/cgisky1980/ai00_rwkv_server.svg)](https://starchart.cc/cgisky1980/ai00_rwkv_server)
-
- 
-

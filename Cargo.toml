@@ -1,6 +1,6 @@
 [workspace]
 default-members = ["crates/ai00-server"]
-members = ["crates/ai00-core", "crates/ai00-server", "crates/converter"]
+members = ["crates/*"]
 resolver = "2"
 
 [workspace.package]

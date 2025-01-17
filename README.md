@@ -1,4 +1,5 @@
 # 💯AI00 RWKV Server
+
 <p align='center'>
 <image src="docs/public/logo.gif" />
     
@@ -38,68 +39,63 @@ QQ Group for communication: 30920262
 
 ### 💥Features
 
-*   Based on the `RWKV` model, it has high performance and accuracy
-*   Supports `Vulkan` inference acceleration, you can enjoy GPU acceleration without the need for `CUDA`! Supports AMD cards, integrated graphics, and all GPUs that support `Vulkan`
-*   No need for bulky `pytorch`, `CUDA` and other runtime environments, it's compact and ready to use out of the box!
-*   Compatible with OpenAI's ChatGPT API interface
+- Based on the `RWKV` model, it has high performance and accuracy
+- Supports `Vulkan` inference acceleration, you can enjoy GPU acceleration without the need for `CUDA`! Supports AMD cards, integrated graphics, and all GPUs that support `Vulkan`
+- No need for bulky `pytorch`, `CUDA` and other runtime environments, it's compact and ready to use out of the box!
+- Compatible with OpenAI's ChatGPT API interface
 
 ### ⭕Usages
 
-*   Chatbot
-*   Text generation
-*   Translation
-*   Q&A
-*   Any other tasks that LLM can do
+- Chatbot
+- Text generation
+- Translation
+- Q&A
+- Any other tasks that LLM can do
 
 ### 👻Other
 
-*   Based on the [web-rwkv](https://github.com/cryscan/web-rwkv) project
-*   Model download: [V5](https://huggingface.co/cgisky/AI00_RWKV_V5) or [V6](https://huggingface.co/cgisky/ai00_rwkv_x060)
+- Based on the [web-rwkv](https://github.com/cryscan/web-rwkv) project
+- Model download: [V5](https://huggingface.co/cgisky/AI00_RWKV_V5) or [V6](https://huggingface.co/cgisky/ai00_rwkv_x060)
 
 ## Installation, Compilation, and Usage
 
 ### 📦Download Pre-built Executables
 
 1.  Directly download the latest version from [Release](https://github.com/cgisky1980/ai00_rwkv_server/releases)
-    
 2.  After [downloading the model](#👻other), place the model in the `assets/models/` path, for example, `assets/models/RWKV-x060-World-3B-v2-20240228-ctx4096.st`
 
 3.  Optionally modify [`assets/configs/Config.toml`](./assets/configs/Config.toml) for model configurations like model path, quantization layers, etc.
-    
 4.  Run in the command line
-    
+
     ```bash
     $ ./ai00_rwkv_server
     ```
-    
+
 5.  Open the browser and visit the WebUI at http://localhost:65530 (https://localhost:65530 if `tls` is enabled)
-    
 
 ### 📜(Optional) Build from Source
 
 1.  [Install Rust](https://www.rust-lang.org/)
-    
 2.  Clone this repository
-    
+
     ```bash
     $ git clone https://github.com/cgisky1980/ai00_rwkv_server.git
     $ cd ai00_rwkv_server
     ```
-    
+
 3.  After [downloading the model](#👻other), place the model in the `assets/models/` path, for example, `assets/models/RWKV-x060-World-3B-v2-20240228-ctx4096.st`
-    
 4.  Compile
-    
+
     ```bash
     $ cargo build --release
     ```
-    
+
 5.  After compilation, run
-    
+
     ```bash
     $ cargo run --release
     ```
-    
+
 6.  Open the browser and visit the WebUI at http://localhost:65530 (https://localhost:65530 if `tls` is enabled)
 
 ### 📒Convert the Model
@@ -108,49 +104,35 @@ It only supports Safetensors models with the `.st` extension now. Models saved w
 
 1. [Download the `.pth` model](https://huggingface.co/BlinkDL)
 
-2. (Recommended) Run the python script `convert_ai00.py` or `convert_safetensors.py`:
+2. Run the python script `convert_ai00.py` or `convert_safetensors.py`:
 
-    ```bash
-    $ python assets/scripts/convert_ai00.py --input /path/to/model.pth --output /path/to/model.st
-    ```
+   ```bash
+   $ python assets/scripts/convert_ai00.py --input /path/to/model.pth --output /path/to/model.st
+   ```
 
-    Requirements: Python, with `torch` and `safetensors` installed.
+   Requirements: Python, with `torch` and `safetensors` installed.
 
-3. If you do not want to install python, In the [Release](https://github.com/cgisky1980/ai00_rwkv_server/releases) you could find an executable called `converter`. Run
-  
-  ```bash
-  $ ./converter --input /path/to/model.pth --output /path/to/model.st
-  ```
-  
-3. If you are building from source, run
-  
-  ```bash
-  $ cargo run --release --package converter -- --input /path/to/model.pth --output /path/to/model.st
-  ```
-
-4. Just like the steps mentioned above, place the model in the `.st` model in the `assets/models/` path and modify the model path in [`assets/configs/Config.toml`](./assets/configs/Config.toml)
-    
+3. Just like the steps mentioned above, place the model in the `.st` model in the `assets/models/` path and modify the model path in [`assets/configs/Config.toml`](./assets/configs/Config.toml)
 
 ## 📝Supported Arguments
 
-*   `--config`: Configure file path (default: `assets/configs/Config.toml`)
-*   `--ip`: The IP address the server is bound to
-*   `--port`: Running port
-
+- `--config`: Configure file path (default: `assets/configs/Config.toml`)
+- `--ip`: The IP address the server is bound to
+- `--port`: Running port
 
 ## 📙Currently Available APIs
 
 The API service starts at port 65530, and the data input and output format follow the Openai API specification.
 Note that some APIs like `chat` and `completions` have additional optional fields for advanced functionalities. Visit http://localhost:65530/api-docs for API schema.
 
-*   `/api/oai/v1/models`
-*   `/api/oai/models`
-*   `/api/oai/v1/chat/completions`
-*   `/api/oai/chat/completions`
-*   `/api/oai/v1/completions`
-*   `/api/oai/completions`
-*   `/api/oai/v1/embeddings`
-*   `/api/oai/embeddings`
+- `/api/oai/v1/models`
+- `/api/oai/models`
+- `/api/oai/v1/chat/completions`
+- `/api/oai/chat/completions`
+- `/api/oai/v1/completions`
+- `/api/oai/completions`
+- `/api/oai/v1/embeddings`
+- `/api/oai/embeddings`
 
 The following is an out-of-box example of Ai00 API invocations in Python:
 
@@ -164,7 +146,7 @@ class Ai00:
         self.ctx = []
         self.params = {
             "system_name": "System",
-            "user_name": "User", 
+            "user_name": "User",
             "assistant_name": "Assistant",
             "model": model,
             "max_tokens": 4096,
@@ -175,16 +157,16 @@ class Ai00:
             "half_life": 400,
             "stop": ['\x00','\n\n']
         }
-        
+
     def set_params(self,**kwargs):
         self.params.update(kwargs)
-        
+
     def clear_ctx(self):
         self.ctx = []
-        
+
     def get_ctx(self):
         return self.ctx
-    
+
     def continuation(self, message):
         response = openai.Completion.create(
             model=self.params['model'],
@@ -199,13 +181,13 @@ class Ai00:
         )
         result = response.choices[0].text
         return result
-    
+
     def append_ctx(self,role,content):
         self.ctx.append({
             "role": role,
             "content": content
         })
-        
+
     def send_message(self, message,role="user"):
         self.ctx.append({
             "role": role,
@@ -233,7 +215,7 @@ class Ai00:
             "content": result
         })
         return result
-    
+
 ai00 = Ai00()
 ai00.set_params(
     max_tokens = 4096,
@@ -291,41 +273,41 @@ Here is an example BNF for JSON with fields "name", "age" and "job":
 
 ## 📝TODO List
 
-*   [x] Support for `text_completions` and `chat_completions`
-*   [x] Support for sse push
-*   [x] Integrate basic front-end
-*   [x] Parallel inference via `batch serve`
-*   [x] Support for `int8` quantization
-*   [x] Support for `NF4` quantization
-*   [x] Support for `LoRA` model
-*   [x] Support for tuned initial states
-*   [ ] Hot loading and switching of `LoRA` model
-*   [x] Hot loading and switching of tuned initial states
-*   [x] BNF sampling
+- [x] Support for `text_completions` and `chat_completions`
+- [x] Support for sse push
+- [x] Integrate basic front-end
+- [x] Parallel inference via `batch serve`
+- [x] Support for `int8` quantization
+- [x] Support for `NF4` quantization
+- [x] Support for `LoRA` model
+- [x] Support for tuned initial states
+- [ ] Hot loading and switching of `LoRA` model
+- [x] Hot loading and switching of tuned initial states
+- [x] BNF sampling
 
 ## 👥Join Us
 
 We are always looking for people interested in helping us improve the project. If you are interested in any of the following, please join us!
 
-*   💀Writing code
-*   💬Providing feedback
-*   🔆Proposing ideas or needs
-*   🔍Testing new features
-*   ✏Translating documentation
-*   📣Promoting the project
-*   🏅Anything else that would be helpful to us
+- 💀Writing code
+- 💬Providing feedback
+- 🔆Proposing ideas or needs
+- 🔍Testing new features
+- ✏Translating documentation
+- 📣Promoting the project
+- 🏅Anything else that would be helpful to us
 
 No matter your skill level, we welcome you to join us. You can join us in the following ways:
 
-*   Join our Discord channel
-*   Join our QQ group
-*   Submit issues or pull requests on GitHub
-*   Leave feedback on our website
+- Join our Discord channel
+- Join our QQ group
+- Submit issues or pull requests on GitHub
+- Leave feedback on our website
 
 We can't wait to work with you to make this project better! We hope the project is helpful to you!
 
-
 ## Acknowledgement
+
 Thank you to these awesome individuals who are insightful and outstanding for their support and selfless dedication to the project!
 
 <!-- ALL-CONTRIBUTORS-LIST:START - Do not remove or modify this section -->
@@ -352,7 +334,6 @@ Thank you to these awesome individuals who are insightful and outstanding for th
 <!-- prettier-ignore-end -->
 
 <!-- ALL-CONTRIBUTORS-LIST:END -->
-
 
 ## Stargazers over time
 

@@ -6,15 +6,7 @@ edition.workspace = true
 homepage = "https://github.com/cgisky1980/ai00_rwkv_server"
 keywords = ["LLM", "deep-learning", "model", "rwkv"]
 license.workspace = true
-name = "converter"
+name = "ai00-fluid"
 repository = "https://github.com/cgisky1980/ai00_rwkv_server"
 rust-version.workspace = true
 version.workspace = true
-
-[dependencies]
-clap = { version = "4.3", features = ["derive"] }
-memmap2 = "0.9"
-web-rwkv-converter = "0.1.2"
-
-[dependencies.anyhow]
-workspace = true

@@ -15,7 +15,7 @@ env:
   LINUX_TARGET: x86_64-unknown-linux-gnu
 
   # Space separated paths to include in the archive.
-  RELEASE_BINS: ai00-server converter
+  RELEASE_BINS: ai00-server
   RELEASE_ADDS: README.md README.zh.md LICENSE assets
 
 jobs:
