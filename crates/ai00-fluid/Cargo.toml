@@ -10,3 +10,6 @@ name = "ai00-fluid"
 repository = "https://github.com/cgisky1980/ai00_rwkv_server"
 rust-version.workspace = true
 version.workspace = true
+
+[dependencies]
+nom = "7.1.3"

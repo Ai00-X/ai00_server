@@ -115,12 +115,16 @@ dependencies = [
 [[package]]
 name = "ai00-fluid"
 version = "0.5.12"
+dependencies = [
+ "nom",
+]
 
 [[package]]
 name = "ai00-server"
 version = "0.5.12"
 dependencies = [
  "ai00-core",
+ "ai00-fluid",
  "anyhow",
  "clap",
  "derivative",

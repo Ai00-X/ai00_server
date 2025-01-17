@@ -31,6 +31,9 @@ tokio = { version = "1", features = ["full"] }
 [workspace.dependencies.ai00-core]
 path = "crates/ai00-core"
 
+[workspace.dependencies.ai00-fluid]
+path = "crates/ai00-fluid"
+
 [workspace.dependencies.web-rwkv]
 # path = "../web-rwkv"
 default-features = false

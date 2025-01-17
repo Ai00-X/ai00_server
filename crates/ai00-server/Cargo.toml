@@ -32,6 +32,7 @@ toml = "0.8.6"
 zip-extract = "0.2"
 
 ai00-core.workspace = true
+ai00-fluid.workspace = true
 anyhow.workspace = true
 derivative.workspace = true
 flume.workspace = true
