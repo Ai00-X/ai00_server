@@ -425,7 +425,7 @@ async fn load_runtime(
                                 Runtime::new(context, bundle, reload, states, tokenizer).await
                             }
                         )+
-                        (version, _) => bail!("unsupported version: {:?}", version)
+                        // (version, _) => bail!("unsupported version: {:?}", version)
                     }
                 }
             }
@@ -435,9 +435,11 @@ async fn load_runtime(
                     (ModelVersion::V4, Precision::Fp16, v4::Model, v4::Bundle::<f16>),
                     (ModelVersion::V5, Precision::Fp16, v5::Model, v5::Bundle::<f16>),
                     (ModelVersion::V6, Precision::Fp16, v6::Model, v6::Bundle::<f16>),
+                    (ModelVersion::V7, Precision::Fp16, v7::Model, v7::Bundle::<f16>),
                     (ModelVersion::V4, Precision::Fp32, v4::Model, v4::Bundle::<f32>),
                     (ModelVersion::V5, Precision::Fp32, v5::Model, v5::Bundle::<f32>),
-                    (ModelVersion::V6, Precision::Fp32, v6::Model, v6::Bundle::<f32>)
+                    (ModelVersion::V6, Precision::Fp32, v6::Model, v6::Bundle::<f32>),
+                    (ModelVersion::V7, Precision::Fp32, v7::Model, v7::Bundle::<f32>)
                 }
             )
         }
