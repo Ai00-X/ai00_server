@@ -743,6 +743,8 @@ mod sealed {
         Int8,
         /// Use `NF4` quantization.
         NF4,
+        /// Use `SF4` quantization.
+        SF4,
     }
 
     #[derive(Debug, Default, Clone, Copy, PartialEq, Eq, ToSchema)]
