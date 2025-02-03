@@ -240,19 +240,18 @@ print(ai00.continuation("i like"))
 以下是一个强行让模型输出有 "name"、"age" 和 "job" 字段的 JSON 的 BNF:
 
 ```
-<start> ::= <json_object>
-<json_object> ::= "{" <object_members> "}"
-<object_members> ::= <json_member> | <json_member> ", " <object_members>
-<json_member> ::= <json_key> ": " <json_value>
-<json_key> ::= '"' "name" '"' | '"' "age" '"' | '"' "job" '"'
-<json_value> ::= <json_string> | <json_number>
-<json_string>::='"'<content>'"'
-<content>::=<except!([escaped_literals])>|<except!([escaped_literals])><content>|'\\"'<content>|'\\"'
-<escaped_literals>::='\t'|'\n'|'\r'|'"'
-<json_number> ::= <positive_digit><digits>|'0'
-<digits>::=<digit>|<digit><digits>
-<digit>::='0'|<positive_digit>
-<positive_digit>::="1"|"2"|"3"|"4"|"5"|"6"|"7"|"8"|"9"
+start ::= json_object;
+json_object ::= "{\n" object_members "\n}";
+object_members ::= json_member | json_member ",\n" object_members;
+json_member ::= "\t" json_key ": " json_value;
+json_key ::= '"' "name" '"' | '"' "age" '"' | '"' "job" '"';
+json_value ::= json_string | json_number;
+json_string ::= '"'content'"';
+content ::= #"\\w*";
+json_number ::= positive_digit digits|'0';
+digits ::= digit|digit digits;
+digit ::= '0'|positive_digit;
+positive_digit::="1"|"2"|"3"|"4"|"5"|"6"|"7"|"8"|"9";
 ```
 
 <image src="img/bnf.png" />
