@@ -6,7 +6,9 @@ from typing import List, Optional
 from formatron.schemas.pydantic import ClassSchema
 from formatron.formatter import FormatterBuilder
 from kbnf.engine import Vocabulary
-import random  # Step 1: Import the random module
+import random
+
+# Step 1: Import the random module
 class JsonSchemaDesigner:
     def __init__(self, root):
         self.root = root
