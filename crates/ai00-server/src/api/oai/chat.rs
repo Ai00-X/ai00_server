@@ -82,7 +82,6 @@ pub struct ChatRecord {
             "temperature": 1,
             "presence_penalty": 0.3,
             "frequency_penalty": 0.3,
-            "penalty": 400,
             "penalty_decay": 0.99654026
         },
         "state": "00000000-0000-0000-0000-000000000000"
