@@ -32,7 +32,6 @@ use crate::{
     Environment, FinishReason, GenerateKind, GenerateRequest, ReloadRequest, Token, TokenCounter,
 };
 
-const END_OF_LINE_TOKEN: u16 = 261;
 const MIN_PROMPT_CACHE_TOKENS: usize = 32;
 const MAX_CACHE_ITEMS: usize = 256;
 
@@ -900,16 +899,20 @@ impl Runtime {
                 );
             }
 
-            // map token 0 output to "\n\n"
-            let token = match token {
-                0 => END_OF_LINE_TOKEN,
-                _ => *token,
-            };
+            let token = *token;
+            let mut stop_token = token == 0;
 
             assert_eq!(context.suffix.len(), 0);
             context.suffix.0.push(token);
 
-            let mut word = self.tokenizer.decode(&[token])?;
+            let mut word = match self.tokenizer.decode(&[token]) {
+                Ok(word) => word,
+                Err(err) => {
+                    log::warn!("{err}");
+                    stop_token = true;
+                    Default::default()
+                }
+            };
             context.model_text.append(&mut word.clone());
             context.buffer.append(&mut word);
             context.model_tokens.push(token);
@@ -1031,7 +1034,7 @@ impl Runtime {
                 }
                 let _ = context.sender.send(Token::Choose(perplexities));
                 done = true;
-            } else if halt || stop_matched {
+            } else if halt || stop_matched || stop_token {
                 let output = String::from_utf8_lossy(head);
                 let _ = context.sender.send(Token::Content(output.into()));
                 stop(FinishReason::Stop);
