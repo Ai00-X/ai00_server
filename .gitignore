@@ -28,14 +28,21 @@ assets/models/
 *.prefab
 *.log
 
+.vscode/
+.fastembed_cache/
+node_modules/
+
 qdrant/
 .qdrant-initialized
-run.bat
-node_modules/
+
+
 docs/.vitepress/dist
 docs/.vitepress/cache
-nohup.out
-.vscode/
-/modelscope
+
+modelscope/
 up_models_modelscope.py
+
+run.bat
 test.py
+
+nohup.out
