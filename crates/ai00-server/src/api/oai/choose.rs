@@ -26,12 +26,14 @@ use crate::{
             " San Francisco",
             " Shanghai"
         ],
+        "calibrate": false,
         "state": "00000000-0000-0000-0000-000000000000"
     })
 ))]
 pub struct ChooseRequest {
     input: Array<String>,
     choices: Vec<String>,
+    calibrate: bool,
     state: StateId,
 }
 
@@ -40,12 +42,13 @@ impl From<ChooseRequest> for GenerateRequest {
         let ChooseRequest {
             input,
             choices,
+            calibrate,
             state,
         } = value;
         Self {
             prompt: Vec::from(input).join(""),
             max_tokens: 1,
-            kind: GenerateKind::Choose { choices },
+            kind: GenerateKind::Choose { choices, calibrate },
             state,
             ..Default::default()
         }
