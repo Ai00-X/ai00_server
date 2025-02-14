@@ -537,9 +537,9 @@ pub async fn model_route(receiver: Receiver<ThreadRequest>) -> Result<()> {
                                 _ => bail!("failed to read model info"),
                             }
                         };
-                        log::info!("loading model {:?}", request.model_path);
+                        log::info!("{:#?}", request);
                         log::info!("{:#?}", info);
-                        log::info!("type: {:?}", load);
+                        log::info!("model type: {:?}", load);
 
                         let context = create_context(request.adapter, &info).await?;
                         log::info!("{:#?}", context.adapter.get_info());
