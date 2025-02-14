@@ -139,7 +139,10 @@ pub enum GenerateKind {
     /// The (reversed) number of layer at which the output is as embedding.
     Embed { layer: usize },
     /// Choose options by perplexity.
-    Choose { choices: Vec<String> },
+    Choose {
+        choices: Vec<String>,
+        calibrate: bool,
+    },
 }
 
 #[derive(Clone, Derivative)]
@@ -670,7 +673,7 @@ pub async fn model_route(receiver: Receiver<ThreadRequest>) -> Result<()> {
                     request.sampler.write().await.init(&model_tokens);
 
                     let choices = match &request.kind {
-                        GenerateKind::Choose { choices } => {
+                        GenerateKind::Choose { choices, .. } => {
                             let choices: Vec<_> = choices
                                 .iter()
                                 .map(|prompt| tokenizer.encode(prompt.as_bytes()))
