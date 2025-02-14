@@ -1,4 +1,4 @@
-on: 
+on:
   pull_request:
   push:
     branches:
@@ -23,13 +23,13 @@ jobs:
           profile: minimal
           toolchain: stable
           override: true
-          
+
       - name: Cache Dependencies
         uses: Swatinem/rust-cache@ce325b60658c1b38465c06cc965b79baf32c1e72
 
       - name: Install fmt
         run: rustup component add rustfmt
-      
+
       - name: fmt
         uses: actions-rs/cargo@v1
         with:
@@ -41,15 +41,15 @@ jobs:
         with:
           command: check
 
-      - name: Install clippy  
+      - name: Install clippy
         run: rustup component add clippy
-      
+
       - name: run clippy
         uses: actions-rs/cargo@v1
         with:
-         command: clippy
-         args: -- -D warnings
-     
+          command: clippy
+          args: -- -D warnings
+
       - name: test
         uses: actions-rs/cargo@v1
         with:

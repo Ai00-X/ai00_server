@@ -15,7 +15,7 @@ env:
   LINUX_TARGET: x86_64-unknown-linux-gnu
 
   # Space separated paths to include in the archive.
-  RELEASE_BINS: ai00-server converter
+  RELEASE_BINS: ai00-server
   RELEASE_ADDS: README.md README.zh.md LICENSE assets
 
 jobs:
@@ -217,4 +217,3 @@ jobs:
           asset_path: ./${{ env.RELEASE_BIN }}-${{ steps.get_version.outputs.VERSION }}-${{ env.MACOS_ARM64_TARGET }}.zip
           asset_content_type: application/zip
           asset_name: ${{ env.RELEASE_BIN }}-${{ steps.get_version.outputs.VERSION }}-${{ env.MACOS_ARM64_TARGET }}.zip
-
