@@ -391,7 +391,7 @@ impl Environment {
 
 pub struct Runtime {
     context: Context,
-    reload: ReloadRequest,
+    reload: Arc<ReloadRequest>,
     info: ModelInfo,
     state: Arc<dyn State + Send + Sync>,
     model: Arc<dyn ModelSerialize + Send + Sync>,
@@ -432,6 +432,7 @@ impl Runtime {
             caches.backed.insert(id, item);
         }
 
+        let reload = reload.into();
         let info = bundle.info();
         let state = Arc::new(bundle.state());
         let model = Arc::new(Model(bundle.model()));
@@ -456,8 +457,8 @@ impl Runtime {
     }
 
     #[inline]
-    pub fn reload(&self) -> &ReloadRequest {
-        &self.reload
+    pub fn reload(&self) -> Arc<ReloadRequest> {
+        self.reload.clone()
     }
 
     #[inline]

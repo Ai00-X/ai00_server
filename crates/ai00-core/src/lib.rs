@@ -40,6 +40,7 @@ use crate::{
 pub mod reload;
 pub mod run;
 pub mod sampler;
+pub mod serve;
 
 pub const MAX_TOKENS: usize = usize::MAX;
 
@@ -122,7 +123,7 @@ pub enum Environment {
 
 #[derive(Debug, Clone)]
 pub struct RuntimeInfo {
-    pub reload: ReloadRequest,
+    pub reload: Arc<ReloadRequest>,
     pub model: ModelInfo,
     pub states: Vec<(StateId, InitState)>,
     pub tokenizer: Arc<Tokenizer>,
@@ -502,7 +503,7 @@ pub async fn model_route(receiver: Receiver<ThreadRequest>) -> Result<()> {
                     tokio::spawn(async move {
                         let env = &(*env.read().await);
                         if let Environment::Loaded(runtime) = env {
-                            let reload = runtime.reload().clone();
+                            let reload = runtime.reload();
                             let model = runtime.info().clone();
                             let states = runtime.states().await;
                             let tokenizer = runtime.tokenizer();

@@ -1,3 +1,5 @@
+use std::sync::Arc;
+
 use ai00_core::{
     reload::State,
     run::{InitState, StateId},
@@ -13,7 +15,7 @@ use crate::{build_path, types::ThreadSender, SLEEP};
 
 #[derive(Debug, Clone, Serialize)]
 pub struct InfoResponse {
-    reload: ReloadRequest,
+    reload: Arc<ReloadRequest>,
     model: ModelInfo,
     states: Vec<InitStateInfo>,
 }
