@@ -12,8 +12,7 @@ use derivative::Derivative;
 use flume::{Receiver, Sender};
 use itertools::Itertools;
 use qp_trie::Trie;
-use salvo::oapi::ToSchema;
-use serde::{Deserialize, Serialize};
+use serde::Serialize;
 use tokio::sync::{Mutex, RwLock};
 use web_rwkv::{
     context::Context,
@@ -29,7 +28,8 @@ use web_rwkv::{
 
 use crate::{
     sampler::{bnf::BnfSampler, Formatter},
-    Environment, FinishReason, GenerateKind, GenerateRequest, ReloadRequest, Token, TokenCounter,
+    Environment, FinishReason, GenerateKind, GenerateRequest, InitState, ReloadRequest, StateId,
+    Token, TokenCounter,
 };
 
 const MIN_PROMPT_CACHE_TOKENS: usize = 32;
@@ -319,29 +319,6 @@ impl CacheHub {
             None => &mut self.default,
         }
     }
-}
-
-#[derive(
-    Derivative, Default, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize, ToSchema,
-)]
-#[derivative(Debug = "transparent")]
-#[serde(transparent)]
-pub struct StateId(uuid::Uuid);
-
-impl StateId {
-    pub fn new() -> Self {
-        Self(uuid::Uuid::new_v4())
-    }
-}
-
-#[derive(Derivative, Clone)]
-#[derivative(Debug)]
-pub struct InitState {
-    pub name: String,
-    pub id: StateId,
-    pub default: bool,
-    #[derivative(Debug = "ignore")]
-    pub data: TensorCpu<f32>,
 }
 
 struct Model<M>(M);

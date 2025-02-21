@@ -33,14 +33,14 @@ use web_rwkv::{
 };
 
 use crate::{
-    run::{GenerateContext, InitState, Runtime, StateId, Tokens},
+    run::{GenerateContext, Runtime, Tokens},
     sampler::Sampler,
 };
 
+pub mod _run;
 pub mod reload;
 pub mod run;
 pub mod sampler;
-pub mod serve;
 
 pub const MAX_TOKENS: usize = usize::MAX;
 
@@ -227,6 +227,29 @@ struct Prefab {
 enum LoadType {
     SafeTensors,
     Prefab,
+}
+
+#[derive(
+    Derivative, Default, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize, ToSchema,
+)]
+#[derivative(Debug = "transparent")]
+#[serde(transparent)]
+pub struct StateId(uuid::Uuid);
+
+impl StateId {
+    pub fn new() -> Self {
+        Self(uuid::Uuid::new_v4())
+    }
+}
+
+#[derive(Derivative, Clone)]
+#[derivative(Debug)]
+pub struct InitState {
+    pub name: String,
+    pub id: StateId,
+    pub default: bool,
+    #[derivative(Debug = "ignore")]
+    pub data: TensorCpu<f32>,
 }
 
 fn list_adapters() -> AdapterList {

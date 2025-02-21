@@ -1,7 +1,7 @@
 use std::{collections::HashMap, sync::Arc};
 
 use ai00_core::{
-    run::StateId, FinishReason, GenerateRequest, ThreadRequest, Token, TokenCounter, MAX_TOKENS,
+    FinishReason, GenerateRequest, StateId, ThreadRequest, Token, TokenCounter, MAX_TOKENS,
 };
 use derivative::Derivative;
 use futures_util::StreamExt;
