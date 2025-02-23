@@ -20,6 +20,7 @@ use tokio::{
 use web_rwkv::{
     context::Context,
     runtime::{
+        infer::{InferInput, InferInputBatch, InferOption, InferOutput, InferOutputBatch},
         model::{ModelInfo, State},
         Runtime,
     },
@@ -34,62 +35,6 @@ use crate::{
 
 const MIN_PROMPT_CACHE_TOKENS: usize = 32;
 const MAX_CACHE_ITEMS: usize = 256;
-
-/// The result of trying to queuing a task.
-#[derive(Debug)]
-enum SlotResult {
-    /// There is an idle slot ready to be picked up.
-    Success(usize),
-    /// An idle slot is swapped.
-    Fault(usize),
-    /// There is no idle slot left.
-    Failure(Box<GenerateContext>),
-    /// An error occurred.
-    Error(Box<dyn Error>),
-}
-
-#[derive(Debug)]
-enum SlotState {
-    /// The slot might be either picked up or swapped.
-    Idle(Tokens, Instant),
-    /// The slot is currently under processing.
-    Busy(JoinHandle<GenerateContext>),
-}
-
-impl Default for SlotState {
-    fn default() -> Self {
-        Self::Idle(Default::default(), Instant::now())
-    }
-}
-
-#[derive(Debug, PartialEq, Eq)]
-enum SlotChoice {
-    Continue(usize, usize),
-    Back(usize),
-    Empty(usize),
-}
-
-impl std::cmp::Ord for SlotChoice {
-    fn cmp(&self, other: &Self) -> Ordering {
-        // priority: continue > empty > back
-        use SlotChoice::{Back, Continue, Empty};
-        match (self, other) {
-            (Continue(_, x), Continue(_, y)) => x.cmp(y),
-            (Continue(_, _), _) => Ordering::Greater,
-            (_, Continue(_, _)) => Ordering::Less,
-            (Empty(_), Empty(_)) => Ordering::Equal,
-            (Empty(_), Back(_)) => Ordering::Greater,
-            (Back(_), Empty(_)) => Ordering::Less,
-            (Back(_), Back(_)) => Ordering::Equal,
-        }
-    }
-}
-
-impl std::cmp::PartialOrd for SlotChoice {
-    fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
-        Some(self.cmp(other))
-    }
-}
 
 #[repr(transparent)]
 #[derive(Debug, Default, Clone)]
@@ -323,16 +268,78 @@ impl CacheHub {
     }
 }
 
+/// The result of trying to queuing a task.
+#[derive(Debug)]
+enum SlotResult {
+    /// There is an idle slot ready to be picked up.
+    Success(usize),
+    /// An idle slot is swapped.
+    Fault(usize),
+    /// There is no idle slot left.
+    Failure(Box<GenerateContext>),
+    /// An error occurred.
+    Error(Box<dyn Error>),
+}
+
+#[derive(Debug)]
+enum SlotState {
+    /// The slot might be either picked up or swapped.
+    Idle(Tokens, Instant),
+    /// The slot is currently under processing.
+    Busy(JoinHandle<Result<GenerateContext>>),
+}
+
+impl Default for SlotState {
+    fn default() -> Self {
+        Self::Idle(Default::default(), Instant::now())
+    }
+}
+
+#[derive(Debug, PartialEq, Eq)]
+enum SlotChoice {
+    Continue(usize, usize),
+    Back(usize),
+    Empty(usize),
+}
+
+impl std::cmp::Ord for SlotChoice {
+    fn cmp(&self, other: &Self) -> Ordering {
+        // priority: continue > empty > back
+        use SlotChoice::{Back, Continue, Empty};
+        match (self, other) {
+            (Continue(_, x), Continue(_, y)) => x.cmp(y),
+            (Continue(_, _), _) => Ordering::Greater,
+            (_, Continue(_, _)) => Ordering::Less,
+            (Empty(_), Empty(_)) => Ordering::Equal,
+            (Empty(_), Back(_)) => Ordering::Greater,
+            (Back(_), Empty(_)) => Ordering::Less,
+            (Back(_), Back(_)) => Ordering::Equal,
+        }
+    }
+}
+
+impl std::cmp::PartialOrd for SlotChoice {
+    fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
+        Some(self.cmp(other))
+    }
+}
+
+#[derive(Debug, Clone)]
+struct InferBatch {
+    batch: usize,
+    tokens: Vec<u16>,
+    option: InferOption,
+    sender: Sender<TensorCpu<f32>>,
+}
+
 #[derive(Derivative, Clone)]
 #[derivative(Debug)]
 struct CoreRuntime {
     context: Context,
-    reload: Arc<ReloadRequest>,
     info: ModelInfo,
     #[derivative(Debug = "ignore")]
     state: Arc<dyn State + Send + Sync>,
-    #[derivative(Debug = "ignore")]
-    runtime: Weak<dyn Runtime + Send + Sync>,
+    sender: Sender<InferBatch>,
     tokenizer: Arc<Tokenizer>,
     slots: Arc<Mutex<Vec<SlotState>>>,
     caches: Arc<Mutex<CacheHub>>,
@@ -410,8 +417,8 @@ impl CoreRuntime {
             .iter()
             .enumerate()
             .filter_map(|(batch, slot)| match slot {
-                SlotState::Idle(content, time) => {
-                    let delta = time.elapsed().as_millis();
+                SlotState::Idle(content, instant) => {
+                    let delta = instant.elapsed();
                     match (content.is_empty(), tokens.starts_with(content)) {
                         (true, _) => Some((SlotChoice::Empty(batch), delta)),
                         (false, true) => Some((SlotChoice::Continue(batch, content.len()), delta)),
@@ -437,14 +444,16 @@ impl CoreRuntime {
             )),
             // back a non-relative and non-empty slot and use it for our new context
             Some(SlotChoice::Back(batch)) => {
-                log::info!("[queue][back][slot: {}]", batch);
+                log::info!("[queue][back][slot: {batch}]");
                 let checkout = self.checkout(context.request.state, &tokens).await;
                 self.state.load(checkout.state, batch)?;
 
                 let len = checkout.prefix.len();
                 assert!(len == 0 || (len > 0 && checkout.output.is_some()));
-                log::info!("[cache][slot: {}][len: {}]", batch, len);
+                log::info!("[cache][checkout[[slot: {batch}][len: {len}]");
 
+                let sender = self.sender.clone();
+                let tokenizer = self.tokenizer.clone();
                 let context = GenerateContext {
                     prefix: Tokens(tokens[..len].to_vec()),
                     suffix: Tokens(tokens[len..].to_vec()),
@@ -452,20 +461,22 @@ impl CoreRuntime {
                     formatters,
                     ..context
                 };
-                let runtime = self.clone();
-                slots[batch] = SlotState::Busy(tokio::spawn(runtime.process(context)));
+                let handle = tokio::spawn(process(sender, tokenizer, context));
+                slots[batch] = SlotState::Busy(handle);
                 Ok(SlotResult::Fault(batch))
             }
             // directly occupy an empty slot so no need backing
             Some(SlotChoice::Empty(batch)) => {
-                log::info!("[queue][empty][slot: {}]", batch);
+                log::info!("[queue][empty][slot: {batch}]");
                 let checkout = self.checkout(context.request.state, &tokens).await;
                 self.state.load(checkout.state, batch)?;
 
                 let len = checkout.prefix.len();
                 assert!(len == 0 || (len > 0 && checkout.output.is_some()));
-                log::info!("[cache][slot: {}][len: {}]", batch, len);
+                log::info!("[cache][checkout][slot: {batch}][len: {len}]");
 
+                let sender = self.sender.clone();
+                let tokenizer = self.tokenizer.clone();
                 let context = GenerateContext {
                     prefix: Tokens(tokens[..len].to_vec()),
                     suffix: Tokens(tokens[len..].to_vec()),
@@ -473,19 +484,21 @@ impl CoreRuntime {
                     formatters,
                     ..context
                 };
-                let runtime = self.clone();
-                slots[batch] = SlotState::Busy(tokio::spawn(runtime.process(context)));
+                let handle = tokio::spawn(process(sender, tokenizer, context));
+                slots[batch] = SlotState::Busy(handle);
                 Ok(SlotResult::Success(batch))
             }
             Some(SlotChoice::Continue(batch, ..)) => {
-                log::info!("[queue][continue][slot: {}]", batch);
+                log::info!("[queue][continue][slot: {batch}]");
                 let checkout = self.checkout(context.request.state, &tokens).await;
                 self.state.load(checkout.state, batch)?;
 
                 let len = checkout.prefix.len();
                 assert!(len == 0 || (len > 0 && checkout.output.is_some()));
-                log::info!("[cache][slot: {}][len: {}]", batch, len);
+                log::info!("[cache][checkout[[slot: {batch}][len: {len}]");
 
+                let sender = self.sender.clone();
+                let tokenizer = self.tokenizer.clone();
                 let context = GenerateContext {
                     prefix: Tokens(tokens[..len].to_vec()),
                     suffix: Tokens(tokens[len..].to_vec()),
@@ -493,40 +506,176 @@ impl CoreRuntime {
                     formatters,
                     ..context
                 };
-                let runtime = self.clone();
-                slots[batch] = SlotState::Busy(tokio::spawn(runtime.process(context)));
+                let handle = tokio::spawn(process(sender, tokenizer, context));
+                slots[batch] = SlotState::Busy(handle);
                 Ok(SlotResult::Success(batch))
             }
         }
     }
 
-    async fn process(self, context: GenerateContext) -> GenerateContext {
-        tokio::time::sleep(Duration::from_secs_f32(1.0)).await;
-        context
+    /// Reset finished slots to `idle`.
+    async fn update(&self) {
+        let update_one = |batch, handle: JoinHandle<_>| async move {
+            if !handle.is_finished() {
+                return Ok(SlotState::Busy(handle));
+            }
+
+            let context = handle.await??;
+            let backed = self.state.back(batch).await?;
+
+            if let GenerateKind::Embed { layer } = context.request.kind {
+                let backed = backed.clone();
+                let embed = match layer {
+                    x if x < self.info.num_layer => self.state.embed(layer, backed)?.to_vec(),
+                    _ => backed.to_vec(),
+                };
+                let _ = context.sender.send(Token::Embed(embed));
+            }
+
+            if let Some(output) = context.output {
+                let mut caches = self.caches.lock().await;
+                let cache = &mut caches.fetch(context.request.state).cache;
+                let item = CachedItem::new(backed, output);
+                let (item, _) = tokio::sync::watch::channel(Some(item));
+                cache.insert(context.prefix.clone(), item);
+
+                let len = context.prefix.len();
+                log::info!("[cache][back][slot: {batch}][len: {len}]");
+            }
+
+            Ok::<_, Box<dyn Error>>(SlotState::Idle(context.prefix, Instant::now()))
+        };
+
+        let mut slots = self.slots.lock().await;
+        for (batch, slot) in slots
+            .iter_mut()
+            .enumerate()
+            .filter(|(_, slot)| matches!(slot, &&mut SlotState::Busy(_)))
+        {
+            let SlotState::Busy(handle) = std::mem::take(slot) else {
+                unreachable!()
+            };
+
+            match update_one(batch, handle).await {
+                Ok(updated) => *slot = updated,
+                Err(err) => log::error!("[update][error] {err}"),
+            }
+        }
     }
+}
+
+async fn process(
+    sender: Sender<InferBatch>,
+    tokenizer: Arc<Tokenizer>,
+    context: GenerateContext,
+) -> Result<GenerateContext> {
+    tokio::time::sleep(Duration::from_secs_f32(1.0)).await;
+    Ok(context)
 }
 
 async fn enqueue(runtime: CoreRuntime, receiver: Receiver<GenerateContext>, timer: Duration) {
     let mut queue = Vec::<GenerateContext>::new();
-    loop {
-        match receiver.try_recv() {
-            Ok(request) => queue.push(request),
-            Err(TryRecvError::Empty) => tokio::time::sleep(timer).await,
-            Err(TryRecvError::Disconnected) => break,
-        }
 
-        let mut temp = Vec::new();
-        for context in queue.drain(..) {
-            match runtime.queue(context).await {
-                Ok(SlotResult::Failure(context)) => temp.push(*context),
-                Ok(SlotResult::Success(batch)) => log::info!("[enqueue][success][slot: {batch}]"),
-                Ok(SlotResult::Fault(batch)) => log::info!("[enqueue][fault][slot: {batch}]"),
-                Ok(SlotResult::Error(err)) => log::error!("[enqueue][error] {err}"),
-                Err(err) => log::error!("[enqueue][error] {err}"),
+    'outer: while let Ok(context) = receiver.recv_async().await {
+        queue.push(context);
+
+        'inner: loop {
+            runtime.update().await;
+
+            let mut temp = Vec::new();
+            for context in queue.drain(..) {
+                match runtime.queue(context).await {
+                    Ok(SlotResult::Failure(context)) => temp.push(*context),
+                    Ok(SlotResult::Success(batch)) => log::info!("[enqueue][ok][slot: {batch}]"),
+                    Ok(SlotResult::Fault(batch)) => log::info!("[enqueue][fault][slot: {batch}]"),
+                    Ok(SlotResult::Error(err)) => log::error!("[enqueue][error] {err}"),
+                    Err(err) => log::error!("[enqueue][error] {err}"),
+                }
+            }
+            std::mem::swap(&mut queue, &mut temp);
+
+            if queue.is_empty() {
+                break 'inner;
+            }
+
+            match receiver.try_recv() {
+                Ok(context) => queue.push(context),
+                Err(TryRecvError::Empty) => tokio::time::sleep(timer).await,
+                Err(TryRecvError::Disconnected) => break 'outer,
             }
         }
-        std::mem::swap(&mut queue, &mut temp);
     }
+}
+
+async fn infer(
+    reload: Arc<ReloadRequest>,
+    runtime: Weak<dyn Runtime + Send + Sync>,
+    receiver: Receiver<InferBatch>,
+) -> Result<()> {
+    let mut senders = vec![None; reload.max_batch];
+    let batches = vec![
+        InferInputBatch {
+            tokens: vec![],
+            option: Default::default(),
+        };
+        reload.max_batch
+    ];
+    let inference = InferInput::new(batches, reload.token_chunk_size);
+    let mut inference = Some(inference);
+
+    'outer: while let Ok(InferBatch {
+        batch,
+        tokens,
+        option,
+        sender,
+    }) = receiver.recv_async().await
+    {
+        let mut input = inference.take().unwrap();
+        input.batches[batch] = InferInputBatch { tokens, option };
+        senders[batch] = Some(sender);
+
+        'inner: loop {
+            let input = inference.take().unwrap();
+
+            // we have no more work to be done, yield
+            if input.num_token() == 0 {
+                break 'inner;
+            }
+
+            let Some(runtime) = runtime.upgrade() else {
+                break 'outer;
+            };
+            let (input, output) = runtime.infer(input).await?;
+            inference.replace(input);
+
+            for (InferOutputBatch(output), sender) in output
+                .iter()
+                .zip_eq(senders.clone().into_iter())
+                .filter(|(output, _)| !output.is_empty())
+                .filter_map(|(output, sender)| sender.map(|sender| (output, sender)))
+            {
+                let _ = sender.send(output.clone());
+            }
+
+            match receiver.try_recv() {
+                Ok(InferBatch {
+                    batch,
+                    tokens,
+                    option,
+                    sender,
+                }) => {
+                    let mut input = inference.take().unwrap();
+                    input.batches[batch] = InferInputBatch { tokens, option };
+                    senders[batch] = Some(sender);
+                }
+                Err(TryRecvError::Empty) => continue 'inner,
+                Err(TryRecvError::Disconnected) => break 'outer,
+            }
+        }
+    }
+
+    log::info!("[infer] exit");
+    Ok(())
 }
 
 pub async fn run(
@@ -544,15 +693,19 @@ pub async fn run(
     let slots = Arc::new(Mutex::new(slots));
     let caches = Arc::new(Mutex::new(Default::default()));
 
-    let runtime = CoreRuntime {
-        context,
-        reload,
-        info,
-        state,
-        runtime,
-        tokenizer,
-        slots,
-        caches,
+    let runtime = {
+        let (sender, receiver) = flume::unbounded();
+        tokio::spawn(infer(reload, runtime, receiver));
+
+        CoreRuntime {
+            context,
+            info,
+            state,
+            sender,
+            tokenizer,
+            slots,
+            caches,
+        }
     };
-    tokio::spawn(enqueue(runtime, receiver, Duration::from_secs_f32(1.0)));
+    tokio::spawn(enqueue(runtime, receiver, Duration::from_secs_f32(0.5)));
 }
