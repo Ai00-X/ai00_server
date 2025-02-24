@@ -33,11 +33,11 @@ use web_rwkv::{
 };
 
 use crate::{
-    run::{GenerateContext, Runtime, Tokens},
+    __run::{GenerateContext, Runtime, Tokens},
     sampler::Sampler,
 };
 
-pub mod _run;
+pub mod __run;
 pub mod reload;
 pub mod run;
 pub mod sampler;
@@ -482,7 +482,7 @@ pub async fn model_route(receiver: Receiver<ThreadRequest>) -> Result<()> {
     let sender = {
         let (sender, receiver) = flume::unbounded();
         let env = env.clone();
-        tokio::spawn(crate::run::run(receiver, env));
+        tokio::spawn(crate::__run::run(receiver, env));
         sender
     };
 
