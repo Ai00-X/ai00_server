@@ -22,9 +22,10 @@ use web_rwkv::{
     runtime::{
         infer::{InferInput, InferInputBatch, InferOption, InferOutputBatch},
         model::{ModelInfo, State},
+        softmax::softmax_one,
         Runtime,
     },
-    tensor::{TensorCpu, TensorError},
+    tensor::{TensorCpu, TensorError, TensorInit},
     tokenizer::Tokenizer,
 };
 
@@ -279,7 +280,7 @@ enum SlotResult {
     /// There is no idle slot left.
     Failure(Box<GenerateContext>),
     /// An error occurred.
-    Error(Box<dyn Error + Send>),
+    Error(Box<dyn Error>),
 }
 
 #[derive(Debug)]
@@ -467,8 +468,6 @@ impl CoreRuntime {
                 assert!(len == 0 || (len > 0 && checkout.output.is_some()));
                 log::info!("[cache][checkout[[slot: {batch}][len: {len}]");
 
-                let sender = self.sender.clone();
-                let tokenizer = self.tokenizer.clone();
                 let context = GenerateContext {
                     prefix: Tokens(tokens[..len].to_vec()),
                     suffix: Tokens(tokens[len..].to_vec()),
@@ -476,7 +475,7 @@ impl CoreRuntime {
                     formatters,
                     ..context
                 };
-                let handle = tokio::spawn(process(sender, tokenizer, context));
+                let handle = tokio::spawn(self.clone().process(batch, context));
                 let mut slots = self.slots.lock().await;
                 slots[batch] = SlotState::Busy(handle);
                 Ok(SlotResult::Fault(batch))
@@ -491,8 +490,6 @@ impl CoreRuntime {
                 assert!(len == 0 || (len > 0 && checkout.output.is_some()));
                 log::info!("[cache][checkout][slot: {batch}][len: {len}]");
 
-                let sender = self.sender.clone();
-                let tokenizer = self.tokenizer.clone();
                 let context = GenerateContext {
                     prefix: Tokens(tokens[..len].to_vec()),
                     suffix: Tokens(tokens[len..].to_vec()),
@@ -500,7 +497,7 @@ impl CoreRuntime {
                     formatters,
                     ..context
                 };
-                let handle = tokio::spawn(process(sender, tokenizer, context));
+                let handle = tokio::spawn(self.clone().process(batch, context));
                 let mut slots = self.slots.lock().await;
                 slots[batch] = SlotState::Busy(handle);
                 Ok(SlotResult::Success(batch))
@@ -514,8 +511,6 @@ impl CoreRuntime {
                 assert!(len == 0 || (len > 0 && checkout.output.is_some()));
                 log::info!("[cache][checkout[[slot: {batch}][len: {len}]");
 
-                let sender = self.sender.clone();
-                let tokenizer = self.tokenizer.clone();
                 let context = GenerateContext {
                     prefix: Tokens(tokens[..len].to_vec()),
                     suffix: Tokens(tokens[len..].to_vec()),
@@ -523,7 +518,7 @@ impl CoreRuntime {
                     formatters,
                     ..context
                 };
-                let handle = tokio::spawn(process(sender, tokenizer, context));
+                let handle = tokio::spawn(self.clone().process(batch, context));
                 let mut slots = self.slots.lock().await;
                 slots[batch] = SlotState::Busy(handle);
                 Ok(SlotResult::Success(batch))
@@ -531,9 +526,9 @@ impl CoreRuntime {
         }
     }
 
-    /// Reset finished slots to `idle`.
+    /// Reset finished slots to `idle`. Cache current states of finished slots.
     async fn update(&self) {
-        let update_one = |batch, handle: JoinHandle<_>| async move {
+        let update = |batch, handle: JoinHandle<_>| async move {
             if !handle.is_finished() {
                 return Ok(SlotState::Busy(handle));
             }
@@ -550,6 +545,7 @@ impl CoreRuntime {
                 let _ = context.sender.send(Token::Embed(embed));
             }
 
+            // the current state should be ready; insert it into the cache
             if let Some(output) = context.output {
                 let mut caches = self.caches.lock().await;
                 let cache = &mut caches.fetch(context.request.state).cache;
@@ -561,7 +557,7 @@ impl CoreRuntime {
                 log::info!("[cache][insert][slot: {batch}][len: {len}]");
             }
 
-            Ok::<_, Box<dyn Error>>(SlotState::Idle(context.prefix, Instant::now()))
+            Ok::<_, Box<dyn Error + Send + Sync>>(SlotState::Idle(context.prefix, Instant::now()))
         };
 
         for batch in 0..self.reload.max_batch {
@@ -575,10 +571,12 @@ impl CoreRuntime {
                 handle
             };
 
-            let updated = match update_one(batch, handle).await {
+            let updated = match update(batch, handle).await {
                 Ok(updated) => updated,
                 Err(err) => {
-                    log::error!("[update][error] {err}");
+                    log::error!("[update][error][slot: {batch}] {err}");
+                    let mut slots = self.slots.lock().await;
+                    slots[batch] = Default::default();
                     continue;
                 }
             };
@@ -587,15 +585,79 @@ impl CoreRuntime {
             slots[batch] = updated;
         }
     }
-}
 
-async fn process(
-    sender: Sender<InferBatch>,
-    tokenizer: Arc<Tokenizer>,
-    context: GenerateContext,
-) -> Result<GenerateContext> {
-    tokio::time::sleep(Duration::from_secs_f32(1.0)).await;
-    Ok(context)
+    async fn sample(&self, context: &GenerateContext) -> Option<(u16, Vec<f32>)> {
+        // in case that we have not yet read the whole prompt but still gets the output (from the cache)
+        if !context.suffix.is_empty() {
+            return None;
+        }
+
+        let Some(output) = context.output.clone() else {
+            return None;
+        };
+
+        // process raw model outputs
+        let num_vocab = self.info.num_vocab;
+        let formatters = context.formatters.clone();
+        let sampler = context.request.sampler.clone();
+        let bias = context.request.bias.clone();
+        let data = {
+            let mut data = output.to_vec();
+            assert_eq!(data.len(), num_vocab);
+
+            sampler.read().await.transform(&mut data);
+            for (token, bias) in bias.iter() {
+                data[*token as usize] += *bias;
+            }
+            for formatter in formatters {
+                formatter.read().await.transform(&mut data);
+            }
+
+            TensorCpu::from_data([num_vocab, 1, 1, 1], data).ok()?
+        };
+
+        // compute probabilities
+        let output = match softmax_one(&self.context, data).await {
+            Ok(output) => output,
+            Err(err) => {
+                log::error!("[sample][error] {err}");
+                return None;
+            }
+        };
+
+        // sample tokens
+        let data = output.to_vec();
+        assert_eq!(data.len(), num_vocab);
+
+        let token = sampler.write().await.sample(&data);
+        Some((token, data))
+    }
+
+    /// Read in the prompt of a batch and continuously sample it until it is done.
+    async fn process(self, batch: usize, mut context: GenerateContext) -> Result<GenerateContext> {
+        // schedule a future cache slot for the prompt
+        {
+            let mut caches = self.caches.lock().await;
+            let cache = &mut caches.fetch(context.request.state).cache;
+
+            let enable = context.prompt_tokens.len() > MIN_PROMPT_CACHE_TOKENS;
+            let enable = enable && !cache.contains_key(context.prompt_tokens.as_token_slice());
+            if enable {
+                let (sender, _) = tokio::sync::watch::channel(None);
+                context.prompt_cached = CachedPrompt::Future(sender.clone());
+                cache.insert(Tokens(context.prompt_tokens.clone()), sender);
+
+                let len = context.prompt_tokens.len();
+                log::info!("[cache][future][slot: {batch}][len: {len}]");
+            }
+        }
+
+        let _ = context.sender.send(Token::Start);
+
+        let token = self.sample(&context).await;
+
+        Ok(context)
+    }
 }
 
 async fn enqueue(runtime: CoreRuntime, receiver: Receiver<GenerateContext>, timer: Duration) {
@@ -648,28 +710,42 @@ async fn infer(
     let inference = InferInput::new(batches, reload.token_chunk_size);
     let mut inference = Some(inference);
 
-    'outer: while let Ok(InferBatch {
-        batch,
-        tokens,
-        option,
-        sender,
-    }) = receiver.recv_async().await
-    {
-        let mut input = inference.take().unwrap();
+    fn insert(
+        inference: &mut Option<InferInput>,
+        senders: &mut Vec<Option<Sender<TensorCpu<f32>>>>,
+        InferBatch {
+            batch,
+            tokens,
+            option,
+            sender,
+        }: InferBatch,
+    ) {
+        let mut input = inference.take().expect("inference must not be `None`");
         input.batches[batch] = InferInputBatch { tokens, option };
         senders[batch] = Some(sender);
+        inference.replace(input);
+    }
 
-        'inner: loop {
-            let input = inference.take().unwrap();
+    'outer: while let Ok(infer) = receiver.recv_async().await {
+        insert(&mut inference, &mut senders, infer);
 
-            // we have no more work to be done, yield
-            if input.num_token() == 0 {
-                break 'inner;
+        while inference
+            .as_ref()
+            .map(|input| input.num_token() > 0)
+            .expect("inference must not be `None`")
+        {
+            'inner: loop {
+                match receiver.try_recv() {
+                    Ok(infer) => insert(&mut inference, &mut senders, infer),
+                    Err(TryRecvError::Empty) => break 'inner,
+                    Err(TryRecvError::Disconnected) => break 'outer,
+                }
             }
 
             let Some(runtime) = runtime.upgrade() else {
                 break 'outer;
             };
+            let input = inference.take().expect("inference must not be `None`");
             let (input, output) = runtime.infer(input).await?;
             inference.replace(input);
 
@@ -680,21 +756,6 @@ async fn infer(
                 .filter_map(|(output, sender)| sender.map(|sender| (output, sender)))
             {
                 let _ = sender.send(output.clone());
-            }
-
-            match receiver.try_recv() {
-                Ok(InferBatch {
-                    batch,
-                    tokens,
-                    option,
-                    sender,
-                }) => {
-                    let mut input = inference.take().unwrap();
-                    input.batches[batch] = InferInputBatch { tokens, option };
-                    senders[batch] = Some(sender);
-                }
-                Err(TryRecvError::Empty) => continue 'inner,
-                Err(TryRecvError::Disconnected) => break 'outer,
             }
         }
     }
