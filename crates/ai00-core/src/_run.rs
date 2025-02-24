@@ -20,11 +20,11 @@ use tokio::{
 use web_rwkv::{
     context::Context,
     runtime::{
-        infer::{InferInput, InferInputBatch, InferOption, InferOutput, InferOutputBatch},
+        infer::{InferInput, InferInputBatch, InferOption, InferOutputBatch},
         model::{ModelInfo, State},
         Runtime,
     },
-    tensor::TensorCpu,
+    tensor::{TensorCpu, TensorError},
     tokenizer::Tokenizer,
 };
 
@@ -33,6 +33,7 @@ use crate::{
     GenerateKind, GenerateRequest, InitState, ReloadRequest, StateId, Token,
 };
 
+const NUM_ENQUEUE_TASK: usize = 4;
 const MIN_PROMPT_CACHE_TOKENS: usize = 32;
 const MAX_CACHE_ITEMS: usize = 256;
 
@@ -278,7 +279,7 @@ enum SlotResult {
     /// There is no idle slot left.
     Failure(Box<GenerateContext>),
     /// An error occurred.
-    Error(Box<dyn Error>),
+    Error(Box<dyn Error + Send>),
 }
 
 #[derive(Debug)]
@@ -287,6 +288,8 @@ enum SlotState {
     Idle(Tokens, Instant),
     /// The slot is currently under processing.
     Busy(JoinHandle<Result<GenerateContext>>),
+    /// The slot is locked for updating.
+    Locked,
 }
 
 impl Default for SlotState {
@@ -337,6 +340,7 @@ struct InferBatch {
 struct CoreRuntime {
     context: Context,
     info: ModelInfo,
+    reload: Arc<ReloadRequest>,
     #[derivative(Debug = "ignore")]
     state: Arc<dyn State + Send + Sync>,
     sender: Sender<InferBatch>,
@@ -393,7 +397,7 @@ impl CoreRuntime {
     }
 
     /// Queue an inference task.
-    async fn queue(&self, context: GenerateContext) -> Result<SlotResult> {
+    async fn queue(&self, context: GenerateContext) -> Result<SlotResult, TensorError> {
         let tokens = match [context.prefix, context.suffix].concat() {
             tokens if tokens.is_empty() => vec![0u16],
             tokens => tokens,
@@ -412,23 +416,34 @@ impl CoreRuntime {
         // 1. find the slot that matches the context (continue)
         // 2. find an empty slot
         // 3. find the oldest non-empty slot
-        let mut slots = self.slots.lock().await;
-        let choice = slots
-            .iter()
-            .enumerate()
-            .filter_map(|(batch, slot)| match slot {
-                SlotState::Idle(content, instant) => {
-                    let delta = instant.elapsed();
-                    match (content.is_empty(), tokens.starts_with(content)) {
-                        (true, _) => Some((SlotChoice::Empty(batch), delta)),
-                        (false, true) => Some((SlotChoice::Continue(batch, content.len()), delta)),
-                        (false, false) => Some((SlotChoice::Back(batch), delta)),
+        let choice = {
+            let mut slots = self.slots.lock().await;
+            let choice = slots
+                .iter()
+                .enumerate()
+                .filter_map(|(batch, slot)| match slot {
+                    SlotState::Idle(content, instant) => {
+                        let delta = instant.elapsed();
+                        match (content.is_empty(), tokens.starts_with(content)) {
+                            (true, _) => Some((SlotChoice::Empty(batch), delta)),
+                            (false, true) => {
+                                Some((SlotChoice::Continue(batch, content.len()), delta))
+                            }
+                            (false, false) => Some((SlotChoice::Back(batch), delta)),
+                        }
                     }
-                }
-                _ => None,
-            })
-            .max_by(|lhs, rhs| lhs.0.cmp(&rhs.0).then(lhs.1.cmp(&rhs.1)))
-            .map(|(x, _)| x);
+                    _ => None,
+                })
+                .max_by(|lhs, rhs| lhs.0.cmp(&rhs.0).then(lhs.1.cmp(&rhs.1)))
+                .map(|(x, _)| x);
+            match choice {
+                None => (),
+                Some(SlotChoice::Empty(batch))
+                | Some(SlotChoice::Back(batch))
+                | Some(SlotChoice::Continue(batch, _)) => slots[batch] = SlotState::Locked,
+            }
+            choice
+        };
 
         match choice {
             // we cannot find a slot because all slots are occupied
@@ -462,6 +477,7 @@ impl CoreRuntime {
                     ..context
                 };
                 let handle = tokio::spawn(process(sender, tokenizer, context));
+                let mut slots = self.slots.lock().await;
                 slots[batch] = SlotState::Busy(handle);
                 Ok(SlotResult::Fault(batch))
             }
@@ -485,6 +501,7 @@ impl CoreRuntime {
                     ..context
                 };
                 let handle = tokio::spawn(process(sender, tokenizer, context));
+                let mut slots = self.slots.lock().await;
                 slots[batch] = SlotState::Busy(handle);
                 Ok(SlotResult::Success(batch))
             }
@@ -507,6 +524,7 @@ impl CoreRuntime {
                     ..context
                 };
                 let handle = tokio::spawn(process(sender, tokenizer, context));
+                let mut slots = self.slots.lock().await;
                 slots[batch] = SlotState::Busy(handle);
                 Ok(SlotResult::Success(batch))
             }
@@ -540,26 +558,33 @@ impl CoreRuntime {
                 cache.insert(context.prefix.clone(), item);
 
                 let len = context.prefix.len();
-                log::info!("[cache][back][slot: {batch}][len: {len}]");
+                log::info!("[cache][insert][slot: {batch}][len: {len}]");
             }
 
             Ok::<_, Box<dyn Error>>(SlotState::Idle(context.prefix, Instant::now()))
         };
 
-        let mut slots = self.slots.lock().await;
-        for (batch, slot) in slots
-            .iter_mut()
-            .enumerate()
-            .filter(|(_, slot)| matches!(slot, &&mut SlotState::Busy(_)))
-        {
-            let SlotState::Busy(handle) = std::mem::take(slot) else {
-                unreachable!()
+        for batch in 0..self.reload.max_batch {
+            let handle = {
+                let mut slots = self.slots.lock().await;
+                let slot = std::mem::replace(&mut slots[batch], SlotState::Locked);
+                let SlotState::Busy(handle) = slot else {
+                    slots[batch] = slot;
+                    continue;
+                };
+                handle
             };
 
-            match update_one(batch, handle).await {
-                Ok(updated) => *slot = updated,
-                Err(err) => log::error!("[update][error] {err}"),
-            }
+            let updated = match update_one(batch, handle).await {
+                Ok(updated) => updated,
+                Err(err) => {
+                    log::error!("[update][error] {err}");
+                    continue;
+                }
+            };
+
+            let mut slots = self.slots.lock().await;
+            slots[batch] = updated;
         }
     }
 }
@@ -695,11 +720,12 @@ pub async fn run(
 
     let runtime = {
         let (sender, receiver) = flume::unbounded();
-        tokio::spawn(infer(reload, runtime, receiver));
+        tokio::spawn(infer(reload.clone(), runtime, receiver));
 
         CoreRuntime {
             context,
             info,
+            reload,
             state,
             sender,
             tokenizer,
@@ -707,5 +733,8 @@ pub async fn run(
             caches,
         }
     };
-    tokio::spawn(enqueue(runtime, receiver, Duration::from_secs_f32(0.5)));
+    let timer = Duration::from_secs_f32(0.5);
+    for _ in 0..NUM_ENQUEUE_TASK {
+        tokio::spawn(enqueue(runtime.clone(), receiver.clone(), timer));
+    }
 }
