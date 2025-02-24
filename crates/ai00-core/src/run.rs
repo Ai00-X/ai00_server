@@ -428,10 +428,8 @@ impl CoreRuntime {
                         let delta = instant.elapsed();
                         match (content.is_empty(), tokens.starts_with(content)) {
                             (true, _) => Some((SlotChoice::Empty(batch), delta)),
-                            (false, true) => {
-                                Some((SlotChoice::Continue(batch, content.len()), delta))
-                            }
-                            (false, false) => Some((SlotChoice::Back(batch), delta)),
+                            (_, true) => Some((SlotChoice::Continue(batch, content.len()), delta)),
+                            (_, false) => Some((SlotChoice::Back(batch), delta)),
                         }
                     }
                     _ => None,
