@@ -31,8 +31,8 @@ use web_rwkv::{
 
 use crate::{
     sampler::{bnf::BnfSampler, Formatter, Sampler},
-    FinishReason, GenerateKind, GenerateRequest, InitState, ReloadRequest, StateId, Token,
-    TokenCounter,
+    FinishReason, GenerateKind, GenerateRequest, InitState, ReloadRequest, RuntimeInfo, StateId,
+    Token, TokenCounter,
 };
 
 const NUM_ENQUEUE_TASK: usize = 4;
@@ -994,23 +994,43 @@ async fn infer(
 
 pub async fn run(
     context: Context,
-    info: ModelInfo,
-    reload: Arc<ReloadRequest>,
     runtime: Weak<dyn Runtime + Send + Sync>,
     state: Arc<dyn State + Send + Sync>,
-    tokenizer: Arc<Tokenizer>,
     receiver: Receiver<GenerateContext>,
+    RuntimeInfo {
+        reload,
+        model,
+        states,
+        tokenizer,
+    }: RuntimeInfo,
 ) {
     let slots = std::iter::repeat_with(Default::default)
         .take(reload.max_batch)
         .collect();
     let slots = Arc::new(Mutex::new(slots));
-    let caches = Arc::new(Mutex::new(Default::default()));
+
+    let caches = {
+        let mut caches = CacheHub::default();
+        // set up default initial state
+        if let Some(state) = states.iter().find(|(_, state)| state.default) {
+            caches.default.state = Some(state.1.clone());
+        }
+        // set up other initial states with ids
+        for state in states {
+            let id = state.0;
+            let item = Cache {
+                state: Some(state.1),
+                cache: Trie::new(),
+            };
+            caches.backed.insert(id, item);
+        }
+        Arc::new(Mutex::new(caches))
+    };
 
     let runtime = {
         let (sender, receiver) = flume::unbounded();
+        let info = model;
         tokio::spawn(infer(reload.clone(), runtime, receiver));
-
         CoreRuntime {
             context,
             info,
