@@ -997,9 +997,10 @@ pub async fn run(
     receiver: Receiver<GenerateContext>,
     RuntimeInfo {
         reload,
-        model,
+        info,
         states,
         tokenizer,
+        ..
     }: RuntimeInfo,
 ) {
     let slots = std::iter::repeat_with(Default::default)
@@ -1010,14 +1011,14 @@ pub async fn run(
     let caches = {
         let mut caches = CacheHub::default();
         // set up default initial state
-        if let Some(state) = states.iter().find(|(_, state)| state.default) {
-            caches.default.state = Some(state.1.clone());
+        if let Some(state) = states.iter().find(|state| state.default) {
+            caches.default.state = Some(state.clone());
         }
         // set up other initial states with ids
         for state in states {
-            let id = state.0;
+            let id = state.id;
             let item = Cache {
-                state: Some(state.1),
+                state: Some(state),
                 cache: Trie::new(),
             };
             caches.backed.insert(id, item);
@@ -1027,7 +1028,6 @@ pub async fn run(
 
     let runtime = {
         let (sender, receiver) = flume::unbounded();
-        let info = model;
         tokio::spawn(infer(reload.clone(), runtime, receiver));
         CoreRuntime {
             context,
