@@ -9,6 +9,7 @@ use std::{
 use anyhow::{bail, Result};
 use derivative::Derivative;
 use flume::{Receiver, Sender};
+use futures::future::join_all;
 use half::f16;
 use itertools::Itertools;
 use memmap2::Mmap;
@@ -25,11 +26,13 @@ use tokio::{
 use web_rwkv::{
     context::{Context, ContextBuilder, InstanceExt},
     runtime::{
+        infer::{InferInput, InferOutput},
         loader::{Loader, Lora, LoraBlend, Reader},
         model::{
-            ContextAutoLimits, EmbedDevice, ModelBuilder, ModelInfo, ModelVersion, Quant, State,
+            Bundle, ContextAutoLimits, EmbedDevice, ModelBuilder, ModelInfo, ModelVersion, Quant,
+            State,
         },
-        v4, v5, v6, v7, Runtime,
+        v4, v5, v6, v7, Runtime, TokioRuntime,
     },
     tensor::{serialization::Seed, TensorCpu},
     tokenizer::Tokenizer,
@@ -324,7 +327,7 @@ async fn load_tokenizer(path: impl AsRef<Path>) -> Result<Tokenizer> {
     Ok(Tokenizer::new(&contents)?)
 }
 
-async fn load_init_state<R: Reader>(
+async fn load_model_state<R: Reader>(
     context: &Context,
     info: &ModelInfo,
     model: R,
@@ -338,21 +341,141 @@ async fn load_init_state<R: Reader>(
     state.map_err(Into::into)
 }
 
-async fn load_init_states() {}
-
-async fn load_model<R: Reader>(
+async fn load_model(
     context: &Context,
     info: &ModelInfo,
-    reload: &ReloadRequest,
-    model: R,
+    request: &ReloadRequest,
+    load: LoadType,
 ) -> Result<(
+    Vec<InitState>,
     Arc<dyn Runtime + Send + Sync>,
     Arc<dyn State + Send + Sync>,
     Arc<dyn ModelSerialize + Send + Sync>,
 )> {
-    let builder = ModelBuilder::new(context, model);
+    let ReloadRequest {
+        model_path,
+        lora,
+        state,
+        quant,
+        quant_type,
+        precision,
+        token_chunk_size,
+        max_batch,
+        embed_device,
+        tokenizer_path,
+        bnf,
+        adapter,
+    } = request.clone();
 
-    todo!()
+    let mut states = Vec::with_capacity(state.len());
+    for state in state.into_iter() {
+        let reload::State {
+            path,
+            name,
+            id,
+            default,
+        } = state;
+        let name = match name {
+            Some(name) => name,
+            None => match path.file_name() {
+                Some(name) => name.to_string_lossy().to_string(),
+                None => continue,
+            },
+        };
+        let file = File::open(path).await?;
+        let data = unsafe { Mmap::map(&file) }?;
+        let model = SafeTensors::deserialize(&data)?;
+        match load_model_state(&context, &info, model).await {
+            Ok(data) => {
+                let state = InitState {
+                    name,
+                    id,
+                    data,
+                    default,
+                };
+                log::info!("{:#?}", state);
+                states.push(state);
+            }
+            Err(err) => log::warn!("initial state not loaded: {}", err),
+        }
+    }
+
+    let file = File::open(model_path).await?;
+    let data = unsafe { Mmap::map(&file) }?;
+
+    match load {
+        LoadType::SafeTensors => {
+            let model = SafeTensors::deserialize(&data)?;
+            if let Ok(data) = load_model_state(context, &info, model).await {
+                let name = "internal".into();
+                let id = StateId::new();
+                let state = InitState {
+                    name,
+                    id,
+                    data,
+                    default: true,
+                };
+                states.push(state);
+            }
+
+            let model = SafeTensors::deserialize(&data)?;
+            let quant = (0..quant).map(|layer| (layer, quant_type)).collect();
+            let lora: Vec<Result<_>> = join_all(lora.iter().map(|lora| async move {
+                let reload::Lora { path, alpha } = lora;
+                let file = File::open(path).await?;
+                let data = unsafe { Mmap::map(&file)? };
+                let blend = LoraBlend::full(*alpha);
+                Ok((data, blend))
+            }))
+            .await;
+            let lora: Vec<_> = lora.into_iter().try_collect()?;
+            let lora: Vec<_> = lora
+                .iter()
+                .map(|(data, blend)| -> Result<_> {
+                    let data = SafeTensors::deserialize(data)?;
+                    let blend = blend.clone();
+                    Ok(Lora { data, blend })
+                })
+                .try_collect()?;
+
+            let builder = ModelBuilder::new(context, model)
+                .quant(quant)
+                .embed_device(embed_device);
+            let builder = lora.into_iter().fold(builder, |builder, x| builder.lora(x));
+
+            macro_rules! match_safe_tensors {
+                (($v:expr, $p:expr), { $(($version:path, $precision:path, $model:ty, $build:ident, $bundle:ty)),+ }) => {
+                    match ($v, $p) {
+                        $(
+                            ($version, $precision) => {
+                                let model = builder.$build().await?;
+                                let bundle = <$bundle>::new(model, max_batch);
+                                let state = Arc::new(bundle.state());
+                                let model = Arc::new(Model(bundle.model()));
+                                let runtime = Arc::new(TokioRuntime::<InferInput, InferOutput>::new(bundle).await);
+                                Ok((states, runtime, state, model))
+                            }
+                        )+
+                    }
+                }
+            }
+
+            match_safe_tensors!(
+                (info.version, precision),
+                {
+                    (ModelVersion::V4, Precision::Fp16, v4::Model, build_v4, v4::Bundle::<f16>),
+                    (ModelVersion::V5, Precision::Fp16, v5::Model, build_v5, v5::Bundle::<f16>),
+                    (ModelVersion::V6, Precision::Fp16, v6::Model, build_v6, v6::Bundle::<f16>),
+                    (ModelVersion::V7, Precision::Fp16, v7::Model, build_v7, v7::Bundle::<f16>),
+                    (ModelVersion::V4, Precision::Fp32, v4::Model, build_v4, v4::Bundle::<f32>),
+                    (ModelVersion::V5, Precision::Fp32, v5::Model, build_v5, v5::Bundle::<f32>),
+                    (ModelVersion::V6, Precision::Fp32, v6::Model, build_v6, v6::Bundle::<f32>),
+                    (ModelVersion::V7, Precision::Fp32, v7::Model, build_v7, v7::Bundle::<f32>)
+                }
+            )
+        }
+        LoadType::Prefab => todo!(),
+    }
 }
 
 pub async fn serve(receiver: Receiver<ThreadRequest>) -> Result<()> {
@@ -404,45 +527,12 @@ pub async fn serve(receiver: Receiver<ThreadRequest>) -> Result<()> {
 
                     let tokenizer = Arc::new(load_tokenizer(&request.tokenizer_path).await?);
 
-                    let mut states = Vec::with_capacity(request.state.len());
-                    for reload::State {
-                        path,
-                        name,
-                        id,
-                        default,
-                    } in request.state.iter().cloned()
-                    {
-                        let name = match name {
-                            Some(name) => name,
-                            None => match path.file_name() {
-                                Some(name) => name.to_string_lossy().to_string(),
-                                None => continue,
-                            },
-                        };
-                        let file = File::open(path).await?;
-                        let data = unsafe { Mmap::map(&file) }?;
-                        let model = SafeTensors::deserialize(&data)?;
-                        match load_init_state(&context, &info, model).await {
-                            Ok(data) => {
-                                let state = InitState {
-                                    name,
-                                    id,
-                                    data,
-                                    default,
-                                };
-                                log::info!("{:#?}", state);
-                                states.push(state);
-                            }
-                            Err(err) => log::warn!("initial state not loaded: {}", err),
-                        }
-                    }
-
                     let reload = Arc::new(*request);
                     let info = RuntimeInfo {
                         reload,
                         info,
                         model: todo!(),
-                        states,
+                        states: todo!(),
                         tokenizer,
                     };
                 }
