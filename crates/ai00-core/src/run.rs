@@ -24,7 +24,7 @@ use web_rwkv::{
         model::{ModelInfo, State},
         Runtime,
     },
-    tensor::{TensorCpu, TensorError},
+    tensor::{kind::ReadWrite, TensorCpu, TensorError, TensorGpu, TensorInto},
     tokenizer::Tokenizer,
 };
 
@@ -343,6 +343,14 @@ enum InferBatch {
         batch: usize,
         sender: Sender<TensorCpu<f32>>,
     },
+    Write {
+        batch: usize,
+        tensor: TensorGpu<f32, ReadWrite>,
+    },
+    Read {
+        batch: usize,
+        sender: Sender<TensorGpu<f32, ReadWrite>>,
+    },
 }
 
 #[derive(Debug, Clone)]
@@ -481,8 +489,7 @@ impl CoreRuntime {
             Some(SlotChoice::Back(batch)) => {
                 log::info!("[queue][back][slot: {batch}]");
                 let checkout = self.checkout(context.request.state, &tokens).await;
-                self.load(batch, checkout.state);
-                // self.state.load(checkout.state, batch)?;
+                self.load(batch, checkout.state).await;
 
                 let len = checkout.prefix.len();
                 assert!(len == 0 || (len > 0 && checkout.output.is_some()));
@@ -504,8 +511,7 @@ impl CoreRuntime {
             Some(SlotChoice::Empty(batch)) => {
                 log::info!("[queue][empty][slot: {batch}]");
                 let checkout = self.checkout(context.request.state, &tokens).await;
-                self.load(batch, checkout.state);
-                // self.state.load(checkout.state, batch)?;
+                self.load(batch, checkout.state).await;
 
                 let len = checkout.prefix.len();
                 assert!(len == 0 || (len > 0 && checkout.output.is_some()));
@@ -526,8 +532,7 @@ impl CoreRuntime {
             Some(SlotChoice::Continue(batch, ..)) => {
                 log::info!("[queue][continue][slot: {batch}]");
                 let checkout = self.checkout(context.request.state, &tokens).await;
-                self.load(batch, checkout.state);
-                // self.state.load(checkout.state, batch)?;
+                self.load(batch, checkout.state).await;
 
                 let len = checkout.prefix.len();
                 assert!(len == 0 || (len > 0 && checkout.output.is_some()));
@@ -610,7 +615,7 @@ impl CoreRuntime {
         };
 
         // compute probabilities
-        let (sender, receiver) = flume::unbounded();
+        let (sender, receiver) = flume::bounded(1);
         let _ = self.sender.softmax.send(SoftmaxBatch { input, sender });
         let output = receiver.recv_async().await?;
 
@@ -678,15 +683,34 @@ impl CoreRuntime {
         Ok(ppl)
     }
 
-    fn load(&self, batch: usize, tensor: TensorCpu<f32>) {
-        let _ = self.sender.infer.send(InferBatch::Load { batch, tensor });
+    async fn load(&self, batch: usize, tensor: TensorCpu<f32>) {
+        let _ = self
+            .sender
+            .infer
+            .send_async(InferBatch::Load { batch, tensor })
+            .await;
     }
 
     async fn back(&self, batch: usize) -> Result<TensorCpu<f32>> {
-        let (sender, receiver) = flume::unbounded();
+        let (sender, receiver) = flume::bounded(1);
         let _ = self.sender.infer.send(InferBatch::Back { batch, sender });
-        let backed = receiver.recv_async().await?;
-        Ok(backed)
+        let tensor = receiver.recv_async().await?;
+        Ok(tensor)
+    }
+
+    async fn write(&self, batch: usize, tensor: TensorGpu<f32, ReadWrite>) {
+        let _ = self
+            .sender
+            .infer
+            .send_async(InferBatch::Write { batch, tensor })
+            .await;
+    }
+
+    async fn read(&self, batch: usize) -> Result<TensorGpu<f32, ReadWrite>> {
+        let (sender, receiver) = flume::bounded(1);
+        let _ = self.sender.infer.send(InferBatch::Read { batch, sender });
+        let tensor = receiver.recv_async().await?;
+        Ok(tensor)
     }
 
     /// Read in the prompt of a batch and continuously sample it until it is done.
@@ -714,7 +738,7 @@ impl CoreRuntime {
             let output = match (context.suffix.len(), context.output.clone()) {
                 (0, Some(output)) => output,
                 _ => {
-                    let (sender, receiver) = flume::unbounded();
+                    let (sender, receiver) = flume::bounded(1);
                     let _ = self
                         .sender
                         .infer
@@ -839,23 +863,23 @@ impl CoreRuntime {
             if context.sender.is_disconnected() {
                 done = true;
             } else if let GenerateKind::Choose { calibrate, .. } = context.request.kind {
-                let backed = self.back(batch).await?;
+                let backed = self.read(batch).await?;
                 let mut ppl = vec![f32::INFINITY; context.choices.len()];
 
                 if calibrate {
                     // compute perplexities of the choices themselves and calibrate their effects
-                    let init = self.state.init();
+                    let init: TensorGpu<_, _> = self.state.init().to(&self.context);
                     for (index, choice) in context
                         .choices
                         .iter()
                         .enumerate()
                         .filter(|(_, choice)| !choice.is_empty())
                     {
-                        self.load(batch, init.clone());
+                        self.write(batch, init.clone()).await;
                         ppl[index] = -self.perplexity(batch, choice, None).await?;
                     }
                     // recover the state
-                    self.load(batch, backed.clone());
+                    self.write(batch, backed.clone()).await;
                 }
 
                 for (index, choice) in context
@@ -872,7 +896,7 @@ impl CoreRuntime {
                         false => p,
                     };
                     // recover the state
-                    self.load(batch, backed.clone());
+                    self.write(batch, backed.clone()).await;
                 }
 
                 let _ = context.sender.send(Token::Choose(ppl));
@@ -1002,8 +1026,13 @@ async fn infer(
             }
             InferBatch::Load { batch, tensor } => state.load(tensor, batch)?,
             InferBatch::Back { batch, sender } => {
-                let backed = state.back(batch).await?;
-                let _ = sender.send_async(backed).await;
+                let tensor = state.back(batch).await?;
+                let _ = sender.send_async(tensor).await;
+            }
+            InferBatch::Write { batch, tensor } => state.write(tensor, batch)?,
+            InferBatch::Read { batch, sender } => {
+                let tensor = state.read(batch)?;
+                let _ = sender.send_async(tensor).await;
             }
         }
         Ok(())
