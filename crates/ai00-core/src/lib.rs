@@ -1,7 +1,5 @@
 use std::{
     collections::HashMap,
-    error::Error,
-    ops::Deref,
     path::{Path, PathBuf},
     sync::Arc,
 };
@@ -20,7 +18,7 @@ use serde::{de::DeserializeSeed, Deserialize, Serialize};
 use tokio::{
     fs::File,
     io::{AsyncReadExt, BufReader},
-    sync::{Mutex, RwLock},
+    sync::RwLock,
     time::Duration,
 };
 use web_rwkv::{
@@ -122,7 +120,11 @@ pub enum ThreadRequest {
 
 #[derive(Default)]
 pub enum Environment {
-    Loaded(RuntimeInfo),
+    Loaded {
+        info: RuntimeInfo,
+        runtime: Arc<dyn Runtime + Send + Sync>,
+        sender: Sender<GenerateContext>,
+    },
     #[default]
     None,
 }
@@ -341,7 +343,7 @@ async fn load_model_state<R: Reader>(
     state.map_err(Into::into)
 }
 
-async fn load_model(
+async fn load_runtime(
     context: &Context,
     info: &ModelInfo,
     request: &ReloadRequest,
@@ -359,12 +361,9 @@ async fn load_model(
         quant,
         quant_type,
         precision,
-        token_chunk_size,
         max_batch,
         embed_device,
-        tokenizer_path,
-        bnf,
-        adapter,
+        ..
     } = request.clone();
 
     let mut states = Vec::with_capacity(state.len());
@@ -459,7 +458,6 @@ async fn load_model(
                     }
                 }
             }
-
             match_safe_tensors!(
                 (info.version, precision),
                 {
@@ -474,7 +472,43 @@ async fn load_model(
                 }
             )
         }
-        LoadType::Prefab => todo!(),
+        LoadType::Prefab => {
+            use cbor4ii::{core::utils::SliceReader, serde::Deserializer};
+
+            let reader = SliceReader::new(&data);
+            let mut deserializer = Deserializer::new(reader);
+
+            macro_rules! match_prefab {
+                (($v:expr, $p:expr), { $(($version:path, $precision:path, $model:ty, $bundle:ty)),+ }) => {
+                    match ($v, $p) {
+                        $(
+                            ($version, $precision) => {
+                                let seed: Seed<_, $model> = Seed::new(context);
+                                let model = seed.deserialize(&mut deserializer)?;
+                                let bundle = <$bundle>::new(model, max_batch);
+                                let state = Arc::new(bundle.state());
+                                let model = Arc::new(Model(bundle.model()));
+                                let runtime = Arc::new(TokioRuntime::<InferInput, InferOutput>::new(bundle).await);
+                                Ok((states, runtime, state, model))
+                            }
+                        )+
+                    }
+                }
+            }
+            match_prefab!(
+                (info.version, precision),
+                {
+                    (ModelVersion::V4, Precision::Fp16, v4::Model, v4::Bundle::<f16>),
+                    (ModelVersion::V5, Precision::Fp16, v5::Model, v5::Bundle::<f16>),
+                    (ModelVersion::V6, Precision::Fp16, v6::Model, v6::Bundle::<f16>),
+                    (ModelVersion::V7, Precision::Fp16, v7::Model, v7::Bundle::<f16>),
+                    (ModelVersion::V4, Precision::Fp32, v4::Model, v4::Bundle::<f32>),
+                    (ModelVersion::V5, Precision::Fp32, v5::Model, v5::Bundle::<f32>),
+                    (ModelVersion::V6, Precision::Fp32, v6::Model, v6::Bundle::<f32>),
+                    (ModelVersion::V7, Precision::Fp32, v7::Model, v7::Bundle::<f32>)
+                }
+            )
+        }
     }
 }
 
@@ -494,8 +528,8 @@ pub async fn serve(receiver: Receiver<ThreadRequest>) -> Result<()> {
                 }
                 ThreadRequest::Info(sender) => {
                     let env = env.read().await;
-                    if let Environment::Loaded(runtime) = &*env {
-                        let _ = sender.send(runtime.clone());
+                    if let Environment::Loaded { info, .. } = &*env {
+                        let _ = sender.send(info.clone());
                     }
                 }
                 ThreadRequest::Generate {
@@ -527,14 +561,39 @@ pub async fn serve(receiver: Receiver<ThreadRequest>) -> Result<()> {
 
                     let tokenizer = Arc::new(load_tokenizer(&request.tokenizer_path).await?);
 
+                    let (states, runtime, state, model) =
+                        load_runtime(&context, &info, &request, load).await?;
+
                     let reload = Arc::new(*request);
                     let info = RuntimeInfo {
                         reload,
                         info,
-                        model: todo!(),
-                        states: todo!(),
+                        model,
+                        states,
                         tokenizer,
                     };
+
+                    let sender = {
+                        let runtime = Arc::downgrade(&runtime);
+                        let (sender, receiver) = flume::unbounded();
+                        tokio::spawn(crate::run::run(
+                            context,
+                            runtime,
+                            state,
+                            receiver,
+                            info.clone(),
+                        ));
+                        sender
+                    };
+
+                    let _ = std::mem::replace(
+                        &mut *env,
+                        Environment::Loaded {
+                            info,
+                            runtime,
+                            sender,
+                        },
+                    );
                 }
                 ThreadRequest::Unload => todo!(),
                 ThreadRequest::StateLoad { request, sender } => todo!(),
