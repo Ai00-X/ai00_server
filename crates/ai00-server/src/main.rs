@@ -5,7 +5,7 @@ use std::{
     time::Duration,
 };
 
-use ai00_core::{model_route, ThreadRequest};
+use ai00_core::ThreadRequest;
 use anyhow::{anyhow, bail, Result};
 use clap::{command, CommandFactory, Parser};
 use memmap2::Mmap;
@@ -153,7 +153,7 @@ async fn main() {
     log::info!("{}\tversion: {}", bin_name, version);
 
     let (sender, receiver) = flume::unbounded::<ThreadRequest>();
-    tokio::spawn(model_route(receiver));
+    tokio::spawn(ai00_core::serve(receiver));
 
     let config = {
         let path = args

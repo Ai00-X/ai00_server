@@ -1,4 +1,4 @@
-use ai00_core::{run::StateId, GenerateKind, GenerateRequest, ThreadRequest, Token, TokenCounter};
+use ai00_core::{GenerateKind, GenerateRequest, StateId, ThreadRequest, Token, TokenCounter};
 use futures_util::StreamExt;
 use salvo::{
     oapi::{extract::JsonBody, ToParameters, ToResponse, ToSchema},

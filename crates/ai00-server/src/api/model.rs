@@ -1,7 +1,7 @@
+use std::sync::Arc;
+
 use ai00_core::{
-    reload::State,
-    run::{InitState, StateId},
-    ReloadRequest, RuntimeInfo, SaveRequest, ThreadRequest,
+    reload::State, InitState, ReloadRequest, RuntimeInfo, SaveRequest, StateId, ThreadRequest,
 };
 use futures_util::StreamExt;
 use salvo::{oapi::extract::JsonBody, prelude::*};
@@ -13,7 +13,7 @@ use crate::{build_path, types::ThreadSender, SLEEP};
 
 #[derive(Debug, Clone, Serialize)]
 pub struct InfoResponse {
-    reload: ReloadRequest,
+    reload: Arc<ReloadRequest>,
     model: ModelInfo,
     states: Vec<InitStateInfo>,
 }
@@ -30,13 +30,13 @@ pub async fn info(depot: &mut Depot) -> Json<InfoResponse> {
     let sender = depot.obtain::<ThreadSender>().unwrap();
     let RuntimeInfo {
         reload,
-        model,
+        info: model,
         states,
         ..
     } = request_info(sender.to_owned(), SLEEP).await;
     let states = states
         .into_iter()
-        .map(|(id, InitState { name, .. })| InitStateInfo { id, name })
+        .map(|InitState { name, id, .. }| InitStateInfo { id, name })
         .collect();
     Json(InfoResponse {
         reload,
@@ -58,13 +58,13 @@ pub async fn state(depot: &mut Depot, res: &mut Response) {
     let stream = info_receiver.into_stream().map(
         |RuntimeInfo {
              reload,
-             model,
+             info: model,
              states,
              ..
          }| {
             let states = states
                 .into_iter()
-                .map(|(id, InitState { name, .. })| InitStateInfo { id, name })
+                .map(|InitState { name, id, .. }| InitStateInfo { id, name })
                 .collect();
             match serde_json::to_string(&InfoResponse {
                 reload,

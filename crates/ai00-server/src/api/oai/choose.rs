@@ -1,4 +1,4 @@
-use ai00_core::{run::StateId, GenerateKind, GenerateRequest, ThreadRequest, Token};
+use ai00_core::{GenerateKind, GenerateRequest, StateId, ThreadRequest, Token};
 use futures_util::StreamExt;
 use itertools::Itertools;
 use salvo::{

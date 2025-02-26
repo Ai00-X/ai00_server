@@ -5,7 +5,7 @@ use salvo::oapi::ToSchema;
 use serde::{Deserialize, Serialize};
 use web_rwkv::runtime::model::{EmbedDevice, Quant};
 
-use crate::run::StateId;
+use crate::StateId;
 
 #[derive(Debug, Clone, Derivative, Serialize, Deserialize, ToSchema)]
 #[derivative(Default)]
