@@ -732,24 +732,22 @@ impl CoreRuntime {
                     context.prefix = Tokens([prefix.0, suffix.0].concat());
                     context.suffix = Tokens(vec![]);
 
-                    let output = receiver.recv_async().await?;
-
-                    // cache the prompt if being asked
-                    if let CachedPrompt::Future(sender) = context.prompt_cached.clone() {
-                        assert_eq!(context.prefix.len(), context.prompt_tokens.len());
-
-                        let backed = self.back(batch).await?;
-                        let output = output.clone();
-                        sender.send_replace(Some(CachedItem::new(backed, output)));
-                        context.prompt_cached = CachedPrompt::Done;
-
-                        let len = context.prefix.len();
-                        log::info!("[cache][insert][slot: {batch}][len: {len}]");
-                    }
-
-                    output
+                    receiver.recv_async().await?
                 }
             };
+
+            // cache the prompt if being asked
+            if let CachedPrompt::Future(sender) = context.prompt_cached.clone() {
+                assert_eq!(context.prefix.len(), context.prompt_tokens.len());
+
+                let backed = self.back(batch).await?;
+                let output = output.clone();
+                sender.send_replace(Some(CachedItem::new(backed, output)));
+                context.prompt_cached = CachedPrompt::Done;
+
+                let len = context.prefix.len();
+                log::info!("[cache][insert][slot: {batch}][len: {len}]");
+            }
 
             let (token, output) = {
                 let output = output.clone();
