@@ -22,7 +22,6 @@ use web_rwkv::{
     runtime::{
         infer::{InferInput, InferInputBatch, InferOption, InferOutputBatch},
         model::{ModelInfo, State},
-        softmax::softmax_one,
         Runtime,
     },
     tensor::{TensorCpu, TensorError},
@@ -336,6 +335,18 @@ struct InferBatch {
     sender: Sender<TensorCpu<f32>>,
 }
 
+#[derive(Debug, Clone)]
+struct SoftmaxBatch {
+    input: TensorCpu<f32>,
+    sender: Sender<TensorCpu<f32>>,
+}
+
+#[derive(Debug, Clone)]
+struct RuntimeSender {
+    infer: Sender<InferBatch>,
+    softmax: Sender<SoftmaxBatch>,
+}
+
 #[derive(Derivative, Clone)]
 #[derivative(Debug)]
 struct CoreRuntime {
@@ -344,7 +355,7 @@ struct CoreRuntime {
     reload: Arc<ReloadRequest>,
     #[derivative(Debug = "ignore")]
     state: Arc<dyn State + Send + Sync>,
-    sender: Sender<InferBatch>,
+    sender: RuntimeSender,
     tokenizer: Arc<Tokenizer>,
     slots: Arc<Mutex<Vec<SlotState>>>,
     caches: Arc<Mutex<CacheHub>>,
@@ -593,7 +604,7 @@ impl CoreRuntime {
     ) -> Result<(u16, TensorCpu<f32>)> {
         // process raw model outputs
         let num_vocab = self.info.num_vocab;
-        let data = {
+        let input = {
             let mut data = output.to_vec();
             assert_eq!(data.len(), num_vocab);
 
@@ -609,7 +620,9 @@ impl CoreRuntime {
         };
 
         // compute probabilities
-        let output = softmax_one(&self.context, data).await?;
+        let (sender, receiver) = flume::unbounded();
+        let _ = self.sender.softmax.send(SoftmaxBatch { input, sender });
+        let output = receiver.recv_async().await?;
 
         // sample tokens
         assert_eq!(output.len(), num_vocab);
@@ -629,7 +642,7 @@ impl CoreRuntime {
         };
 
         let (sender, receiver) = flume::unbounded();
-        let infer = {
+        let batch = {
             let tokens = tokens.clone();
             let option = InferOption::Full;
             InferBatch {
@@ -640,7 +653,7 @@ impl CoreRuntime {
             }
         };
 
-        let _ = self.sender.send_async(infer).await;
+        let _ = self.sender.infer.send_async(batch).await;
 
         let mut index = 1;
         while p.len() < len {
@@ -696,13 +709,13 @@ impl CoreRuntime {
                 (0, Some(output)) => output,
                 _ => {
                     let (sender, receiver) = flume::unbounded();
-                    let infer = InferBatch {
+                    let batch = InferBatch {
                         batch,
                         tokens: context.suffix.to_vec(),
                         option: InferOption::Last,
                         sender,
                     };
-                    let _ = self.sender.send_async(infer).await;
+                    let _ = self.sender.infer.send_async(batch).await;
 
                     let prefix = std::mem::take(&mut context.prefix);
                     let suffix = std::mem::take(&mut context.suffix);
@@ -959,8 +972,8 @@ async fn infer(
         inference.replace(input);
     }
 
-    'outer: while let Ok(infer) = receiver.recv_async().await {
-        insert(&mut inference, &mut senders, infer);
+    'outer: while let Ok(batch) = receiver.recv_async().await {
+        insert(&mut inference, &mut senders, batch);
 
         while inference
             .as_ref()
@@ -969,7 +982,7 @@ async fn infer(
         {
             'inner: loop {
                 match receiver.try_recv() {
-                    Ok(infer) => insert(&mut inference, &mut senders, infer),
+                    Ok(batch) => insert(&mut inference, &mut senders, batch),
                     Err(TryRecvError::Empty) => break 'inner,
                     Err(TryRecvError::Disconnected) => break 'outer,
                 }
@@ -994,6 +1007,34 @@ async fn infer(
     }
 
     log::info!("[infer] exit");
+    Ok(())
+}
+
+async fn softmax(
+    reload: Arc<ReloadRequest>,
+    context: Context,
+    receiver: Receiver<SoftmaxBatch>,
+) -> Result<()> {
+    let mut batches = Vec::with_capacity(reload.max_batch);
+
+    while let Ok(batch) = receiver.recv_async().await {
+        batches.push(batch);
+
+        for batch in receiver.drain() {
+            batches.push(batch);
+        }
+
+        let input = batches.iter().map(|batch| batch.input.clone()).collect();
+        let output = web_rwkv::runtime::softmax::softmax(&context, input).await?;
+
+        for (batch, tensor) in batches.iter().zip_eq(output.into_iter()) {
+            let _ = batch.sender.send_async(tensor).await;
+        }
+
+        batches.clear();
+    }
+
+    log::info!("[softmax] exit");
     Ok(())
 }
 
@@ -1035,8 +1076,17 @@ pub async fn run(
 
     let max_batch = reload.max_batch;
     let runtime = {
-        let (sender, receiver) = flume::unbounded();
-        tokio::spawn(infer(reload.clone(), runtime, receiver));
+        let infer = {
+            let (sender, receiver) = flume::unbounded();
+            tokio::spawn(infer(reload.clone(), runtime, receiver));
+            sender
+        };
+        let softmax = {
+            let (sender, receiver) = flume::unbounded();
+            tokio::spawn(softmax(reload.clone(), context.clone(), receiver));
+            sender
+        };
+        let sender = RuntimeSender { infer, softmax };
         CoreRuntime {
             context,
             info,
