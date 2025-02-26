@@ -35,7 +35,6 @@ use crate::{
     Token, TokenCounter,
 };
 
-const NUM_ENQUEUE_TASK: usize = 4;
 const MIN_PROMPT_CACHE_TOKENS: usize = 32;
 const MAX_CACHE_ITEMS: usize = 256;
 
@@ -920,6 +919,14 @@ async fn enqueue(runtime: CoreRuntime, receiver: Receiver<GenerateContext>, time
     }
 }
 
+async fn finalize(runtime: CoreRuntime, timer: Duration) {
+    loop {
+        runtime.maintain_cache().await;
+        runtime.update().await;
+        tokio::time::sleep(timer).await;
+    }
+}
+
 async fn infer(
     reload: Arc<ReloadRequest>,
     runtime: Weak<dyn Runtime + Send + Sync>,
@@ -1026,6 +1033,7 @@ pub async fn run(
         Arc::new(Mutex::new(caches))
     };
 
+    let max_batch = reload.max_batch;
     let runtime = {
         let (sender, receiver) = flume::unbounded();
         tokio::spawn(infer(reload.clone(), runtime, receiver));
@@ -1041,8 +1049,8 @@ pub async fn run(
         }
     };
     let timer = Duration::from_secs_f32(1.0);
-    for _ in 0..NUM_ENQUEUE_TASK {
+    for _ in 0..max_batch {
         tokio::spawn(enqueue(runtime.clone(), receiver.clone(), timer));
-        tokio::time::sleep(Duration::from_secs_f32(0.25)).await;
     }
+    tokio::spawn(finalize(runtime, timer));
 }

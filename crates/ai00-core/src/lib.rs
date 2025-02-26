@@ -37,10 +37,7 @@ use web_rwkv::{
     wgpu::{Backends, PowerPreference},
 };
 
-use crate::{
-    run::{GenerateContext, Tokens},
-    sampler::Sampler,
-};
+use crate::{run::GenerateContext, sampler::Sampler};
 
 pub mod reload;
 pub mod run;
@@ -123,6 +120,7 @@ pub enum Environment {
     Loaded {
         info: RuntimeInfo,
         runtime: Arc<dyn Runtime + Send + Sync>,
+        model: Arc<dyn ModelSerialize + Send + Sync>,
         sender: Sender<GenerateContext>,
     },
     #[default]
@@ -134,8 +132,6 @@ pub enum Environment {
 pub struct RuntimeInfo {
     pub reload: Arc<ReloadRequest>,
     pub info: ModelInfo,
-    #[derivative(Debug = "ignore")]
-    pub model: Arc<dyn ModelSerialize + Send + Sync>,
     pub states: Vec<InitState>,
     pub tokenizer: Arc<Tokenizer>,
 }
@@ -384,7 +380,7 @@ async fn load_runtime(
         let file = File::open(path).await?;
         let data = unsafe { Mmap::map(&file) }?;
         let model = SafeTensors::deserialize(&data)?;
-        match load_model_state(&context, &info, model).await {
+        match load_model_state(context, info, model).await {
             Ok(data) => {
                 let state = InitState {
                     name,
@@ -405,7 +401,7 @@ async fn load_runtime(
     match load {
         LoadType::SafeTensors => {
             let model = SafeTensors::deserialize(&data)?;
-            if let Ok(data) = load_model_state(context, &info, model).await {
+            if let Ok(data) = load_model_state(context, info, model).await {
                 let name = "internal".into();
                 let id = StateId::new();
                 let state = InitState {
@@ -512,97 +508,137 @@ async fn load_runtime(
     }
 }
 
-pub async fn serve(receiver: Receiver<ThreadRequest>) -> Result<()> {
-    let env: Arc<RwLock<Environment>> = Default::default();
-
-    loop {
-        let Ok(request) = receiver.recv_async().await else {
-            break Ok(());
-        };
-
-        let env = env.clone();
-        let listen = async move {
-            match request {
-                ThreadRequest::Adapter(sender) => {
-                    let _ = sender.send(list_adapters());
-                }
-                ThreadRequest::Info(sender) => {
-                    let env = env.read().await;
-                    if let Environment::Loaded { info, .. } = &*env {
-                        let _ = sender.send(info.clone());
+async fn process(env: Arc<RwLock<Environment>>, request: ThreadRequest) -> Result<()> {
+    match request {
+        ThreadRequest::Adapter(sender) => {
+            let _ = sender.send(list_adapters());
+        }
+        ThreadRequest::Info(sender) => {
+            let env = env.read().await;
+            if let Environment::Loaded { info, .. } = &*env {
+                let _ = sender.send(info.clone());
+            }
+        }
+        ThreadRequest::Generate {
+            request,
+            tokenizer,
+            sender,
+        } => {
+            let context = GenerateContext::new(*request, sender, &tokenizer).await?;
+            let env = env.read().await;
+            if let Environment::Loaded { sender, .. } = &*env {
+                let _ = sender.send(context);
+            }
+        }
+        ThreadRequest::Reload { request, sender } => {
+            let handle = tokio::spawn(async move {
+                let file = File::open(&request.model_path).await?;
+                let data = unsafe { Mmap::map(&file)? };
+                let (info, load) = {
+                    let st = SafeTensors::deserialize(&data);
+                    let prefab = cbor4ii::serde::from_slice::<Prefab>(&data);
+                    match (st, prefab) {
+                        (Ok(model), _) => (Loader::info(&model)?, LoadType::SafeTensors),
+                        (_, Ok(prefab)) => (prefab.info, LoadType::Prefab),
+                        _ => bail!("failed to read model info"),
                     }
-                }
-                ThreadRequest::Generate {
-                    request,
+                };
+                log::info!("{:#?}", request);
+                log::info!("{:#?}", info);
+                log::info!("model type: {:?}", load);
+
+                let context = create_context(request.adapter, &info).await?;
+                log::info!("{:#?}", context.adapter.get_info());
+
+                let mut env = env.write().await;
+                let _ = std::mem::take(&mut *env);
+
+                let tokenizer = Arc::new(load_tokenizer(&request.tokenizer_path).await?);
+
+                let (states, runtime, state, model) =
+                    load_runtime(&context, &info, &request, load).await?;
+
+                let reload = Arc::new(*request);
+                let info = RuntimeInfo {
+                    reload,
+                    info,
+                    states,
                     tokenizer,
-                    sender,
-                } => todo!(),
-                ThreadRequest::Reload { request, sender } => {
-                    let file = File::open(&request.model_path).await?;
-                    let data = unsafe { Mmap::map(&file)? };
-                    let (info, load) = {
-                        let st = SafeTensors::deserialize(&data);
-                        let prefab = cbor4ii::serde::from_slice::<Prefab>(&data);
-                        match (st, prefab) {
-                            (Ok(model), _) => (Loader::info(&model)?, LoadType::SafeTensors),
-                            (_, Ok(prefab)) => (prefab.info, LoadType::Prefab),
-                            _ => bail!("failed to read model info"),
-                        }
-                    };
-                    log::info!("{:#?}", request);
-                    log::info!("{:#?}", info);
-                    log::info!("model type: {:?}", load);
+                };
 
-                    let context = create_context(request.adapter, &info).await?;
-                    log::info!("{:#?}", context.adapter.get_info());
+                let sender = {
+                    let runtime = Arc::downgrade(&runtime);
+                    let (sender, receiver) = flume::unbounded();
+                    tokio::spawn(crate::run::run(
+                        context,
+                        runtime,
+                        state,
+                        receiver,
+                        info.clone(),
+                    ));
+                    sender
+                };
 
-                    let mut env = env.write().await;
-                    let _ = std::mem::take(&mut *env);
+                log::info!("model loaded");
 
-                    let tokenizer = Arc::new(load_tokenizer(&request.tokenizer_path).await?);
-
-                    let (states, runtime, state, model) =
-                        load_runtime(&context, &info, &request, load).await?;
-
-                    let reload = Arc::new(*request);
-                    let info = RuntimeInfo {
-                        reload,
+                let _ = std::mem::replace(
+                    &mut *env,
+                    Environment::Loaded {
                         info,
+                        runtime,
                         model,
-                        states,
-                        tokenizer,
-                    };
+                        sender,
+                    },
+                );
+                Ok(())
+            });
 
-                    let sender = {
-                        let runtime = Arc::downgrade(&runtime);
-                        let (sender, receiver) = flume::unbounded();
-                        tokio::spawn(crate::run::run(
-                            context,
-                            runtime,
-                            state,
-                            receiver,
-                            info.clone(),
-                        ));
-                        sender
-                    };
+            if let Some(sender) = sender {
+                let _ = match handle.await? {
+                    Ok(_) => sender.send(true),
+                    Err(err) => {
+                        log::error!("[reload] error: {err}");
+                        sender.send(false)
+                    }
+                };
+            }
+        }
+        ThreadRequest::Unload => {
+            let mut env = env.write().await;
+            let _ = std::mem::take(&mut *env);
+            log::info!("model unloaded");
+        }
+        ThreadRequest::StateLoad { .. } => log::error!("[state] method unimplemented"),
+        ThreadRequest::StateUnload(_) => log::error!("[state] method unimplemented"),
+        ThreadRequest::Save { request, sender } => {
+            let env = env.read().await;
+            if let Environment::Loaded { model, .. } = &*env {
+                log::info!("serializing model into {:?}", &request.path);
+                let model = model.clone();
+                let handle = tokio::task::spawn_blocking(move || {
+                    let file = std::fs::File::create(request.path)?;
+                    model.serialize(file)
+                });
+                drop(env);
 
-                    let _ = std::mem::replace(
-                        &mut *env,
-                        Environment::Loaded {
-                            info,
-                            runtime,
-                            sender,
-                        },
-                    );
-                }
-                ThreadRequest::Unload => todo!(),
-                ThreadRequest::StateLoad { request, sender } => todo!(),
-                ThreadRequest::StateUnload(state_id) => todo!(),
-                ThreadRequest::Save { request, sender } => todo!(),
-            };
-            Ok(())
-        };
-        tokio::spawn(listen);
+                let _ = match handle.await? {
+                    Ok(_) => sender.send(true),
+                    Err(err) => {
+                        log::error!("[save] error: {err}");
+                        sender.send(false)
+                    }
+                };
+            }
+        }
+    };
+    Ok(())
+}
+
+pub async fn serve(receiver: Receiver<ThreadRequest>) {
+    let env: Arc<RwLock<Environment>> = Default::default();
+    while let Ok(request) = receiver.recv_async().await {
+        let future = process(env.clone(), request);
+        tokio::spawn(future);
     }
 }
 
