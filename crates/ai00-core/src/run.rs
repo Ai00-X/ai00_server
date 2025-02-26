@@ -919,8 +919,8 @@ async fn enqueue(runtime: CoreRuntime, receiver: Receiver<GenerateContext>, time
     }
 }
 
-async fn finalize(runtime: CoreRuntime, timer: Duration) {
-    loop {
+async fn finalize(runtime: CoreRuntime, receiver: Receiver<GenerateContext>, timer: Duration) {
+    while !receiver.is_disconnected() {
         runtime.maintain_cache().await;
         runtime.update().await;
         tokio::time::sleep(timer).await;
@@ -1052,5 +1052,5 @@ pub async fn run(
     for _ in 0..max_batch {
         tokio::spawn(enqueue(runtime.clone(), receiver.clone(), timer));
     }
-    tokio::spawn(finalize(runtime, timer));
+    tokio::spawn(finalize(runtime, receiver, timer));
 }
