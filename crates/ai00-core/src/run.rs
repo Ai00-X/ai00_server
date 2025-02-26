@@ -328,11 +328,21 @@ impl std::cmp::PartialOrd for SlotChoice {
 }
 
 #[derive(Debug, Clone)]
-struct InferBatch {
-    batch: usize,
-    tokens: Vec<u16>,
-    option: InferOption,
-    sender: Sender<TensorCpu<f32>>,
+enum InferBatch {
+    Run {
+        batch: usize,
+        tokens: Vec<u16>,
+        option: InferOption,
+        sender: Sender<TensorCpu<f32>>,
+    },
+    Load {
+        batch: usize,
+        tensor: TensorCpu<f32>,
+    },
+    Back {
+        batch: usize,
+        sender: Sender<TensorCpu<f32>>,
+    },
 }
 
 #[derive(Debug, Clone)]
@@ -471,7 +481,8 @@ impl CoreRuntime {
             Some(SlotChoice::Back(batch)) => {
                 log::info!("[queue][back][slot: {batch}]");
                 let checkout = self.checkout(context.request.state, &tokens).await;
-                self.state.load(checkout.state, batch)?;
+                self.load(batch, checkout.state);
+                // self.state.load(checkout.state, batch)?;
 
                 let len = checkout.prefix.len();
                 assert!(len == 0 || (len > 0 && checkout.output.is_some()));
@@ -493,7 +504,8 @@ impl CoreRuntime {
             Some(SlotChoice::Empty(batch)) => {
                 log::info!("[queue][empty][slot: {batch}]");
                 let checkout = self.checkout(context.request.state, &tokens).await;
-                self.state.load(checkout.state, batch)?;
+                self.load(batch, checkout.state);
+                // self.state.load(checkout.state, batch)?;
 
                 let len = checkout.prefix.len();
                 assert!(len == 0 || (len > 0 && checkout.output.is_some()));
@@ -514,7 +526,8 @@ impl CoreRuntime {
             Some(SlotChoice::Continue(batch, ..)) => {
                 log::info!("[queue][continue][slot: {batch}]");
                 let checkout = self.checkout(context.request.state, &tokens).await;
-                self.state.load(checkout.state, batch)?;
+                self.load(batch, checkout.state);
+                // self.state.load(checkout.state, batch)?;
 
                 let len = checkout.prefix.len();
                 assert!(len == 0 || (len > 0 && checkout.output.is_some()));
@@ -619,18 +632,20 @@ impl CoreRuntime {
         };
 
         let (sender, receiver) = flume::unbounded();
-        let batch = {
-            let tokens = tokens.clone();
-            let option = InferOption::Full;
-            InferBatch {
-                batch,
-                tokens,
-                option,
-                sender,
-            }
-        };
-
-        let _ = self.sender.infer.send_async(batch).await;
+        let _ = self
+            .sender
+            .infer
+            .send_async({
+                let tokens = tokens.clone();
+                let option = InferOption::Full;
+                InferBatch::Run {
+                    batch,
+                    tokens,
+                    option,
+                    sender,
+                }
+            })
+            .await;
 
         let index = Arc::new(Mutex::new(1));
         while p.len() < len {
@@ -663,6 +678,17 @@ impl CoreRuntime {
         Ok(ppl)
     }
 
+    fn load(&self, batch: usize, tensor: TensorCpu<f32>) {
+        let _ = self.sender.infer.send(InferBatch::Load { batch, tensor });
+    }
+
+    async fn back(&self, batch: usize) -> Result<TensorCpu<f32>> {
+        let (sender, receiver) = flume::unbounded();
+        let _ = self.sender.infer.send(InferBatch::Back { batch, sender });
+        let backed = receiver.recv_async().await?;
+        Ok(backed)
+    }
+
     /// Read in the prompt of a batch and continuously sample it until it is done.
     async fn process(self, batch: usize, mut context: GenerateContext) -> Result<GenerateContext> {
         // schedule a future cache slot for the prompt
@@ -689,13 +715,16 @@ impl CoreRuntime {
                 (0, Some(output)) => output,
                 _ => {
                     let (sender, receiver) = flume::unbounded();
-                    let batch = InferBatch {
-                        batch,
-                        tokens: context.suffix.to_vec(),
-                        option: InferOption::Last,
-                        sender,
-                    };
-                    let _ = self.sender.infer.send_async(batch).await;
+                    let _ = self
+                        .sender
+                        .infer
+                        .send_async(InferBatch::Run {
+                            batch,
+                            tokens: context.suffix.to_vec(),
+                            option: InferOption::Last,
+                            sender,
+                        })
+                        .await;
 
                     let prefix = std::mem::take(&mut context.prefix);
                     let suffix = std::mem::take(&mut context.suffix);
@@ -703,7 +732,22 @@ impl CoreRuntime {
                     context.prefix = Tokens([prefix.0, suffix.0].concat());
                     context.suffix = Tokens(vec![]);
 
-                    receiver.recv_async().await?
+                    let output = receiver.recv_async().await?;
+
+                    // cache the prompt if being asked
+                    if let CachedPrompt::Future(sender) = context.prompt_cached.clone() {
+                        assert_eq!(context.prefix.len(), context.prompt_tokens.len());
+
+                        let backed = self.back(batch).await?;
+                        let output = output.clone();
+                        sender.send_replace(Some(CachedItem::new(backed, output)));
+                        context.prompt_cached = CachedPrompt::Done;
+
+                        let len = context.prefix.len();
+                        log::info!("[cache][insert][slot: {batch}][len: {len}]");
+                    }
+
+                    output
                 }
             };
 
@@ -714,19 +758,6 @@ impl CoreRuntime {
                 let bias = context.request.bias.clone();
                 self.sample(output, sampler, formatters, bias).await?
             };
-
-            // cache the prompt if being asked
-            if let CachedPrompt::Future(sender) = context.prompt_cached.clone() {
-                assert_eq!(context.prefix.len(), context.prompt_tokens.len());
-
-                let backed = self.state.back(batch).await?;
-                let output = output.clone();
-                sender.send_replace(Some(CachedItem::new(backed, output)));
-                context.prompt_cached = CachedPrompt::Done;
-
-                let len = context.prefix.len();
-                log::info!("[cache][insert][slot: {batch}][len: {len}]");
-            }
 
             let mut stop_token = token == 0;
             let mut word = match self.tokenizer.decode(&[token]) {
@@ -810,7 +841,7 @@ impl CoreRuntime {
             if context.sender.is_disconnected() {
                 done = true;
             } else if let GenerateKind::Choose { calibrate, .. } = context.request.kind {
-                let state = self.state.read(batch)?;
+                let backed = self.back(batch).await?;
                 let mut ppl = vec![f32::INFINITY; context.choices.len()];
 
                 if calibrate {
@@ -822,11 +853,11 @@ impl CoreRuntime {
                         .enumerate()
                         .filter(|(_, choice)| !choice.is_empty())
                     {
-                        self.state.load(init.clone(), batch)?;
+                        self.load(batch, init.clone());
                         ppl[index] = -self.perplexity(batch, choice, None).await?;
                     }
                     // recover the state
-                    self.state.write(state.clone(), batch)?;
+                    self.load(batch, backed.clone());
                 }
 
                 for (index, choice) in context
@@ -842,19 +873,15 @@ impl CoreRuntime {
                         true => ppl[index] + p,
                         false => p,
                     };
-
                     // recover the state
-                    self.state.write(state.clone(), batch)?;
+                    self.load(batch, backed.clone());
                 }
 
                 let _ = context.sender.send(Token::Choose(ppl));
                 done = true;
-            } else if let GenerateKind::Embed { layer } = context.request.kind {
-                let backed = self.state.back(batch).await?;
-                let embed = match layer {
-                    x if x < self.info.num_layer => self.state.embed(layer, backed)?.to_vec(),
-                    _ => backed.to_vec(),
-                };
+            } else if let GenerateKind::Embed { .. } = context.request.kind {
+                let backed = self.back(batch).await?;
+                let embed = backed.to_vec();
                 let _ = context.sender.send(Token::Embed(embed));
                 done = true;
             } else if halt || stop_matched || stop_token {
@@ -863,17 +890,15 @@ impl CoreRuntime {
                 stop(FinishReason::Stop);
 
                 if let Some(output) = context.output.clone() {
-                    let backed = self.state.back(batch).await?;
+                    let backed = self.back(batch).await?;
                     let mut caches = self.caches.lock().await;
                     let cache = &mut caches.fetch(context.request.state).cache;
                     let item = CachedItem::new(backed, output);
-                    if !cache.contains_key(&context.prefix) {
-                        let (item, _) = tokio::sync::watch::channel(Some(item));
-                        cache.insert(context.prefix.clone(), item);
+                    let (item, _) = tokio::sync::watch::channel(Some(item));
+                    cache.insert(context.prefix.clone(), item);
 
-                        let len = context.prefix.len();
-                        log::info!("[cache][insert][slot: {batch}][len: {len}]");
-                    }
+                    let len = context.prefix.len();
+                    log::info!("[cache][insert][slot: {batch}][len: {len}]");
                 }
             } else if context.model_tokens.len() >= context.request.max_tokens {
                 stop(FinishReason::Length);
@@ -945,6 +970,7 @@ async fn finalize(runtime: CoreRuntime, receiver: Receiver<GenerateContext>, tim
 async fn infer(
     reload: Arc<ReloadRequest>,
     runtime: Weak<dyn Runtime + Send + Sync>,
+    state: Arc<dyn State + Send + Sync>,
     receiver: Receiver<InferBatch>,
 ) -> Result<()> {
     let mut senders = vec![None; reload.max_batch];
@@ -958,24 +984,35 @@ async fn infer(
     let inference = InferInput::new(batches, reload.token_chunk_size);
     let mut inference = Some(inference);
 
-    fn insert(
+    async fn schedule(
         inference: &mut Option<InferInput>,
         senders: &mut [Option<Sender<TensorCpu<f32>>>],
-        InferBatch {
-            batch,
-            tokens,
-            option,
-            sender,
-        }: InferBatch,
-    ) {
-        let mut input = inference.take().expect("inference must not be `None`");
-        input.batches[batch] = InferInputBatch { tokens, option };
-        senders[batch] = Some(sender);
-        inference.replace(input);
+        state: Arc<dyn State + Send + Sync>,
+        batch: InferBatch,
+    ) -> Result<()> {
+        match batch {
+            InferBatch::Run {
+                batch,
+                tokens,
+                option,
+                sender,
+            } => {
+                let mut input = inference.take().expect("inference must not be `None`");
+                input.batches[batch] = InferInputBatch { tokens, option };
+                senders[batch] = Some(sender);
+                inference.replace(input);
+            }
+            InferBatch::Load { batch, tensor } => state.load(tensor, batch)?,
+            InferBatch::Back { batch, sender } => {
+                let backed = state.back(batch).await?;
+                let _ = sender.send_async(backed).await;
+            }
+        }
+        Ok(())
     }
 
     'outer: while let Ok(batch) = receiver.recv_async().await {
-        insert(&mut inference, &mut senders, batch);
+        schedule(&mut inference, &mut senders, state.clone(), batch).await?;
 
         while inference
             .as_ref()
@@ -983,8 +1020,9 @@ async fn infer(
             .expect("inference must not be `None`")
         {
             'inner: loop {
+                let state = state.clone();
                 match receiver.try_recv() {
-                    Ok(batch) => insert(&mut inference, &mut senders, batch),
+                    Ok(batch) => schedule(&mut inference, &mut senders, state, batch).await?,
                     Err(TryRecvError::Empty) => break 'inner,
                     Err(TryRecvError::Disconnected) => break 'outer,
                 }
@@ -1080,7 +1118,7 @@ pub async fn run(
     let runtime = {
         let infer = {
             let (sender, receiver) = flume::unbounded();
-            tokio::spawn(infer(reload.clone(), runtime, receiver));
+            tokio::spawn(infer(reload.clone(), runtime, state.clone(), receiver));
             sender
         };
         let softmax = {
