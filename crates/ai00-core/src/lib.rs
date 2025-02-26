@@ -330,13 +330,12 @@ async fn load_model_state<R: Reader>(
     info: &ModelInfo,
     model: R,
 ) -> Result<TensorCpu<f32>> {
-    let state = match info.version {
+    match info.version {
         ModelVersion::V4 => bail!("v4 does not support init state yet"),
         ModelVersion::V5 => v5::read_state(context, info, model).await,
         ModelVersion::V6 => v6::read_state(context, info, model).await,
         ModelVersion::V7 => v7::read_state(context, info, model).await,
-    };
-    state.map_err(Into::into)
+    }
 }
 
 async fn load_runtime(
