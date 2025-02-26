@@ -537,35 +537,12 @@ impl CoreRuntime {
 
     /// Reset finished slots to `idle`. Cache current states of finished slots.
     async fn update(&self) {
-        let update = |batch, handle: JoinHandle<_>| async move {
+        let update = |handle: JoinHandle<_>| async move {
             if !handle.is_finished() {
                 return Ok(SlotState::Busy(handle));
             }
 
             let context = handle.await??;
-            let backed = self.state.back(batch).await?;
-
-            if let GenerateKind::Embed { layer } = context.request.kind {
-                let backed = backed.clone();
-                let embed = match layer {
-                    x if x < self.info.num_layer => self.state.embed(layer, backed)?.to_vec(),
-                    _ => backed.to_vec(),
-                };
-                let _ = context.sender.send(Token::Embed(embed));
-            }
-
-            // the current state should be ready; insert it into the cache
-            if let Some(output) = context.output {
-                let mut caches = self.caches.lock().await;
-                let cache = &mut caches.fetch(context.request.state).cache;
-                let item = CachedItem::new(backed, output);
-                let (item, _) = tokio::sync::watch::channel(Some(item));
-                cache.insert(context.prefix.clone(), item);
-
-                let len = context.prefix.len();
-                log::info!("[cache][insert][slot: {batch}][len: {len}]");
-            }
-
             Ok::<_, Box<dyn Error + Send + Sync>>(SlotState::Idle(context.prefix, Instant::now()))
         };
 
@@ -580,7 +557,7 @@ impl CoreRuntime {
                 handle
             };
 
-            let updated = match update(batch, handle).await {
+            let updated = match update(handle).await {
                 Ok(updated) => updated,
                 Err(err) => {
                     log::error!("[update][error][slot: {batch}] {err}");
@@ -632,7 +609,7 @@ impl CoreRuntime {
 
     async fn perplexity(&self, batch: usize, tokens: &[u16], head: Option<f32>) -> Result<f32> {
         let mut p = Vec::with_capacity(tokens.len().max(1));
-        let len = tokens.len() + 1;
+        let len = tokens.len();
         let tokens = match head {
             Some(head) => {
                 p.push(head);
@@ -655,27 +632,30 @@ impl CoreRuntime {
 
         let _ = self.sender.infer.send_async(batch).await;
 
-        let mut index = 1;
+        let index = Arc::new(Mutex::new(1));
         while p.len() < len {
             let tokens = tokens.clone();
             let output = receiver.recv_async().await?;
             let output = output.split(1)?;
-            let handle = tokio::task::spawn_blocking(move || {
-                let mut p = Vec::with_capacity(output.len());
-                for data in output {
-                    if index < tokens.len() {
-                        let data = data.map(|x| x.exp()).to_vec();
-                        let sum: f32 = data.iter().sum();
-                        let token = tokens[index] as usize;
-                        p.push(data[token] / sum);
+            let f = {
+                let index = index.clone();
+                move || {
+                    let mut index = index.blocking_lock();
+                    let mut p = Vec::with_capacity(output.len());
+                    for data in output {
+                        if *index < tokens.len() {
+                            let data = data.map(|x| x.exp()).to_vec();
+                            let sum: f32 = data.iter().sum();
+                            let token = tokens[*index] as usize;
+                            p.push(data[token] / sum);
+                        }
+                        *index += 1;
                     }
-                    index += 1;
+                    p
                 }
-                (p, index)
-            });
-            let (mut q, updated_index) = handle.await?;
+            };
+            let mut q = tokio::task::spawn_blocking(f).await?;
             p.append(&mut q);
-            index = updated_index;
         }
 
         let ppl: f32 = p.into_iter().map(|x| x.ln()).sum();
@@ -869,10 +849,32 @@ impl CoreRuntime {
 
                 let _ = context.sender.send(Token::Choose(ppl));
                 done = true;
+            } else if let GenerateKind::Embed { layer } = context.request.kind {
+                let backed = self.state.back(batch).await?;
+                let embed = match layer {
+                    x if x < self.info.num_layer => self.state.embed(layer, backed)?.to_vec(),
+                    _ => backed.to_vec(),
+                };
+                let _ = context.sender.send(Token::Embed(embed));
+                done = true;
             } else if halt || stop_matched || stop_token {
                 let output = String::from_utf8_lossy(head);
                 let _ = context.sender.send(Token::Content(output.into()));
                 stop(FinishReason::Stop);
+
+                if let Some(output) = context.output.clone() {
+                    let backed = self.state.back(batch).await?;
+                    let mut caches = self.caches.lock().await;
+                    let cache = &mut caches.fetch(context.request.state).cache;
+                    let item = CachedItem::new(backed, output);
+                    if !cache.contains_key(&context.prefix) {
+                        let (item, _) = tokio::sync::watch::channel(Some(item));
+                        cache.insert(context.prefix.clone(), item);
+
+                        let len = context.prefix.len();
+                        log::info!("[cache][insert][slot: {batch}][len: {len}]");
+                    }
+                }
             } else if context.model_tokens.len() >= context.request.max_tokens {
                 stop(FinishReason::Length);
             } else if let Ok(word) = String::from_utf8(head.to_vec()) {
