@@ -14,7 +14,7 @@ use crate::{
 
 #[derive(Debug, Default, Clone, Deserialize, ToSchema, ToParameters)]
 #[serde(default)]
-pub struct EmbeddingRequest {
+struct EmbeddingRequest {
     input: Array<String>,
     #[serde(alias = "embed_layer")]
     layer: usize,
@@ -39,14 +39,14 @@ impl From<EmbeddingRequest> for GenerateRequest {
 }
 
 #[derive(Debug, Serialize, ToSchema, ToResponse)]
-pub struct EmbeddingData {
+struct EmbeddingData {
     object: String,
     index: usize,
     embedding: Vec<f32>,
 }
 
 #[derive(Debug, Serialize, ToSchema, ToResponse)]
-pub struct EmbeddingResponse {
+struct EmbeddingResponse {
     object: String,
     model: String,
     data: Vec<EmbeddingData>,

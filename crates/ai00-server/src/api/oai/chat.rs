@@ -18,7 +18,7 @@ use crate::{
 };
 
 #[derive(Debug, Default, Clone, PartialEq, Eq, Hash, Serialize, Deserialize, ToSchema)]
-pub enum Role {
+enum Role {
     #[default]
     #[serde(alias = "system")]
     System,
@@ -42,7 +42,7 @@ impl std::fmt::Display for Role {
 }
 
 #[derive(Default, Debug, Clone, Serialize, Deserialize, ToSchema)]
-pub struct ChatRecord {
+struct ChatRecord {
     role: Role,
     content: String,
 }
@@ -87,7 +87,7 @@ pub struct ChatRecord {
         "state": "00000000-0000-0000-0000-000000000000"
     })
 ))]
-pub struct ChatRequest {
+struct ChatRequest {
     messages: Array<ChatRecord>,
     names: HashMap<Role, String>,
     state: StateId,

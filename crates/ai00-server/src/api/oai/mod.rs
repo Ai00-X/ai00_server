@@ -29,7 +29,7 @@ pub use embed::embeds;
 
 #[derive(Debug, Clone, Serialize, Deserialize, ToSchema)]
 #[serde(tag = "type")]
-pub enum SamplerParams {
+enum SamplerParams {
     Mirostat(MirostatParams),
     Typical(TypicalParams),
     Nucleus(NucleusParams),

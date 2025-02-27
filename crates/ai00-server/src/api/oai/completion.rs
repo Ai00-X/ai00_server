@@ -46,7 +46,7 @@ use crate::{
         "state": "00000000-0000-0000-0000-000000000000"
     })
 ))]
-pub struct CompletionRequest {
+struct CompletionRequest {
     prompt: Array<String>,
     state: StateId,
     #[derivative(Default(value = "256"))]
@@ -98,7 +98,7 @@ impl From<CompletionRequest> for GenerateRequest {
 }
 
 #[derive(Debug, Serialize, ToSchema, ToResponse)]
-pub struct CompletionChoice {
+struct CompletionChoice {
     text: String,
     index: usize,
     finish_reason: FinishReason,
@@ -127,7 +127,7 @@ pub struct CompletionChoice {
         }
     })
 ))]
-pub struct CompletionResponse {
+struct CompletionResponse {
     object: String,
     model: String,
     choices: Vec<CompletionChoice>,
@@ -138,7 +138,7 @@ pub struct CompletionResponse {
 #[derive(Debug, Derivative, Serialize, ToSchema, ToResponse)]
 #[derivative(Default)]
 #[serde(rename_all = "snake_case")]
-pub enum PartialCompletionRecord {
+enum PartialCompletionRecord {
     Content(String),
     #[derivative(Default)]
     #[serde(untagged)]
@@ -146,7 +146,7 @@ pub enum PartialCompletionRecord {
 }
 
 #[derive(Debug, Default, Serialize, ToSchema, ToResponse)]
-pub struct PartialCompletionChoice {
+struct PartialCompletionChoice {
     delta: PartialCompletionRecord,
     index: usize,
     finish_reason: FinishReason,
@@ -168,7 +168,7 @@ pub struct PartialCompletionChoice {
         ]
     })
 ))]
-pub struct PartialCompletionResponse {
+struct PartialCompletionResponse {
     object: String,
     model: String,
     choices: Vec<PartialCompletionChoice>,
