@@ -101,13 +101,6 @@ pub enum ThreadRequest {
     },
     /// Unload the runtime.
     Unload,
-    /// Additionally load an initial state.
-    StateLoad {
-        request: reload::State,
-        sender: Option<Sender<bool>>,
-    },
-    /// Unload an initial state given its id.
-    StateUnload(StateId),
     /// Save the current model with config.
     Save {
         request: SaveRequest,
@@ -607,8 +600,6 @@ async fn process(env: Arc<RwLock<Environment>>, request: ThreadRequest) -> Resul
             let _ = std::mem::take(&mut *env);
             log::info!("model unloaded");
         }
-        ThreadRequest::StateLoad { .. } => log::error!("[state] method unimplemented"),
-        ThreadRequest::StateUnload(_) => log::error!("[state] method unimplemented"),
         ThreadRequest::Save { request, sender } => {
             let env = env.read().await;
             if let Environment::Loaded { model, .. } = &*env {

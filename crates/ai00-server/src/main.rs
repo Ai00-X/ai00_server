@@ -257,7 +257,6 @@ async fn main() {
         .push(Router::with_path("/models/save").post(api::model::save))
         .push(Router::with_path("/models/load").post(api::model::load))
         .push(Router::with_path("/models/unload").get(api::model::unload))
-        .push(Router::with_path("/models/state/load").post(api::model::load_state))
         .push(Router::with_path("/files/unzip").post(api::file::unzip))
         .push(Router::with_path("/files/dir").post(api::file::dir))
         .push(Router::with_path("/files/ls").post(api::file::dir))

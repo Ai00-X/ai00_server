@@ -24,7 +24,7 @@ use web_rwkv::{
         model::{ModelInfo, State},
         Runtime,
     },
-    tensor::{kind::ReadWrite, TensorCpu, TensorError, TensorGpu, TensorInto},
+    tensor::{kind::ReadWrite, TensorCpu, TensorError, TensorGpu},
     tokenizer::Tokenizer,
 };
 
@@ -868,14 +868,23 @@ impl CoreRuntime {
 
                 if calibrate {
                     // compute perplexities of the choices themselves and calibrate their effects
-                    let init: TensorGpu<_, _> = self.state.init().to(&self.context);
+                    let init = {
+                        let id = context.request.state;
+                        let mut caches = self.caches.lock().await;
+                        caches
+                            .fetch(id)
+                            .state
+                            .clone()
+                            .map(|state| state.data)
+                            .unwrap_or_else(|| self.state.init())
+                    };
                     for (index, choice) in context
                         .choices
                         .iter()
                         .enumerate()
                         .filter(|(_, choice)| !choice.is_empty())
                     {
-                        self.write(batch, init.clone()).await;
+                        self.load(batch, init.clone()).await;
                         ppl[index] = -self.perplexity(batch, choice, None).await?;
                     }
                     // recover the state
