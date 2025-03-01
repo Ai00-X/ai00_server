@@ -1,7 +1,7 @@
 use std::{collections::HashMap, sync::Arc};
 
 use ai00_core::{
-    FinishReason, GenerateRequest, StateId, ThreadRequest, Token, TokenCounter, MAX_TOKENS,
+    FinishReason, GenerateRequest, InputState, ThreadRequest, Token, TokenCounter, MAX_TOKENS,
 };
 use derivative::Derivative;
 use futures_util::StreamExt;
@@ -113,7 +113,7 @@ struct ChatRequest {
     messages: Array<ChatRecord>,
     names: HashMap<Role, String>,
     template: ChatTemplate,
-    state: StateId,
+    state: InputState,
     #[derivative(Default(value = "256"))]
     max_tokens: usize,
     #[derivative(Default(value = "Array::Item(\"\\n\\n\".into())"))]

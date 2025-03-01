@@ -1,4 +1,4 @@
-use ai00_core::{GenerateKind, GenerateRequest, StateId, ThreadRequest, Token, TokenCounter};
+use ai00_core::{GenerateKind, GenerateRequest, InputState, ThreadRequest, Token, TokenCounter};
 use futures_util::StreamExt;
 use salvo::{
     oapi::{extract::JsonBody, ToParameters, ToResponse, ToSchema},
@@ -16,22 +16,16 @@ use crate::{
 #[serde(default)]
 struct StateRequest {
     input: Array<String>,
-    #[serde(alias = "embed_layer")]
-    layer: usize,
-    state: StateId,
+    state: InputState,
 }
 
 impl From<StateRequest> for GenerateRequest {
     fn from(value: StateRequest) -> Self {
-        let StateRequest {
-            input,
-            layer,
-            state,
-        } = value;
+        let StateRequest { input, state } = value;
         Self {
             prompt: Vec::from(input).join(""),
             max_tokens: 1,
-            kind: GenerateKind::Embed { layer },
+            kind: GenerateKind::State,
             state,
             ..Default::default()
         }
@@ -42,7 +36,8 @@ impl From<StateRequest> for GenerateRequest {
 struct StateData {
     object: String,
     index: usize,
-    state: Vec<f32>,
+    data: Vec<f32>,
+    shape: [usize; 4],
 }
 
 #[derive(Debug, Serialize, ToSchema, ToResponse)]
@@ -70,14 +65,16 @@ pub async fn states(depot: &mut Depot, req: JsonBody<StateRequest>) -> Json<Stat
     });
 
     let mut token_counter = TokenCounter::default();
-    let mut state = Vec::new();
+    let mut data = Vec::new();
+    let mut shape = [0, 0, 0, 0];
     let mut stream = token_receiver.into_stream();
 
     while let Some(token) = stream.next().await {
         match token {
             Token::Stop(_, counter) => token_counter = counter,
-            Token::Embed(data) => {
-                state = data;
+            Token::Embed(_data, _shape) => {
+                data = _data;
+                shape = _shape;
                 break;
             }
             _ => {}
@@ -90,7 +87,8 @@ pub async fn states(depot: &mut Depot, req: JsonBody<StateRequest>) -> Json<Stat
         data: vec![StateData {
             object: "states".into(),
             index: 0,
-            state,
+            data,
+            shape,
         }],
         counter: token_counter,
     })

@@ -54,7 +54,7 @@ QQ Group for communication: 30920262
 ### 👻Other
 
 *   Based on the [web-rwkv](https://github.com/cryscan/web-rwkv) project
-*   Model download: [V5](https://huggingface.co/cgisky/AI00_RWKV_V5) or [V6](https://huggingface.co/cgisky/ai00_rwkv_x060)
+*   Model download: [V5](https://huggingface.co/cgisky/AI00_RWKV_V5), [V6](https://huggingface.co/cgisky/ai00_rwkv_x060), [V7](https://huggingface.co/cgisky/RWKV-x070-Ai00)
 
 ## Installation, Compilation, and Usage
 
