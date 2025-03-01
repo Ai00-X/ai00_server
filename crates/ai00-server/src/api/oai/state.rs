@@ -14,16 +14,16 @@ use crate::{
 
 #[derive(Debug, Default, Clone, Deserialize, ToSchema, ToParameters)]
 #[serde(default)]
-struct EmbeddingRequest {
+struct StateRequest {
     input: Array<String>,
     #[serde(alias = "embed_layer")]
     layer: usize,
     state: StateId,
 }
 
-impl From<EmbeddingRequest> for GenerateRequest {
-    fn from(value: EmbeddingRequest) -> Self {
-        let EmbeddingRequest {
+impl From<StateRequest> for GenerateRequest {
+    fn from(value: StateRequest) -> Self {
+        let StateRequest {
             input,
             layer,
             state,
@@ -39,27 +39,24 @@ impl From<EmbeddingRequest> for GenerateRequest {
 }
 
 #[derive(Debug, Serialize, ToSchema, ToResponse)]
-struct EmbeddingData {
+struct StateData {
     object: String,
     index: usize,
-    embedding: Vec<f32>,
+    state: Vec<f32>,
 }
 
 #[derive(Debug, Serialize, ToSchema, ToResponse)]
-struct EmbeddingResponse {
+struct StateResponse {
     object: String,
     model: String,
-    data: Vec<EmbeddingData>,
+    data: Vec<StateData>,
     #[serde(rename = "usage")]
     counter: TokenCounter,
 }
 
-/// Generate a embedding vector for the given text, with layer number specified for producing the embedding.
-#[endpoint(responses((status_code = 200, body = EmbeddingResponse)))]
-pub async fn embeddings(
-    depot: &mut Depot,
-    req: JsonBody<EmbeddingRequest>,
-) -> Json<EmbeddingResponse> {
+/// Generate the model state for the given text.
+#[endpoint(responses((status_code = 200, body = StateResponse)))]
+pub async fn states(depot: &mut Depot, req: JsonBody<StateRequest>) -> Json<StateResponse> {
     let request = req.to_owned();
     let sender = depot.obtain::<ThreadSender>().unwrap();
     let info = request_info(sender.clone(), SLEEP).await;
@@ -73,27 +70,27 @@ pub async fn embeddings(
     });
 
     let mut token_counter = TokenCounter::default();
-    let mut embedding = Vec::new();
+    let mut state = Vec::new();
     let mut stream = token_receiver.into_stream();
 
     while let Some(token) = stream.next().await {
         match token {
             Token::Stop(_, counter) => token_counter = counter,
-            Token::Embed(emb) => {
-                embedding = emb;
+            Token::Embed(data) => {
+                state = data;
                 break;
             }
             _ => {}
         }
     }
 
-    Json(EmbeddingResponse {
+    Json(StateResponse {
         object: "list".into(),
         model: model_name,
-        data: vec![EmbeddingData {
-            object: "embedding".into(),
+        data: vec![StateData {
+            object: "states".into(),
             index: 0,
-            embedding,
+            state,
         }],
         counter: token_counter,
     })
