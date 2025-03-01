@@ -16,8 +16,8 @@ use crate::types::JwtClaims;
     default_source(from = "body"),
 ))]
 struct AppKeyRequest {
-    pub app_id: String,
-    pub app_secret: String,
+    app_id: String,
+    app_secret: String,
 }
 
 #[derive(Serialize, Deserialize, Debug, ToSchema, ToResponse)]

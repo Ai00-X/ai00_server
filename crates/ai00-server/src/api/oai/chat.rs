@@ -18,7 +18,7 @@ use crate::{
 };
 
 #[derive(Debug, Default, Clone, PartialEq, Eq, Hash, Serialize, Deserialize, ToSchema)]
-pub enum Role {
+enum Role {
     #[default]
     #[serde(alias = "system")]
     System,
@@ -41,10 +41,27 @@ impl std::fmt::Display for Role {
     }
 }
 
-#[derive(Default, Debug, Clone, Serialize, Deserialize, ToSchema)]
-pub struct ChatRecord {
+#[derive(Debug, Default, Clone, Serialize, Deserialize, ToSchema)]
+struct ChatRecord {
     role: Role,
     content: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, ToSchema)]
+struct ChatTemplate {
+    record: String,
+    prefix: String,
+    sep: String,
+}
+
+impl Default for ChatTemplate {
+    fn default() -> Self {
+        Self {
+            record: "{role}: {content}".into(),
+            prefix: "{assistant}:".into(),
+            sep: "\n\n".into(),
+        }
+    }
 }
 
 #[derive(Debug, Derivative, Deserialize, ToSchema)]
@@ -70,6 +87,11 @@ pub struct ChatRecord {
             "user": "User",
             "assistant": "Assistant"
         },
+        "template": {
+            "record": "{role}: {content}",
+            "prefix": "{assistant}:",
+            "sep": "\n\n"
+        },
         "stop": [
             "\n\nUser:"
         ],
@@ -87,9 +109,10 @@ pub struct ChatRecord {
         "state": "00000000-0000-0000-0000-000000000000"
     })
 ))]
-pub struct ChatRequest {
+struct ChatRequest {
     messages: Array<ChatRecord>,
     names: HashMap<Role, String>,
+    template: ChatTemplate,
     state: StateId,
     #[derivative(Default(value = "256"))]
     max_tokens: usize,
@@ -108,6 +131,7 @@ impl From<ChatRequest> for GenerateRequest {
         let ChatRequest {
             messages,
             names,
+            template,
             state,
             max_tokens,
             stop,
@@ -125,21 +149,24 @@ impl From<ChatRequest> for GenerateRequest {
                 let role = names.get(&role).cloned().unwrap_or(role.to_string());
                 let content = re.replace_all(&content, "\n");
                 let content = content.trim();
-                format!("{role}: {content}")
+                template
+                    .record
+                    .replace("{role}", &role)
+                    .replace("{content}", content)
             })
-            .join("\n\n");
+            .join(&template.sep);
         let model_text = Vec::from(messages)
             .into_iter()
             .filter(|record| record.role == Role::Assistant)
             .map(|record| record.content)
-            .join("\n\n");
+            .join(&template.sep);
 
         let assistant = Role::Assistant;
         let assistant = names
             .get(&assistant)
             .cloned()
             .unwrap_or(assistant.to_string());
-        let prompt = prompt + &format!("\n\n{assistant}:");
+        let prompt = prompt + &template.sep + &template.prefix.replace("{assistant}", &assistant);
 
         let max_tokens = max_tokens.min(MAX_TOKENS);
         let stop = stop.into();

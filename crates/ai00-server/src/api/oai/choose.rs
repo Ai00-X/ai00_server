@@ -30,7 +30,7 @@ use crate::{
         "state": "00000000-0000-0000-0000-000000000000"
     })
 ))]
-pub struct ChooseRequest {
+struct ChooseRequest {
     input: Array<String>,
     choices: Vec<String>,
     calibrate: bool,
@@ -56,7 +56,7 @@ impl From<ChooseRequest> for GenerateRequest {
 }
 
 #[derive(Debug, Serialize, ToSchema, ToResponse)]
-pub struct ChooseData {
+struct ChooseData {
     object: String,
     index: usize,
     rank: usize,
@@ -101,7 +101,7 @@ pub struct ChooseData {
         ]
     })
 ))]
-pub struct ChooseResponse {
+struct ChooseResponse {
     object: String,
     model: String,
     data: Vec<ChooseData>,

@@ -25,7 +25,7 @@ struct EmbedData {
 #[derive(Debug, Derivative, Clone, Deserialize, ToSchema, ToParameters)]
 #[derivative(Default)]
 #[serde(default)]
-pub struct EmbedRequest {
+struct EmbedRequest {
     input: String,
     #[derivative(Default(value = "510"))]
     max_tokens: usize,
@@ -34,7 +34,7 @@ pub struct EmbedRequest {
 }
 
 #[derive(Debug, Serialize, ToSchema, ToResponse)]
-pub struct EmbedResponse {
+struct EmbedResponse {
     object: String,
     model: String,
     data: Vec<EmbedData>,

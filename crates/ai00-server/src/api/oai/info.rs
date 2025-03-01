@@ -13,7 +13,7 @@ struct ModelChoice {
 }
 
 #[derive(Debug, Serialize, ToSchema, ToResponse)]
-pub struct ModelResponse {
+struct ModelResponse {
     data: Vec<ModelChoice>,
 }
 

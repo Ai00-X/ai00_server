@@ -10,7 +10,7 @@ use super::*;
 use crate::{build_path, types::ThreadSender, SLEEP};
 
 #[derive(Debug, Clone, Serialize)]
-pub struct InfoResponse {
+struct InfoResponse {
     reload: Arc<ReloadRequest>,
     model: ModelInfo,
     states: Vec<InitStateInfo>,
