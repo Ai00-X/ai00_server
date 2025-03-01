@@ -88,7 +88,7 @@ dependencies = [
 
 [[package]]
 name = "ai00-core"
-version = "0.5.14"
+version = "0.6.0"
 dependencies = [
  "anyhow",
  "bytemuck",
@@ -115,7 +115,7 @@ dependencies = [
 
 [[package]]
 name = "ai00-server"
-version = "0.5.14"
+version = "0.6.0"
 dependencies = [
  "ai00-core",
  "anyhow",
