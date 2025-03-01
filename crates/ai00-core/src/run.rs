@@ -24,14 +24,14 @@ use web_rwkv::{
         model::{ModelInfo, State},
         Runtime,
     },
-    tensor::{kind::ReadWrite, TensorCpu, TensorError, TensorGpu},
+    tensor::{kind::ReadWrite, TensorCpu, TensorError, TensorGpu, TensorShape},
     tokenizer::Tokenizer,
 };
 
 use crate::{
     sampler::{bnf::BnfSampler, Formatter, Sampler},
-    FinishReason, GenerateKind, GenerateRequest, InitState, ReloadRequest, RuntimeInfo, StateId,
-    Token, TokenCounter,
+    FinishReason, GenerateKind, GenerateRequest, InitState, InputState, ReloadRequest, RuntimeInfo,
+    StateId, Token, TokenCounter,
 };
 
 const MIN_PROMPT_CACHE_TOKENS: usize = 32;
@@ -380,6 +380,37 @@ struct CoreRuntime {
 }
 
 impl CoreRuntime {
+    /// Check in an input state into the cache.
+    async fn check_in_state(&self, state: &InputState) -> StateId {
+        match state {
+            InputState::Key(id) => *id,
+            InputState::Value(value) => {
+                let id = value.id;
+                let state = match InitState::try_from(value.clone()) {
+                    Ok(state) => state,
+                    Err(err) => {
+                        log::error!("[state] error: {err}");
+                        return Default::default();
+                    }
+                };
+                let mut caches = self.caches.lock().await;
+                match caches.backed.get_mut(&id) {
+                    Some(cache) => cache.state = Some(state),
+                    None => {
+                        caches.backed.insert(
+                            id,
+                            Cache {
+                                state: Some(state),
+                                cache: Trie::new(),
+                            },
+                        );
+                    }
+                }
+                id
+            }
+        }
+    }
+
     /// Search for the longest common prefix in the memory cache and checkout the state from that point.
     /// Should there be a cache miss, an initial state is returned.
     async fn checkout(&self, id: StateId, tokens: &[u16]) -> CacheCheckout {
@@ -488,7 +519,8 @@ impl CoreRuntime {
             // back a non-relative and non-empty slot and use it for our new context
             Some(SlotChoice::Back(batch)) => {
                 log::info!("[queue][back][slot: {batch}]");
-                let checkout = self.checkout(context.request.state, &tokens).await;
+                let state = self.check_in_state(&context.request.state).await;
+                let checkout = self.checkout(state, &tokens).await;
                 self.load(batch, checkout.state).await;
 
                 let len = checkout.prefix.len();
@@ -510,7 +542,8 @@ impl CoreRuntime {
             // directly occupy an empty slot so no need backing
             Some(SlotChoice::Empty(batch)) => {
                 log::info!("[queue][empty][slot: {batch}]");
-                let checkout = self.checkout(context.request.state, &tokens).await;
+                let state = self.check_in_state(&context.request.state).await;
+                let checkout = self.checkout(state, &tokens).await;
                 self.load(batch, checkout.state).await;
 
                 let len = checkout.prefix.len();
@@ -531,7 +564,8 @@ impl CoreRuntime {
             }
             Some(SlotChoice::Continue(batch, ..)) => {
                 log::info!("[queue][continue][slot: {batch}]");
-                let checkout = self.checkout(context.request.state, &tokens).await;
+                let state = self.check_in_state(&context.request.state).await;
+                let checkout = self.checkout(state, &tokens).await;
                 self.load(batch, checkout.state).await;
 
                 let len = checkout.prefix.len();
@@ -718,7 +752,7 @@ impl CoreRuntime {
         // schedule a future cache slot for the prompt
         {
             let mut caches = self.caches.lock().await;
-            let cache = &mut caches.fetch(context.request.state).cache;
+            let cache = &mut caches.fetch(context.request.state.id()).cache;
 
             let enable = context.prompt_tokens.len() > MIN_PROMPT_CACHE_TOKENS;
             let enable = enable && !cache.contains_key(context.prompt_tokens.as_token_slice());
@@ -869,7 +903,7 @@ impl CoreRuntime {
                 if calibrate {
                     // compute perplexities of the choices themselves and calibrate their effects
                     let init = {
-                        let id = context.request.state;
+                        let id = context.request.state.id();
                         let mut caches = self.caches.lock().await;
                         caches
                             .fetch(id)
@@ -910,10 +944,11 @@ impl CoreRuntime {
 
                 let _ = context.sender.send(Token::Choose(ppl));
                 done = true;
-            } else if let GenerateKind::Embed { .. } = context.request.kind {
+            } else if let GenerateKind::State { .. } = context.request.kind {
                 let backed = self.back(batch).await?;
                 let embed = backed.to_vec();
-                let _ = context.sender.send(Token::Embed(embed));
+                let shape = backed.shape().into();
+                let _ = context.sender.send(Token::Embed(embed, shape));
                 done = true;
             } else if halt || stop_matched || stop_token {
                 let output = String::from_utf8_lossy(head);
@@ -923,7 +958,7 @@ impl CoreRuntime {
                 if let Some(output) = context.output.clone() {
                     let backed = self.back(batch).await?;
                     let mut caches = self.caches.lock().await;
-                    let cache = &mut caches.fetch(context.request.state).cache;
+                    let cache = &mut caches.fetch(context.request.state.id()).cache;
                     let item = CachedItem::new(backed, output);
                     let (item, _) = tokio::sync::watch::channel(Some(item));
                     cache.insert(context.prefix.clone(), item);

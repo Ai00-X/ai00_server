@@ -1,4 +1,4 @@
-use ai00_core::{GenerateKind, GenerateRequest, StateId, ThreadRequest, Token};
+use ai00_core::{GenerateKind, GenerateRequest, InputState, ThreadRequest, Token};
 use futures_util::StreamExt;
 use itertools::Itertools;
 use salvo::{
@@ -34,7 +34,7 @@ struct ChooseRequest {
     input: Array<String>,
     choices: Vec<String>,
     calibrate: bool,
-    state: StateId,
+    state: InputState,
 }
 
 impl From<ChooseRequest> for GenerateRequest {

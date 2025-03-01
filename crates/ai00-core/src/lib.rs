@@ -32,7 +32,7 @@ use web_rwkv::{
         },
         v4, v5, v6, v7, Runtime, TokioRuntime,
     },
-    tensor::{serialization::Seed, TensorCpu},
+    tensor::{serialization::Seed, TensorCpu, TensorError, TensorInit},
     tokenizer::Tokenizer,
     wgpu::{Backends, PowerPreference},
 };
@@ -50,7 +50,7 @@ pub enum Token {
     Start,
     Content(String),
     Stop(FinishReason, TokenCounter),
-    Embed(Vec<f32>),
+    Embed(Vec<f32>, [usize; 4]),
     Choose(Vec<f32>),
     Done,
 }
@@ -164,8 +164,8 @@ pub enum GenerateKind {
     /// Normal text completion.
     #[default]
     None,
-    /// The (reversed) number of layer at which the output is as embedding.
-    Embed { layer: usize },
+    /// The state of input.
+    State,
     /// Choose options by perplexity.
     Choose {
         choices: Vec<String>,
@@ -196,8 +196,8 @@ pub struct GenerateRequest {
     pub sampler: Arc<RwLock<dyn Sampler + Send + Sync>>,
     /// Generation output kind.
     pub kind: GenerateKind,
-    /// Initial state ID.
-    pub state: StateId,
+    /// Initial state.
+    pub state: InputState,
 }
 
 #[derive(Debug, Derivative, Clone, Serialize, Deserialize, ToSchema)]
@@ -269,6 +269,37 @@ impl StateId {
     }
 }
 
+#[derive(Debug, Default, Clone, Serialize, Deserialize, ToSchema)]
+pub struct StateValue {
+    pub name: String,
+    pub id: StateId,
+    pub data: Vec<f32>,
+    pub shape: [usize; 4],
+}
+
+/// State input
+#[derive(Debug, Clone, Serialize, Deserialize, ToSchema)]
+#[serde(untagged)]
+pub enum InputState {
+    Key(StateId),
+    Value(StateValue),
+}
+
+impl Default for InputState {
+    fn default() -> Self {
+        Self::Key(Default::default())
+    }
+}
+
+impl InputState {
+    pub fn id(&self) -> StateId {
+        match self {
+            InputState::Key(id) => *id,
+            InputState::Value(value) => value.id,
+        }
+    }
+}
+
 #[derive(Derivative, Clone)]
 #[derivative(Debug)]
 pub struct InitState {
@@ -277,6 +308,28 @@ pub struct InitState {
     pub default: bool,
     #[derivative(Debug = "ignore")]
     pub data: TensorCpu<f32>,
+}
+
+impl TryFrom<StateValue> for InitState {
+    type Error = TensorError;
+
+    fn try_from(
+        StateValue {
+            name,
+            id,
+            data,
+            shape,
+        }: StateValue,
+    ) -> Result<Self, Self::Error> {
+        let default = false;
+        let data = TensorCpu::from_data(shape, data)?;
+        Ok(Self {
+            name,
+            id,
+            default,
+            data,
+        })
+    }
 }
 
 fn list_adapters() -> AdapterList {

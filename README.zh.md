@@ -42,7 +42,7 @@
 
 你必须[下载模型](https://huggingface.co/BlinkDL)并将其放置在`assets/models`中。
 
-你可以在这里下载已经转换好的模型： [V5](https://huggingface.co/cgisky/AI00_RWKV_V5) 或者 [V6](https://huggingface.co/cgisky/ai00_rwkv_x060)
+你可以在这里下载已经转换好的模型： [V5](https://huggingface.co/cgisky/AI00_RWKV_V5)、[V6](https://huggingface.co/cgisky/ai00_rwkv_x060)、[v7](https://huggingface.co/cgisky/RWKV-x070-Ai00/)
 
 
 ## 安装、编译和使用
