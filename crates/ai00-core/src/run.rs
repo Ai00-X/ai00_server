@@ -394,18 +394,13 @@ impl CoreRuntime {
                     }
                 };
                 let mut caches = self.caches.lock().await;
-                match caches.backed.get_mut(&id) {
-                    Some(cache) => cache.state = Some(state),
-                    None => {
-                        caches.backed.insert(
-                            id,
-                            Cache {
-                                state: Some(state),
-                                cache: Trie::new(),
-                            },
-                        );
-                    }
-                }
+                caches.backed.insert(
+                    id,
+                    Cache {
+                        state: Some(state),
+                        cache: Trie::new(),
+                    },
+                );
                 id
             }
         }

@@ -277,7 +277,7 @@ pub struct StateValue {
     pub shape: [usize; 4],
 }
 
-/// State input
+/// State input from the user. Can be a single ID or full state data.
 #[derive(Debug, Clone, Serialize, Deserialize, ToSchema)]
 #[serde(untagged)]
 pub enum InputState {
