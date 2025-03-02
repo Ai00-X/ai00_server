@@ -14,9 +14,17 @@ use crate::{
 
 #[derive(Debug, Default, Clone, Deserialize, ToSchema, ToParameters)]
 #[serde(default)]
+#[salvo(schema(
+    example = json!({
+        "input": [
+            "The Eiffel Tower is located in the city of"
+        ],
+        "state": null
+    })
+))]
 struct StateRequest {
     input: Array<String>,
-    state: InputState,
+    state: Option<InputState>,
 }
 
 impl From<StateRequest> for GenerateRequest {
@@ -26,7 +34,7 @@ impl From<StateRequest> for GenerateRequest {
             prompt: Vec::from(input).join(""),
             max_tokens: 1,
             kind: GenerateKind::State,
-            state,
+            state: state.unwrap_or_default(),
             ..Default::default()
         }
     }

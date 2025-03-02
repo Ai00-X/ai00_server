@@ -113,7 +113,7 @@ struct ChatRequest {
     messages: Array<ChatRecord>,
     names: HashMap<Role, String>,
     template: ChatTemplate,
-    state: InputState,
+    state: Option<InputState>,
     #[derivative(Default(value = "256"))]
     max_tokens: usize,
     #[derivative(Default(value = "Array::Item(\"\\n\\n\".into())"))]
@@ -142,6 +142,7 @@ impl From<ChatRequest> for GenerateRequest {
             ..
         } = value;
 
+        let sep = template.sep;
         let re = Regex::new(r"\n(\s*\n)+").unwrap();
         let prompt = Vec::from(messages.clone())
             .into_iter()
@@ -154,19 +155,26 @@ impl From<ChatRequest> for GenerateRequest {
                     .replace("{role}", &role)
                     .replace("{content}", content)
             })
-            .join(&template.sep);
+            .join(&sep);
         let model_text = Vec::from(messages)
             .into_iter()
             .filter(|record| record.role == Role::Assistant)
             .map(|record| record.content)
-            .join(&template.sep);
+            .join(&sep);
 
-        let assistant = Role::Assistant;
         let assistant = names
-            .get(&assistant)
+            .get(&Role::Assistant)
             .cloned()
-            .unwrap_or(assistant.to_string());
-        let prompt = prompt + &template.sep + &template.prefix.replace("{assistant}", &assistant);
+            .unwrap_or(Role::Assistant.to_string());
+        let user = names
+            .get(&Role::User)
+            .cloned()
+            .unwrap_or(Role::User.to_string());
+        let prefix = template
+            .prefix
+            .replace("{assistant}", &assistant)
+            .replace("{user}", &user);
+        let prompt = format!("{prompt}{sep}{prefix}");
 
         let max_tokens = max_tokens.min(MAX_TOKENS);
         let stop = stop.into();
@@ -175,6 +183,8 @@ impl From<ChatRequest> for GenerateRequest {
             Some(sampler) => sampler.into(),
             None => SamplerParams::Nucleus(sampler).into(),
         };
+
+        let state = state.unwrap_or_default();
 
         Self {
             prompt,
