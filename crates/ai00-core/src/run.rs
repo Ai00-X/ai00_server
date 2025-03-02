@@ -11,7 +11,9 @@ use anyhow::Result;
 use derivative::Derivative;
 use flume::{Receiver, Sender, TryRecvError};
 use itertools::Itertools;
+use memmap2::Mmap;
 use qp_trie::Trie;
+use safetensors::SafeTensors;
 use tokio::{
     sync::{Mutex, RwLock},
     task::JoinHandle,
@@ -24,11 +26,12 @@ use web_rwkv::{
         model::{ModelInfo, State},
         Runtime,
     },
-    tensor::{kind::ReadWrite, TensorCpu, TensorError, TensorGpu, TensorShape},
+    tensor::{kind::ReadWrite, TensorCpu, TensorGpu, TensorShape},
     tokenizer::Tokenizer,
 };
 
 use crate::{
+    load_model_state,
     sampler::{bnf::BnfSampler, Formatter, Sampler},
     FinishReason, GenerateKind, GenerateRequest, InitState, InputState, ReloadRequest, RuntimeInfo,
     StateId, Token, TokenCounter,
@@ -381,17 +384,37 @@ struct CoreRuntime {
 
 impl CoreRuntime {
     /// Check in an input state into the cache.
-    async fn check_in_state(&self, state: &InputState) -> StateId {
+    async fn check_in_state(&self, state: &InputState) -> Result<StateId> {
         match state {
-            InputState::Key(id) => *id,
+            InputState::Key(id) => Ok(*id),
             InputState::Value(value) => {
                 let id = value.id;
-                let state = match InitState::try_from(value.clone()) {
-                    Ok(state) => state,
-                    Err(err) => {
-                        log::error!("[state] error: {err}");
-                        return Default::default();
-                    }
+                let state = InitState::try_from(value.clone())?;
+                let mut caches = self.caches.lock().await;
+                caches.backed.insert(
+                    id,
+                    Cache {
+                        state: Some(state),
+                        cache: Trie::new(),
+                    },
+                );
+                Ok(id)
+            }
+            InputState::Path(path) => {
+                let name = path.name.clone();
+                let id = path.id;
+                let default = false;
+
+                let file = tokio::fs::File::open(&path.path).await?;
+                let data = unsafe { Mmap::map(&file) }?;
+                let model = SafeTensors::deserialize(&data)?;
+                let data = load_model_state(&self.context, &self.info, model).await?;
+
+                let state = InitState {
+                    name,
+                    id,
+                    default,
+                    data,
                 };
                 let mut caches = self.caches.lock().await;
                 caches.backed.insert(
@@ -401,7 +424,8 @@ impl CoreRuntime {
                         cache: Trie::new(),
                     },
                 );
-                id
+
+                Ok(id)
             }
         }
     }
@@ -453,7 +477,7 @@ impl CoreRuntime {
     }
 
     /// Queue an inference task.
-    async fn queue(&self, context: GenerateContext) -> Result<SlotResult, TensorError> {
+    async fn queue(&self, context: GenerateContext) -> Result<SlotResult> {
         let tokens = match [context.prefix, context.suffix].concat() {
             tokens if tokens.is_empty() => vec![0u16],
             tokens => tokens,
@@ -514,7 +538,7 @@ impl CoreRuntime {
             // back a non-relative and non-empty slot and use it for our new context
             Some(SlotChoice::Back(batch)) => {
                 log::info!("[queue][back][slot: {batch}]");
-                let state = self.check_in_state(&context.request.state).await;
+                let state = self.check_in_state(&context.request.state).await?;
                 let checkout = self.checkout(state, &tokens).await;
                 self.load(batch, checkout.state).await;
 
@@ -537,7 +561,7 @@ impl CoreRuntime {
             // directly occupy an empty slot so no need backing
             Some(SlotChoice::Empty(batch)) => {
                 log::info!("[queue][empty][slot: {batch}]");
-                let state = self.check_in_state(&context.request.state).await;
+                let state = self.check_in_state(&context.request.state).await?;
                 let checkout = self.checkout(state, &tokens).await;
                 self.load(batch, checkout.state).await;
 
@@ -559,7 +583,7 @@ impl CoreRuntime {
             }
             Some(SlotChoice::Continue(batch, ..)) => {
                 log::info!("[queue][continue][slot: {batch}]");
-                let state = self.check_in_state(&context.request.state).await;
+                let state = self.check_in_state(&context.request.state).await?;
                 let checkout = self.checkout(state, &tokens).await;
                 self.load(batch, checkout.state).await;
 

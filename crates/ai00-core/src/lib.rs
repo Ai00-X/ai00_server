@@ -277,12 +277,21 @@ pub struct StateValue {
     pub shape: [usize; 4],
 }
 
+#[derive(Debug, Default, Clone, Serialize, Deserialize, ToSchema)]
+pub struct StatePath {
+    pub name: String,
+    pub id: StateId,
+    #[salvo(schema(value_type = String))]
+    pub path: PathBuf,
+}
+
 /// State input from the user. Can be a single ID or full state data.
 #[derive(Debug, Clone, Serialize, Deserialize, ToSchema)]
 #[serde(untagged)]
 pub enum InputState {
     Key(StateId),
     Value(StateValue),
+    Path(StatePath),
 }
 
 impl Default for InputState {
@@ -296,6 +305,7 @@ impl InputState {
         match self {
             InputState::Key(id) => *id,
             InputState::Value(value) => value.id,
+            InputState::Path(path) => path.id,
         }
     }
 }
