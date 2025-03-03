@@ -1,6 +1,6 @@
 use std::{
     cmp::Ordering,
-    collections::HashMap,
+    collections::{HashMap, VecDeque},
     error::Error,
     ops::Deref,
     sync::{Arc, Weak},
@@ -1075,20 +1075,11 @@ async fn infer(
     state: Arc<dyn State + Send + Sync>,
     receiver: Receiver<InferBatch>,
 ) -> Result<()> {
-    let mut senders = vec![None; reload.max_batch];
-    let batches = vec![
-        InferInputBatch {
-            tokens: vec![],
-            option: Default::default(),
-        };
-        reload.max_batch
-    ];
-    let inference = InferInput::new(batches, reload.token_chunk_size);
-    let mut inference = Some(inference);
+    type Batch = (Vec<u16>, InferOption, Sender<TensorCpu<f32>>);
+    let mut batches: HashMap<usize, VecDeque<Batch>> = HashMap::new();
 
     async fn schedule(
-        inference: &mut Option<InferInput>,
-        senders: &mut [Option<Sender<TensorCpu<f32>>>],
+        batches: &mut HashMap<usize, VecDeque<Batch>>,
         state: Arc<dyn State + Send + Sync>,
         batch: InferBatch,
     ) -> Result<()> {
@@ -1098,12 +1089,13 @@ async fn infer(
                 tokens,
                 option,
                 sender,
-            } => {
-                let mut input = inference.take().expect("inference must not be `None`");
-                input.batches[batch] = InferInputBatch { tokens, option };
-                senders[batch] = Some(sender);
-                inference.replace(input);
-            }
+            } => match batches.get_mut(&batch) {
+                Some(batches) => batches.push_back((tokens, option, sender)),
+                None => {
+                    let deque = VecDeque::from_iter([(tokens, option, sender)]);
+                    batches.insert(batch, deque);
+                }
+            },
             InferBatch::Load { batch, tensor } => state.load(tensor, batch)?,
             InferBatch::Back { batch, sender } => {
                 let tensor = state.back(batch).await?;
@@ -1119,36 +1111,48 @@ async fn infer(
     }
 
     'outer: while let Ok(batch) = receiver.recv_async().await {
-        schedule(&mut inference, &mut senders, state.clone(), batch).await?;
+        schedule(&mut batches, state.clone(), batch).await?;
 
-        while inference
-            .as_ref()
-            .map(|input| input.num_token() > 0)
-            .expect("inference must not be `None`")
-        {
-            'inner: loop {
-                let state = state.clone();
-                match receiver.try_recv() {
-                    Ok(batch) => schedule(&mut inference, &mut senders, state, batch).await?,
-                    Err(TryRecvError::Empty) => break 'inner,
-                    Err(TryRecvError::Disconnected) => break 'outer,
-                }
+        for batch in receiver.drain() {
+            schedule(&mut batches, state.clone(), batch).await?;
+        }
+
+        while batches.values().map(|x| x.len()).sum::<usize>() > 0 {
+            let mut inference = vec![Default::default(); reload.max_batch];
+            let mut senders = HashMap::new();
+
+            for (&batch, deque) in batches.iter_mut() {
+                let Some((tokens, option, sender)) = deque.pop_front() else {
+                    continue;
+                };
+                inference[batch] = InferInputBatch { tokens, option };
+                senders.insert(batch, sender);
             }
 
-            let Some(runtime) = runtime.upgrade() else {
-                break 'outer;
-            };
-            let input = inference.take().expect("inference must not be `None`");
-            let (input, output) = runtime.infer(input).await?;
-            inference.replace(input);
+            let mut inference = Some(InferInput::new(inference, reload.token_chunk_size));
 
-            for (InferOutputBatch(output), sender) in output
-                .iter()
-                .zip_eq(senders.clone().into_iter())
-                .filter(|(output, _)| !output.is_empty())
-                .filter_map(|(output, sender)| sender.map(|sender| (output, sender)))
+            while inference
+                .as_ref()
+                .map(|input| input.num_token() > 0)
+                .expect("inference must not be `None`")
             {
-                let _ = sender.send_async(output.clone()).await;
+                let Some(runtime) = runtime.upgrade() else {
+                    break 'outer;
+                };
+                let input = inference.take().expect("inference must not be `None`");
+                let (input, output) = runtime.infer(input).await?;
+                inference.replace(input);
+
+                for (batch, InferOutputBatch(output)) in output
+                    .iter()
+                    .enumerate()
+                    .filter(|(_, output)| !output.is_empty())
+                {
+                    let Some(sender) = senders.get(&batch) else {
+                        continue;
+                    };
+                    let _ = sender.send(output.clone());
+                }
             }
         }
     }
@@ -1175,7 +1179,7 @@ async fn softmax(
         let output = web_rwkv::runtime::softmax::softmax(&context, input).await?;
 
         for (batch, tensor) in batches.iter().zip_eq(output.into_iter()) {
-            let _ = batch.sender.send_async(tensor).await;
+            let _ = batch.sender.send(tensor);
         }
 
         batches.clear();
