@@ -34,7 +34,7 @@ struct ChooseRequest {
     input: Array<String>,
     choices: Vec<String>,
     calibrate: bool,
-    state: Option<InputState>,
+    state: InputState,
 }
 
 impl From<ChooseRequest> for GenerateRequest {
@@ -49,7 +49,7 @@ impl From<ChooseRequest> for GenerateRequest {
             prompt: Vec::from(input).join(""),
             max_tokens: 1,
             kind: GenerateKind::Choose { choices, calibrate },
-            state: state.unwrap_or_default(),
+            state: state.into(),
             ..Default::default()
         }
     }

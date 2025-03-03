@@ -18,13 +18,12 @@ use crate::{
     example = json!({
         "input": [
             "The Eiffel Tower is located in the city of"
-        ],
-        "state": null
+        ]
     })
 ))]
 struct StateRequest {
     input: Array<String>,
-    state: Option<InputState>,
+    state: InputState,
 }
 
 impl From<StateRequest> for GenerateRequest {
@@ -34,7 +33,7 @@ impl From<StateRequest> for GenerateRequest {
             prompt: Vec::from(input).join(""),
             max_tokens: 1,
             kind: GenerateKind::State,
-            state: state.unwrap_or_default(),
+            state: state.into(),
             ..Default::default()
         }
     }

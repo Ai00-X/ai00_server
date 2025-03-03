@@ -256,7 +256,7 @@ pub async fn save_config(_depot: &mut Depot, request: SaveRequest) -> StatusCode
         Some(ext) if ext == "toml" => match write() {
             Ok(_) => StatusCode::OK,
             Err(err) => {
-                log::error!("failed to save config: {err}");
+                log::error!("failed to save config: {err:#?}");
                 StatusCode::INTERNAL_SERVER_ERROR
             }
         },

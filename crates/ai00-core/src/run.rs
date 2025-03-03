@@ -485,7 +485,7 @@ impl CoreRuntime {
     }
 
     /// Queue an inference task.
-    async fn queue(&self, context: GenerateContext) -> Result<SlotResult> {
+    async fn queue(&self, context: GenerateContext) -> SlotResult {
         let tokens = match [context.prefix, context.suffix].concat() {
             tokens if tokens.is_empty() => vec![0u16],
             tokens => tokens,
@@ -496,7 +496,7 @@ impl CoreRuntime {
         if let Some(schema) = context.request.bnf_schema.clone() {
             match BnfSampler::new(&self.tokenizer, &schema) {
                 Ok(bnf) => formatters.push(Arc::new(RwLock::new(bnf))),
-                Err(err) => return Ok(SlotResult::Error(err.into())),
+                Err(err) => return SlotResult::Error(err.into()),
             }
         }
 
@@ -531,10 +531,20 @@ impl CoreRuntime {
             choice
         };
 
+        let check_in_state = |state: Arc<InputState>, batch: usize| async move {
+            match self.check_in_state(&state).await {
+                Ok(state) => state,
+                Err(err) => {
+                    log::error!("[queue][state][slot: {batch}] error: {err:#?}");
+                    Default::default()
+                }
+            }
+        };
+
         match choice {
             // we cannot find a slot because all slots are occupied
             // in this case, we hand the request back to the caller
-            None => Ok(SlotResult::Failure(
+            None => SlotResult::Failure(
                 GenerateContext {
                     prefix: Default::default(),
                     suffix: Tokens(tokens),
@@ -542,11 +552,11 @@ impl CoreRuntime {
                     ..context
                 }
                 .into(),
-            )),
+            ),
             // back a non-relative and non-empty slot and use it for our new context
             Some(SlotChoice::Back(batch)) => {
                 log::info!("[queue][back][slot: {batch}]");
-                let state = self.check_in_state(&context.request.state).await?;
+                let state = check_in_state(context.request.state.clone(), batch).await;
                 let checkout = self.checkout(state, &tokens).await;
                 self.load(batch, checkout.state).await;
 
@@ -564,12 +574,12 @@ impl CoreRuntime {
                 let handle = tokio::spawn(self.clone().process(batch, context));
                 let mut slots = self.slots.lock().await;
                 slots[batch] = SlotState::Busy(handle);
-                Ok(SlotResult::Fault(batch))
+                SlotResult::Fault(batch)
             }
             // directly occupy an empty slot so no need backing
             Some(SlotChoice::Empty(batch)) => {
                 log::info!("[queue][empty][slot: {batch}]");
-                let state = self.check_in_state(&context.request.state).await?;
+                let state = check_in_state(context.request.state.clone(), batch).await;
                 let checkout = self.checkout(state, &tokens).await;
                 self.load(batch, checkout.state).await;
 
@@ -587,11 +597,11 @@ impl CoreRuntime {
                 let handle = tokio::spawn(self.clone().process(batch, context));
                 let mut slots = self.slots.lock().await;
                 slots[batch] = SlotState::Busy(handle);
-                Ok(SlotResult::Success(batch))
+                SlotResult::Success(batch)
             }
             Some(SlotChoice::Continue(batch, ..)) => {
                 log::info!("[queue][continue][slot: {batch}]");
-                let state = self.check_in_state(&context.request.state).await?;
+                let state = check_in_state(context.request.state.clone(), batch).await;
                 let checkout = self.checkout(state, &tokens).await;
                 self.load(batch, checkout.state).await;
 
@@ -609,7 +619,7 @@ impl CoreRuntime {
                 let handle = tokio::spawn(self.clone().process(batch, context));
                 let mut slots = self.slots.lock().await;
                 slots[batch] = SlotState::Busy(handle);
-                Ok(SlotResult::Success(batch))
+                SlotResult::Success(batch)
             }
         }
     }
@@ -639,7 +649,7 @@ impl CoreRuntime {
             let updated = match update(handle).await {
                 Ok(updated) => updated,
                 Err(err) => {
-                    log::error!("[update][error][slot: {batch}] {err}");
+                    log::error!("[update][error][slot: {batch}] {err:#?}");
                     let mut slots = self.slots.lock().await;
                     slots[batch] = Default::default();
                     continue;
@@ -846,7 +856,7 @@ impl CoreRuntime {
             let mut word = match self.tokenizer.decode(&[token]) {
                 Ok(word) => word,
                 Err(err) => {
-                    log::warn!("[process][error] {err}");
+                    log::warn!("[process][error] {err:#?}");
                     stop_token = true;
                     Vec::new()
                 }
@@ -1030,11 +1040,10 @@ async fn enqueue(runtime: CoreRuntime, receiver: Receiver<GenerateContext>, time
             let mut temp = Vec::new();
             for context in queue.drain(..) {
                 match runtime.queue(context).await {
-                    Ok(SlotResult::Failure(context)) => temp.push(*context),
-                    Ok(SlotResult::Success(batch)) => log::info!("[enqueue][ok][slot: {batch}]"),
-                    Ok(SlotResult::Fault(batch)) => log::info!("[enqueue][fault][slot: {batch}]"),
-                    Ok(SlotResult::Error(err)) => log::error!("[enqueue][error] {err}"),
-                    Err(err) => log::error!("[enqueue][error] {err}"),
+                    SlotResult::Failure(context) => temp.push(*context),
+                    SlotResult::Success(batch) => log::info!("[enqueue][ok][slot: {batch}]"),
+                    SlotResult::Fault(batch) => log::info!("[enqueue][fault][slot: {batch}]"),
+                    SlotResult::Error(err) => log::error!("[enqueue][error] {err:#?}"),
                 }
             }
             std::mem::swap(&mut queue, &mut temp);

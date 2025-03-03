@@ -113,7 +113,7 @@ struct ChatRequest {
     messages: Array<ChatRecord>,
     names: HashMap<Role, String>,
     template: ChatTemplate,
-    state: Option<InputState>,
+    state: InputState,
     #[derivative(Default(value = "256"))]
     max_tokens: usize,
     #[derivative(Default(value = "Array::Item(\"\\n\\n\".into())"))]
@@ -184,7 +184,7 @@ impl From<ChatRequest> for GenerateRequest {
             None => SamplerParams::Nucleus(sampler).into(),
         };
 
-        let state = state.unwrap_or_default();
+        let state = state.into();
 
         Self {
             prompt,

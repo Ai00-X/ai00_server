@@ -197,7 +197,7 @@ pub struct GenerateRequest {
     /// Generation output kind.
     pub kind: GenerateKind,
     /// Initial state.
-    pub state: InputState,
+    pub state: Arc<InputState>,
 }
 
 #[derive(Debug, Derivative, Clone, Serialize, Deserialize, ToSchema)]
@@ -652,7 +652,7 @@ async fn process(env: Arc<RwLock<Environment>>, request: ThreadRequest) -> Resul
                 let _ = match handle.await? {
                     Ok(_) => sender.send(true),
                     Err(err) => {
-                        log::error!("[reload] error: {err}");
+                        log::error!("[reload] error: {err:#?}");
                         sender.send(false)
                     }
                 };
@@ -677,7 +677,7 @@ async fn process(env: Arc<RwLock<Environment>>, request: ThreadRequest) -> Resul
                 let _ = match handle.await? {
                     Ok(_) => sender.send(true),
                     Err(err) => {
-                        log::error!("[save] error: {err}");
+                        log::error!("[save] error: {err:#?}");
                         sender.send(false)
                     }
                 };
