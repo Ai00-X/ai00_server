@@ -7,7 +7,7 @@ precision = "Fp16"                                     # Precision for intermedi
 quant = 0                                              # Layers to be quantized.
 quant_type = "Int8"                                    # Quantization type ("Int8" or "NF4").
 stop = ["\n\n"]                                        # Additional stop words in generation.
-token_chunk_size = 128                                 # Size of token chunk that is inferred at once. For high end GPUs, this could be 64 or 128 (faster).
+token_chunk_size = 256                                 # Size of token chunk that is inferred at once. For high end GPUs, this could be 64 to 1024 (faster).
 
 # [[state]] # State-tuned initial state.
 # id = "fd7a60ed-7807-449f-8256-bccae3246222"                      # UUID for this state, which is used to specify which one to use in the APIs.
