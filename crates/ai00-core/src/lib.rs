@@ -278,7 +278,7 @@ pub struct StateValue {
 }
 
 #[derive(Debug, Default, Clone, Serialize, Deserialize, ToSchema)]
-pub struct StatePath {
+pub struct StateFile {
     pub name: String,
     pub id: StateId,
     #[salvo(schema(value_type = String))]
@@ -291,7 +291,7 @@ pub struct StatePath {
 pub enum InputState {
     Key(StateId),
     Value(StateValue),
-    Path(StatePath),
+    File(StateFile),
 }
 
 impl Default for InputState {
@@ -305,12 +305,12 @@ impl InputState {
         match self {
             InputState::Key(id) => *id,
             InputState::Value(value) => value.id,
-            InputState::Path(path) => path.id,
+            InputState::File(file) => file.id,
         }
     }
 }
 
-#[derive(Derivative, Clone)]
+#[derive(Derivative, Clone, Serialize, Deserialize)]
 #[derivative(Debug)]
 pub struct InitState {
     pub name: String,

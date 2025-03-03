@@ -7,7 +7,7 @@ use std::{
     time::Duration,
 };
 
-use anyhow::Result;
+use anyhow::{bail, Result};
 use derivative::Derivative;
 use flume::{Receiver, Sender, TryRecvError};
 use itertools::Itertools;
@@ -400,22 +400,30 @@ impl CoreRuntime {
                 );
                 Ok(id)
             }
-            InputState::Path(path) => {
-                let name = path.name.clone();
-                let id = path.id;
+            InputState::File(file) => {
+                let name = file.name.clone();
+                let id = file.id;
                 let default = false;
 
-                let file = tokio::fs::File::open(&path.path).await?;
+                let file = tokio::fs::File::open(&file.path).await?;
                 let data = unsafe { Mmap::map(&file) }?;
-                let model = SafeTensors::deserialize(&data)?;
-                let data = load_model_state(&self.context, &self.info, model).await?;
 
-                let state = InitState {
-                    name,
-                    id,
-                    default,
-                    data,
+                let st = SafeTensors::deserialize(&data);
+                let prefab = cbor4ii::serde::from_slice::<InitState>(&data);
+                let state = match (st, prefab) {
+                    (Ok(model), _) => {
+                        let data = load_model_state(&self.context, &self.info, model).await?;
+                        InitState {
+                            name,
+                            id,
+                            default,
+                            data,
+                        }
+                    }
+                    (_, Ok(state)) => state,
+                    _ => bail!("failed to load init state"),
                 };
+
                 let mut caches = self.caches.lock().await;
                 caches.backed.insert(
                     id,
