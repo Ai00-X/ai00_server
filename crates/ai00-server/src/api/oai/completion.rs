@@ -34,7 +34,7 @@ use crate::{
         ],
         "stream": false,
         "max_tokens": 1000,
-        "sampler_override": {
+        "sampler": {
             "type": "Nucleus",
             "top_p": 0.5,
             "top_k": 128,
@@ -57,8 +57,14 @@ struct CompletionRequest {
     #[serde(alias = "logit_bias")]
     bias: HashMap<u16, f32>,
     bnf_schema: Option<String>,
-    sampler: NucleusParams,
-    sampler_override: Option<SamplerParams>,
+    #[serde(alias = "sampler_override")]
+    sampler: Option<SamplerParams>,
+    #[derivative(Default(value = "0.5"))]
+    top_p: f32,
+    #[derivative(Default(value = "128"))]
+    top_k: usize,
+    #[derivative(Default(value = "1.0"))]
+    temperature: f32,
 }
 
 impl From<CompletionRequest> for GenerateRequest {
@@ -69,7 +75,9 @@ impl From<CompletionRequest> for GenerateRequest {
             max_tokens,
             stop,
             sampler,
-            sampler_override,
+            top_p,
+            top_k,
+            temperature,
             bias,
             bnf_schema,
             ..
@@ -79,9 +87,15 @@ impl From<CompletionRequest> for GenerateRequest {
         let max_tokens = max_tokens.min(MAX_TOKENS);
         let stop = stop.into();
         let bias = Arc::new(bias);
-        let sampler = match sampler_override {
+        let sampler = match sampler {
             Some(sampler) => sampler.into(),
-            None => SamplerParams::Nucleus(sampler).into(),
+            None => SamplerParams::Nucleus(NucleusParams {
+                top_p,
+                top_k,
+                temperature,
+                ..Default::default()
+            })
+            .into(),
         };
         let state = state.into();
 
