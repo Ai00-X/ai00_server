@@ -25,6 +25,13 @@ struct EmbedData {
 #[derive(Debug, Derivative, Clone, Deserialize, ToSchema, ToParameters)]
 #[derivative(Default)]
 #[serde(default)]
+#[salvo(schema(
+    example = json!({
+        "input": "The Eiffel Tower is located in the city of",
+        "max_tokens": 510,
+        "prefix": "query:"
+    })
+))]
 struct EmbedRequest {
     input: String,
     #[derivative(Default(value = "510"))]

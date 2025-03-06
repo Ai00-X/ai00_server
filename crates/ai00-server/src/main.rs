@@ -308,7 +308,7 @@ async fn main() {
     // this static serve should be after `swagger`
     let app = match serve_path {
         Some(path) => app
-            .push(Router::with_path("<**path>").get(StaticDir::new(path).defaults(["index.html"]))),
+            .push(Router::with_path("{*path}").get(StaticDir::new(path).defaults(["index.html"]))),
         None => app,
     };
 

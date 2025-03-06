@@ -116,6 +116,8 @@ pub enum EmbeddingModel {
     ParaphraseMLMpnetBaseV2,
     /// BAAI/bge-small-zh-v1.5
     BGESmallZHV15,
+    /// lightonai/modernbert-embed-large
+    ModernBertEmbedLarge,
     /// intfloat/multilingual-e5-small
     MultilingualE5Small,
     /// intfloat/multilingual-e5-base
