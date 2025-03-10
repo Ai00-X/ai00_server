@@ -22,7 +22,7 @@ use tokio::{
     time::Duration,
 };
 use web_rwkv::{
-    context::{Context, ContextBuilder, InstanceExt},
+    context::{Context, ContextBuilder, ContextError, InstanceExt},
     runtime::{
         infer::{InferInput, InferOutput},
         loader::{Loader, Lora, LoraBlend, Reader},
@@ -364,7 +364,7 @@ async fn create_context(adapter: AdapterOption, info: &ModelInfo) -> Result<Cont
             .enumerate_adapters(backends)
             .into_iter()
             .nth(selection)
-            .ok_or(web_rwkv::context::CreateEnvironmentError::RequestAdapterFailed)?),
+            .ok_or(ContextError::RequestAdapterFailed)?),
     }?;
     let context = ContextBuilder::new(adapter)
         .auto_limits(info)
@@ -388,9 +388,9 @@ async fn load_model_state<R: Reader>(
 ) -> Result<TensorCpu<f32>> {
     match info.version {
         ModelVersion::V4 => bail!("v4 does not support init state yet"),
-        ModelVersion::V5 => v5::read_state(context, info, model).await,
-        ModelVersion::V6 => v6::read_state(context, info, model).await,
-        ModelVersion::V7 => v7::read_state(context, info, model).await,
+        ModelVersion::V5 => Ok(v5::read_state(context, info, model).await?),
+        ModelVersion::V6 => Ok(v6::read_state(context, info, model).await?),
+        ModelVersion::V7 => Ok(v7::read_state(context, info, model).await?),
     }
 }
 
