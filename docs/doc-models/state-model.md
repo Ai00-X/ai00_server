@@ -11,7 +11,7 @@ RNN 网络在运行过程中会保持一个隐藏状态（state），隐藏状�
 如图所示，RNN 网络依次处理每一个输入的 token，并根据“当前隐藏状态”来预测下一个可能出现的 token（如果有需求）。每处理一个 token，RNN 会将结果反馈给网络自身，从而“更新其隐藏状态”，再用“更新后的状态”去预测下一个 token。如此循环，直到达到“完成任务”的状态。
 
 
-作为 RNN 的一种变体，RWKV 支持对隐藏状态进行微调（[state tuning](https://rwkv.cn/RWKV-Fine-Tuning/State-Tuning)）。通过调整模型的“心理状态”，可使 RWKV 模型在特定任务上表现更佳。
+作为 RNN 的一种变体，RWKV 支持对隐藏状态进行微调（[state tuning](https://rwkv.cn/tutorials/advanced/Fine-Tune/RWKV-PEFT/State-Tuning)）。通过调整模型的“心理状态”，可使 RWKV 模型在特定任务上表现更佳。
 
 ## 初始化 RWKV state
 
