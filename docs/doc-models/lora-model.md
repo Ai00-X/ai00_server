@@ -12,5 +12,5 @@ LORA（Low-Rank Adaptation）是一种针对大型预训练模型的微调技术
 
 LoRA 文件可通过 LoRA 微调获得。
 
-查看 RWKV 官方的 [LoRA 微调教程](https://rwkv.cn/RWKV-Fine-Tuning/LoRA-Fine-Tuning) 了解 RWKV 模型 LoRA 微调的详细过程。
+查看 RWKV 官方的 [LoRA 微调教程](https://rwkv.cn/tutorials/advanced/Fine-Tune/RWKV-PEFT/LoRA) 了解 RWKV 模型 LoRA 微调的详细过程。
 
