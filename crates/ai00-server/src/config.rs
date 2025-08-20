@@ -41,7 +41,6 @@ impl TryFrom<Config> for ReloadRequest {
                     precision,
                     token_chunk_size,
                     max_batch,
-                    embed_device,
                 },
             mut lora,
             mut state,
@@ -70,7 +69,6 @@ impl TryFrom<Config> for ReloadRequest {
             precision,
             token_chunk_size,
             max_batch,
-            embed_device,
             tokenizer_path,
             bnf,
             adapter,
@@ -116,8 +114,6 @@ pub enum EmbeddingModel {
     ParaphraseMLMpnetBaseV2,
     /// BAAI/bge-small-zh-v1.5
     BGESmallZHV15,
-    /// lightonai/modernbert-embed-large
-    ModernBertEmbedLarge,
     /// intfloat/multilingual-e5-small
     MultilingualE5Small,
     /// intfloat/multilingual-e5-base

@@ -28,8 +28,8 @@ serde_json = "1"
 sha2 = "0.10.8"
 simple_logger = { version = "5.0.0", features = ["stderr"] }
 tempfile = "3.6"
-toml = "0.8.6"
-zip-extract = "0.2"
+toml = "0.9"
+zip = "4.3"
 
 ai00-core.workspace = true
 anyhow.workspace = true
@@ -45,25 +45,25 @@ web-rwkv.workspace = true
 
 [dependencies.fastembed]
 optional = true
-version = "4.4.0"
+version = "=4.4.0"
 
 [target.'cfg(windows)'.dependencies.fastembed]
 features = ["ort-load-dynamic"]
 optional = true
-version = "4.4.0"
+version = "=4.4.0"
 
 [dependencies.hf-hub]
 optional = true
-version = "0.3"
+version = "=0.3"
 
 [dependencies.text-splitter]
 features = ["markdown", "tokenizers"]
 optional = true
-version = "0.15"
+version = "=0.15"
 
 [dependencies.tokenizers]
 optional = true
-version = "0.20"
+version = "=0.20"
 
 [dependencies.salvo]
 features = [

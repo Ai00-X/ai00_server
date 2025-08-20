@@ -27,7 +27,7 @@ pub struct NucleusParams {
 
 #[derive(Debug, Default, Clone)]
 pub struct NucleusState {
-    pub penalties: HashMap<u16, f32>,
+    pub penalties: HashMap<u32, f32>,
 }
 
 #[derive(Debug, Default, Clone)]
@@ -46,7 +46,7 @@ impl NucleusSampler {
 }
 
 impl Sampler for NucleusSampler {
-    fn init(&mut self, model_tokens: &[u16]) {
+    fn init(&mut self, model_tokens: &[u32]) {
         let NucleusSampler { params, state } = self;
         for (index, token) in model_tokens.iter().rev().enumerate() {
             let ap = params.presence_penalty;
@@ -66,7 +66,7 @@ impl Sampler for NucleusSampler {
             .for_each(|(token, penalty)| output[*token as usize] -= penalty)
     }
 
-    fn sample(&mut self, probs: &[f32]) -> u16 {
+    fn sample(&mut self, probs: &[f32]) -> u32 {
         let NucleusSampler { params, state } = self;
         let mut sorted = probs
             .iter()
@@ -105,7 +105,7 @@ impl Sampler for NucleusSampler {
             .find_or_first(|&(_, cum)| rand <= cum)
             .map(|(id, _)| id)
             .unwrap_or_default();
-        let token = token as u16;
+        let token = token as u32;
 
         state
             .penalties

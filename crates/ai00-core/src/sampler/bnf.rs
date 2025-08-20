@@ -37,8 +37,8 @@ impl Formatter for BnfSampler {
         self.0.mask_logits(output).expect("bnf transform error")
     }
 
-    fn update(&mut self, token: u16) -> bool {
-        let halt = match self.0.try_accept_new_token(token as u32) {
+    fn update(&mut self, token: u32) -> bool {
+        let halt = match self.0.try_accept_new_token(token) {
             Ok(AcceptTokenResult::Finished) | Err(AcceptTokenError::Finished) => true,
             Ok(AcceptTokenResult::Ongoing) => false,
             Err(_) => self.0.is_finished(),

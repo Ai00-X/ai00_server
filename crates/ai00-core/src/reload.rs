@@ -3,7 +3,7 @@ use std::path::PathBuf;
 use derivative::Derivative;
 use salvo::oapi::ToSchema;
 use serde::{Deserialize, Serialize};
-use web_rwkv::runtime::model::{EmbedDevice, Quant};
+use web_rwkv::runtime::model::Quant;
 
 use crate::StateId;
 
@@ -33,9 +33,6 @@ pub struct Model {
     /// Number of states that are cached on GPU.
     #[derivative(Default(value = "8"))]
     pub max_batch: usize,
-    /// Device to put the embed tensor.
-    #[salvo(schema(value_type = super::sealed::EmbedDevice))]
-    pub embed_device: EmbedDevice,
 }
 
 /// Low-rank adaptor.

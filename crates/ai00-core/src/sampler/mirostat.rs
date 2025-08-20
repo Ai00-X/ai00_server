@@ -37,11 +37,11 @@ impl MirostatSampler {
 }
 
 impl Sampler for MirostatSampler {
-    fn init(&mut self, _model_tokens: &[u16]) {}
+    fn init(&mut self, _model_tokens: &[u32]) {}
 
     fn transform(&self, _output: &mut [f32]) {}
 
-    fn sample(&mut self, probs: &[f32]) -> u16 {
+    fn sample(&mut self, probs: &[f32]) -> u32 {
         let MirostatSampler { params, state } = self;
 
         // sort the surprise values and truncate
@@ -86,6 +86,6 @@ impl Sampler for MirostatSampler {
         state.max_surprise -= params.rate * error_surprise;
         state.max_surprise = state.max_surprise.min(4.0 * params.tau);
 
-        token as u16
+        token as u32
     }
 }

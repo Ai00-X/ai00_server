@@ -55,7 +55,7 @@ struct CompletionRequest {
     stop: Array<String>,
     stream: bool,
     #[serde(alias = "logit_bias")]
-    bias: HashMap<u16, f32>,
+    bias: HashMap<u32, f32>,
     bnf_schema: Option<String>,
     #[serde(alias = "sampler_override")]
     sampler: Option<SamplerParams>,

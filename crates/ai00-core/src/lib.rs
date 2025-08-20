@@ -24,12 +24,9 @@ use tokio::{
 use web_rwkv::{
     context::{Context, ContextBuilder, ContextError, InstanceExt},
     runtime::{
-        infer::{InferInput, InferOutput},
+        infer::Rnn,
         loader::{Loader, Lora, LoraBlend, Reader},
-        model::{
-            Bundle, ContextAutoLimits, EmbedDevice, ModelBuilder, ModelInfo, ModelVersion, Quant,
-            State,
-        },
+        model::{Bundle, ContextAutoLimits, ModelBuilder, ModelInfo, ModelVersion, Quant, State},
         v4, v5, v6, v7, Runtime, TokioRuntime,
     },
     tensor::{serialization::Seed, TensorCpu, TensorError, TensorInit},
@@ -112,7 +109,7 @@ pub enum ThreadRequest {
 pub enum Environment {
     Loaded {
         info: RuntimeInfo,
-        runtime: Arc<dyn Runtime + Send + Sync>,
+        runtime: Arc<dyn Runtime<Rnn> + Send + Sync>,
         model: Arc<dyn ModelSerialize + Send + Sync>,
         sender: Sender<GenerateContext>,
     },
@@ -185,7 +182,7 @@ pub struct GenerateRequest {
     /// Stop indicators.
     pub stop: Vec<String>,
     /// Bias added to tokens before sampling.
-    pub bias: Arc<HashMap<u16, f32>>,
+    pub bias: Arc<HashMap<u32, f32>>,
     /// Optional BNF schema for formatted generation.
     pub bnf_schema: Option<String>,
     /// Sampler parameters.
@@ -224,9 +221,6 @@ pub struct ReloadRequest {
     /// Number of states that are cached on GPU.
     #[derivative(Default(value = "8"))]
     pub max_batch: usize,
-    /// Device to put the embed tensor.
-    #[salvo(schema(value_type = sealed::EmbedDevice))]
-    pub embed_device: EmbedDevice,
     /// Path to the tokenizer.
     #[salvo(schema(value_type = String))]
     pub tokenizer_path: PathBuf,
@@ -401,7 +395,7 @@ async fn load_runtime(
     load: LoadType,
 ) -> Result<(
     Vec<InitState>,
-    Arc<dyn Runtime + Send + Sync>,
+    Arc<dyn Runtime<Rnn> + Send + Sync>,
     Arc<dyn State + Send + Sync>,
     Arc<dyn ModelSerialize + Send + Sync>,
 )> {
@@ -413,7 +407,6 @@ async fn load_runtime(
         quant_type,
         precision,
         max_batch,
-        embed_device,
         ..
     } = request.clone();
 
@@ -488,9 +481,7 @@ async fn load_runtime(
                 })
                 .try_collect()?;
 
-            let builder = ModelBuilder::new(context, model)
-                .quant(quant)
-                .embed_device(embed_device);
+            let builder = ModelBuilder::new(context, model).quant(quant);
             let builder = lora.into_iter().fold(builder, |builder, x| builder.lora(x));
 
             macro_rules! match_safe_tensors {
@@ -502,7 +493,7 @@ async fn load_runtime(
                                 let bundle = <$bundle>::new(model, max_batch);
                                 let state = Arc::new(bundle.state());
                                 let model = Arc::new(Model(bundle.model()));
-                                let runtime = Arc::new(TokioRuntime::<InferInput, InferOutput>::new(bundle).await);
+                                let runtime = Arc::new(TokioRuntime::<Rnn>::new(bundle).await);
                                 Ok((states, runtime, state, model))
                             }
                         )+
@@ -539,7 +530,7 @@ async fn load_runtime(
                                 let bundle = <$bundle>::new(model, max_batch);
                                 let state = Arc::new(bundle.state());
                                 let model = Arc::new(Model(bundle.model()));
-                                let runtime = Arc::new(TokioRuntime::<InferInput, InferOutput>::new(bundle).await);
+                                let runtime = Arc::new(TokioRuntime::<Rnn>::new(bundle).await);
                                 Ok((states, runtime, state, model))
                             }
                         )+
