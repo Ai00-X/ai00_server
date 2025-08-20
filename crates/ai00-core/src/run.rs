@@ -22,7 +22,7 @@ use tokio::{
 use web_rwkv::{
     context::Context,
     runtime::{
-        infer::{InferInput, InferInputBatch, InferOption, InferOutputBatch},
+        infer::{Rnn, RnnInput, RnnInputBatch, RnnOption, RnnOutputBatch},
         model::{ModelInfo, State},
         Runtime,
     },
@@ -42,7 +42,7 @@ const MAX_CACHE_ITEMS: usize = 256;
 
 #[repr(transparent)]
 #[derive(Debug, Default, Clone)]
-pub struct Tokens(pub Vec<u16>);
+pub struct Tokens(pub Vec<u32>);
 
 impl std::ops::Deref for Tokens {
     type Target = TokenSlice;
@@ -58,8 +58,8 @@ impl std::borrow::Borrow<[u8]> for Tokens {
     }
 }
 
-impl std::borrow::Borrow<[u16]> for Tokens {
-    fn borrow(&self) -> &[u16] {
+impl std::borrow::Borrow<[u32]> for Tokens {
+    fn borrow(&self) -> &[u32] {
         &self.0
     }
 }
@@ -78,15 +78,15 @@ impl qp_trie::Break for Tokens {
     }
 
     fn find_break(&self, loc: usize) -> &Self::Split {
-        self.0[..loc >> 1].as_token_slice()
+        self.0[..loc >> 2].as_token_slice()
     }
 }
 
 #[repr(transparent)]
-pub struct TokenSlice([u16]);
+pub struct TokenSlice([u32]);
 
 impl std::ops::Deref for TokenSlice {
-    type Target = [u16];
+    type Target = [u32];
 
     fn deref(&self) -> &Self::Target {
         &self.0
@@ -101,7 +101,7 @@ impl std::borrow::Borrow<[u8]> for TokenSlice {
 
 impl Default for &TokenSlice {
     fn default() -> Self {
-        <&[u16]>::default().as_token_slice()
+        <&[u32]>::default().as_token_slice()
     }
 }
 
@@ -109,9 +109,9 @@ pub trait AsTokenSlice {
     fn as_token_slice(&self) -> &TokenSlice;
 }
 
-impl AsTokenSlice for [u16] {
+impl AsTokenSlice for [u32] {
     fn as_token_slice(&self) -> &TokenSlice {
-        let ptr = self as *const [u16] as *const TokenSlice;
+        let ptr = self as *const [u32] as *const TokenSlice;
         unsafe { &*ptr }
     }
 }
@@ -120,7 +120,7 @@ impl AsTokenSlice for [u16] {
 #[derivative(Debug)]
 pub struct GenerateContext {
     /// Tokens that are provided at first.
-    pub prompt_tokens: Vec<u16>,
+    pub prompt_tokens: Vec<u32>,
     /// Whether the prompt has already been processed and cached.
     pub prompt_cached: CachedPrompt,
     /// Tokens that have been computed and cached.
@@ -136,7 +136,7 @@ pub struct GenerateContext {
     /// Model may output partial utf-8. This makes sure the output is always valid.
     pub buffer: Vec<u8>,
     /// Tokens that are output by the model.
-    pub model_tokens: Vec<u16>,
+    pub model_tokens: Vec<u32>,
     /// Compiled BNF schema, if any.
     #[derivative(Debug = "ignore")]
     pub formatters: Vec<Arc<RwLock<dyn Formatter + Send + Sync>>>,
@@ -223,7 +223,7 @@ impl CachedItem {
 }
 
 struct CacheCheckout {
-    prefix: Vec<u16>,
+    prefix: Vec<u32>,
     state: TensorCpu<f32>,
     output: Option<TensorCpu<f32>>,
 }
@@ -334,8 +334,8 @@ impl std::cmp::PartialOrd for SlotChoice {
 enum InferBatch {
     Run {
         batch: usize,
-        tokens: Vec<u16>,
-        option: InferOption,
+        tokens: Vec<u32>,
+        option: RnnOption,
         sender: Sender<TensorCpu<f32>>,
     },
     Load {
@@ -440,7 +440,7 @@ impl CoreRuntime {
 
     /// Search for the longest common prefix in the memory cache and checkout the state from that point.
     /// Should there be a cache miss, an initial state is returned.
-    async fn checkout(&self, id: StateId, tokens: &[u16]) -> CacheCheckout {
+    async fn checkout(&self, id: StateId, tokens: &[u32]) -> CacheCheckout {
         let mut caches = self.caches.lock().await;
 
         let Cache { state, cache } = caches.fetch(id);
@@ -487,7 +487,7 @@ impl CoreRuntime {
     /// Queue an inference task.
     async fn queue(&self, context: GenerateContext) -> SlotResult {
         let tokens = match [context.prefix, context.suffix].concat() {
-            tokens if tokens.is_empty() => vec![0u16],
+            tokens if tokens.is_empty() => vec![0u32],
             tokens => tokens,
         };
 
@@ -666,8 +666,8 @@ impl CoreRuntime {
         output: TensorCpu<f32>,
         sampler: Arc<RwLock<dyn Sampler + Send + Sync>>,
         formatters: Vec<Arc<RwLock<dyn Formatter + Send + Sync>>>,
-        bias: Arc<HashMap<u16, f32>>,
-    ) -> Result<(u16, TensorCpu<f32>)> {
+        bias: Arc<HashMap<u32, f32>>,
+    ) -> Result<(u32, TensorCpu<f32>)> {
         // process raw model outputs
         let num_vocab = self.info.num_vocab;
         let input = {
@@ -696,7 +696,7 @@ impl CoreRuntime {
         Ok((token, output))
     }
 
-    async fn perplexity(&self, batch: usize, tokens: &[u16], head: Option<f32>) -> Result<f32> {
+    async fn perplexity(&self, batch: usize, tokens: &[u32], head: Option<f32>) -> Result<f32> {
         let mut p = Vec::with_capacity(tokens.len().max(1));
         let len = tokens.len();
         let tokens = match head {
@@ -713,7 +713,7 @@ impl CoreRuntime {
             .infer
             .send_async({
                 let tokens = tokens.clone();
-                let option = InferOption::Full;
+                let option = RnnOption::Full;
                 InferBatch::Run {
                     batch,
                     tokens,
@@ -816,7 +816,7 @@ impl CoreRuntime {
                         .send_async(InferBatch::Run {
                             batch,
                             tokens: context.suffix.to_vec(),
-                            option: InferOption::Last,
+                            option: RnnOption::Last,
                             sender,
                         })
                         .await;
@@ -981,7 +981,7 @@ impl CoreRuntime {
 
                 let _ = context.sender.send(Token::Choose(ppl));
                 done = true;
-            } else if let GenerateKind::State { .. } = context.request.kind {
+            } else if let GenerateKind::State = context.request.kind {
                 let backed = self.back(batch).await?;
                 let embed = backed.to_vec();
                 let shape = backed.shape().into();
@@ -1071,11 +1071,11 @@ async fn finalize(runtime: CoreRuntime, receiver: Receiver<GenerateContext>, tim
 
 async fn infer(
     reload: Arc<ReloadRequest>,
-    runtime: Weak<dyn Runtime + Send + Sync>,
+    runtime: Weak<dyn Runtime<Rnn> + Send + Sync>,
     state: Arc<dyn State + Send + Sync>,
     receiver: Receiver<InferBatch>,
 ) -> Result<()> {
-    type Batch = (Vec<u16>, InferOption, Sender<TensorCpu<f32>>);
+    type Batch = (Vec<u32>, RnnOption, Sender<TensorCpu<f32>>);
     let mut batches: HashMap<usize, VecDeque<Batch>> = HashMap::new();
 
     async fn schedule(
@@ -1125,11 +1125,11 @@ async fn infer(
                 let Some((tokens, option, sender)) = deque.pop_front() else {
                     continue;
                 };
-                inference[batch] = InferInputBatch { tokens, option };
+                inference[batch] = RnnInputBatch::new(tokens, option);
                 senders.insert(batch, sender);
             }
 
-            let mut inference = Some(InferInput::new(inference, reload.token_chunk_size));
+            let mut inference = Some(RnnInput::new(inference, reload.token_chunk_size));
 
             while inference
                 .as_ref()
@@ -1143,7 +1143,7 @@ async fn infer(
                 let (input, output) = runtime.infer(input).await?;
                 inference.replace(input);
 
-                for (batch, InferOutputBatch(output)) in output
+                for (batch, RnnOutputBatch(output)) in output
                     .iter()
                     .enumerate()
                     .filter(|(_, output)| !output.is_empty())
@@ -1191,7 +1191,7 @@ async fn softmax(
 
 pub async fn run(
     context: Context,
-    runtime: Weak<dyn Runtime + Send + Sync>,
+    runtime: Weak<dyn Runtime<Rnn> + Send + Sync>,
     state: Arc<dyn State + Send + Sync>,
     receiver: Receiver<GenerateContext>,
     RuntimeInfo {

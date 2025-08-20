@@ -201,7 +201,8 @@ pub async fn unzip(_depot: &mut Depot, request: UnzipRequest) -> StatusCode {
 
         let file = File::open(&request.path)?;
         let map = unsafe { Mmap::map(&file)? };
-        zip_extract::extract(Cursor::new(&map), &request.output, false)?;
+        let mut zip = zip::ZipArchive::new(Cursor::new(&map))?;
+        zip.extract(&request.output)?;
 
         Ok(())
     };

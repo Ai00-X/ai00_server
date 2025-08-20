@@ -61,23 +61,31 @@ pub fn check_path_permitted(path: impl AsRef<Path>, permitted: &[&str]) -> Resul
     bail!("path not permitted");
 }
 
-async fn load_web(path: impl AsRef<Path>, target: &Path) -> Result<()> {
+async fn load_web(path: impl AsRef<Path>, target: impl AsRef<Path>) -> Result<()> {
     let file = File::open(path).await?;
     let map = unsafe { Mmap::map(&file)? };
-    zip_extract::extract(Cursor::new(&map), target, false)?;
+    let mut zip = zip::ZipArchive::new(Cursor::new(&map))?;
+    zip.extract(target)?;
     Ok(())
 }
 
-async fn load_plugin(path: impl AsRef<Path>, target: &Path, name: &String) -> Result<()> {
+async fn load_plugin(
+    path: impl AsRef<Path>,
+    target: impl AsRef<Path>,
+    name: impl AsRef<str>,
+) -> Result<()> {
     let file = File::open(path).await?;
     let map = unsafe { Mmap::map(&file)? };
-    let root = target.join("plugins");
+    let mut zip = zip::ZipArchive::new(Cursor::new(&map))?;
+
+    let root = target.as_ref().join("plugins");
     if !root.exists() {
         std::fs::create_dir(&root)?;
     }
-    let dir = root.join(name);
+    let dir = root.join(name.as_ref());
     std::fs::create_dir(&dir)?;
-    zip_extract::extract(Cursor::new(&map), &dir, false)?;
+
+    zip.extract(&dir)?;
     Ok(())
 }
 
@@ -216,13 +224,9 @@ async fn main() {
                         .filter(|x| x.path().extension().is_some_and(|ext| ext == "zip"))
                         .filter(|x| x.path().file_stem().is_some_and(|stem| stem != "api"))
                     {
-                        let name = x
-                            .path()
-                            .file_stem()
-                            .expect("this cannot happen")
-                            .to_string_lossy()
-                            .into();
-                        match load_plugin(x.path(), &path, &name).await {
+                        let x = x.path();
+                        let name = x.file_stem().expect("this cannot happen").to_string_lossy();
+                        match load_plugin(&x, &path, &name).await {
                             Ok(_) => log::info!("loaded plugin {}", name),
                             Err(err) => log::error!("failed to load plugin {}, {}", name, err),
                         }

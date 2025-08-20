@@ -28,7 +28,7 @@ pub struct TypicalParams {
 
 #[derive(Debug, Default, Clone)]
 pub struct TypicalState {
-    pub penalties: HashMap<u16, f32>,
+    pub penalties: HashMap<u32, f32>,
 }
 
 #[derive(Debug, Default, Clone)]
@@ -47,7 +47,7 @@ impl TypicalSampler {
 }
 
 impl Sampler for TypicalSampler {
-    fn init(&mut self, model_tokens: &[u16]) {
+    fn init(&mut self, model_tokens: &[u32]) {
         let TypicalSampler { params, state } = self;
         for (index, token) in model_tokens.iter().rev().enumerate() {
             let ap = params.presence_penalty;
@@ -67,7 +67,7 @@ impl Sampler for TypicalSampler {
             .for_each(|(token, penalty)| output[*token as usize] -= penalty)
     }
 
-    fn sample(&mut self, probs: &[f32]) -> u16 {
+    fn sample(&mut self, probs: &[f32]) -> u32 {
         let TypicalSampler { params, state } = self;
 
         let probs = probs
@@ -113,7 +113,7 @@ impl Sampler for TypicalSampler {
             .find_or_first(|&(_, cum)| rand <= cum)
             .map(|(id, _)| id)
             .unwrap_or_default();
-        let token = token as u16;
+        let token = token as u32;
 
         state
             .penalties
