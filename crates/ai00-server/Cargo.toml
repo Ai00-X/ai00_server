@@ -29,7 +29,7 @@ sha2 = "0.10.8"
 simple_logger = { version = "5.0.0", features = ["stderr"] }
 tempfile = "3.6"
 toml = "0.9"
-zip = "4.3"
+zip = "5.1"
 
 ai00-core.workspace = true
 anyhow.workspace = true
