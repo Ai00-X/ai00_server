@@ -14,7 +14,7 @@ keywords = ["LLM", "deep-learning", "model", "rwkv"]
 license = "MIT OR Apache-2.0"
 repository = "https://github.com/cgisky1980/ai00_rwkv_server"
 rust-version = "1.76"
-version = "0.6.1"
+version = "0.6.2"
 
 [workspace.dependencies]
 anyhow = { version = "1", features = ["backtrace"] }
@@ -35,7 +35,7 @@ path = "crates/ai00-core"
 # path = "../web-rwkv"
 default-features = false
 features = ["native"]
-version = "0.10.16"
+version = "0.10.17"
 
 [patch.crates-io]
 hf-hub = { git = "https://github.com/cgisky1980/hf-hub.git", branch = "main" }
