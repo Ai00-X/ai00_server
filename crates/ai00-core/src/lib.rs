@@ -112,7 +112,9 @@ pub enum Environment {
     Loaded {
         info: RuntimeInfo,
         runtime: Arc<dyn Runtime<Rnn> + Send + Sync>,
-        model: Arc<dyn ModelSerialize + Send + Sync>,
+        /// The serializable model handle.  `None` for backends that do not
+        /// support model serialization (e.g. HIP).
+        model: Option<Arc<dyn ModelSerialize + Send + Sync>>,
         sender: Sender<GenerateContext>,
     },
     #[default]
@@ -344,13 +346,26 @@ impl TryFrom<StateValue> for InitState {
 async fn list_adapters() -> AdapterList {
     let backends = Backends::all();
     let instance = web_rwkv::wgpu::Instance::default();
-    let list = instance
+    #[allow(unused_mut)]
+    let mut list: Vec<String> = instance
         .enumerate_adapters(backends)
         .await
         .into_iter()
         .map(|adapter| adapter.get_info())
         .map(|info| format!("{} ({:?})", info.name, info.backend))
         .collect();
+
+    #[cfg(feature = "hip")]
+    {
+        if let Ok(count) = hip_rwkv::hip::get_device_count() {
+            for id in 0..count {
+                let name = hip_rwkv::hip::get_device_name(id)
+                    .unwrap_or_else(|_| format!("HIP Device {}", id));
+                list.push(format!("{} (HIP)", name));
+            }
+        }
+    }
+
     AdapterList(list)
 }
 
@@ -561,17 +576,37 @@ async fn load_runtime(
     }
 }
 
-/// A stub ModelSerialize implementation for the HIP backend.
+/// Convert HIP model info into the shared `ModelInfo` type.
 ///
-/// HIP models are loaded from SafeTensors and cannot be serialized to the
-/// CBOR prefab format. Attempting to save will return an error.
+/// This constructs a `ModelInfo` from `Rwkv7ModelInfo` and `LoraDims` so that
+/// the HIP backend can populate `RuntimeInfo` with correct model metadata.
+/// The `ModelCustomInfo::V7` variant is populated from the LoRA dimensions.
+///
+/// Currently the reload path extracts `ModelInfo` directly from the SafeTensors
+/// file via `Loader::info()`, so this function is not called in the main flow.
+/// It is provided as a public bridge for cases where `ModelInfo` needs to be
+/// constructed solely from the HIP model (e.g., verification, alternative load
+/// paths, or when the SafeTensors header is unavailable).
 #[cfg(feature = "hip")]
-struct HipModelStub;
+pub fn hip_to_model_info(
+    hip_info: &hip_rwkv::hip::Rwkv7ModelInfo,
+    lora_dims: &hip_rwkv::hip::LoraDims,
+) -> ModelInfo {
+    use web_rwkv::runtime::{model::ModelCustomInfo, v7};
 
-#[cfg(feature = "hip")]
-impl ModelSerialize for HipModelStub {
-    fn serialize(&self, _file: std::fs::File) -> Result<()> {
-        bail!("HIP backend does not support model serialization (save)")
+    ModelInfo {
+        version: ModelVersion::V7,
+        num_layer: hip_info.n_layer,
+        num_emb: hip_info.n_embd,
+        num_hidden: hip_info.n_hidden,
+        num_vocab: hip_info.n_vocab,
+        num_head: hip_info.n_head,
+        custom: ModelCustomInfo::V7(v7::CustomInfo {
+            w: lora_dims.w_dim,
+            a: lora_dims.a_dim,
+            g: lora_dims.g_dim,
+            v: lora_dims.v_dim.unwrap_or(0),
+        }),
     }
 }
 
@@ -581,8 +616,9 @@ impl ModelSerialize for HipModelStub {
 /// via `Rwkv7Hip::load`, then creates a `HipRuntime` for inference and a
 /// `HipStateAdapter` for state management.
 ///
-/// Returns the same tuple shape as `load_runtime` so both backends can be
-/// used interchangeably in the Reload handler.
+/// Does not return a serializable model handle because HIP models cannot be
+/// saved to CBOR prefab format.  The caller should set `model = None` in
+/// `Environment::Loaded`.
 #[cfg(feature = "hip")]
 async fn load_runtime_hip(
     info: &ModelInfo,
@@ -591,7 +627,6 @@ async fn load_runtime_hip(
     Vec<InitState>,
     Arc<dyn Runtime<Rnn> + Send + Sync>,
     Arc<dyn State + Send + Sync>,
-    Arc<dyn ModelSerialize + Send + Sync>,
 )> {
     use web_rwkv::runtime::model::ModelVersion;
 
@@ -621,7 +656,6 @@ async fn load_runtime_hip(
     let runtime = Arc::new(hip_runtime);
     let state: Arc<dyn State + Send + Sync> =
         Arc::new(hip_state::HipStateAdapter::new(runtime.clone(), max_batch));
-    let model: Arc<dyn ModelSerialize + Send + Sync> = Arc::new(HipModelStub);
 
     // HIP path does not support loading initial states from SafeTensors files
     // (that requires a wgpu Context). Return empty states list.
@@ -629,7 +663,7 @@ async fn load_runtime_hip(
 
     log::info!("HIP runtime created: max_batch={}, chunk_size={}", max_batch, token_chunk_size);
 
-    Ok((states, runtime, state, model))
+    Ok((states, runtime, state))
 }
 
 async fn process(env: Arc<RwLock<Environment>>, request: ThreadRequest) -> Result<()> {
@@ -685,15 +719,16 @@ async fn process(env: Arc<RwLock<Environment>>, request: ThreadRequest) -> Resul
                         let (states, runtime, state, model) =
                             load_runtime(&context, &info, &request, load).await?;
                         let softmax_backend = crate::run::SoftmaxBackend::WebGpu(context);
-                        (states, runtime, state, model, softmax_backend)
+                        (states, runtime, state, Some(model), softmax_backend)
                     }
                     #[cfg(feature = "hip")]
                     Backend::Hip => {
                         log::info!("loading model with HIP backend");
-                        let (states, runtime, state, model) =
+                        let (states, runtime, state) =
                             load_runtime_hip(&info, &request).await?;
                         let softmax_backend = crate::run::SoftmaxBackend::Hip;
-                        (states, runtime, state, model, softmax_backend)
+                        // HIP backend does not support model serialization (Save)
+                        (states, runtime, state, None, softmax_backend)
                     }
                     #[cfg(not(feature = "hip"))]
                     Backend::Hip => {
@@ -753,7 +788,10 @@ async fn process(env: Arc<RwLock<Environment>>, request: ThreadRequest) -> Resul
         }
         ThreadRequest::Save { request, sender } => {
             let env = env.read().await;
-            if let Environment::Loaded { model, .. } = &*env {
+            if let Environment::Loaded {
+                model: Some(model), ..
+            } = &*env
+            {
                 log::info!("serializing model into {:?}", &request.path);
                 let model = model.clone();
                 let handle = tokio::task::spawn_blocking(move || {
@@ -769,6 +807,9 @@ async fn process(env: Arc<RwLock<Environment>>, request: ThreadRequest) -> Resul
                         sender.send(false)
                     }
                 };
+            } else {
+                log::warn!("[save] model does not support serialization");
+                let _ = sender.send(false);
             }
         }
     };
