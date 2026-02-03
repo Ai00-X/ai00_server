@@ -11,7 +11,12 @@ repository = "https://github.com/cgisky1980/ai00_rwkv_server"
 rust-version.workspace = true
 version.workspace = true
 
+[features]
+default = []
+hip = ["dep:hip-rwkv"]
+
 [dependencies]
+hip-rwkv = { workspace = true, optional = true }
 bytemuck = "1"
 cbor4ii = { version = "1.0.0", features = ["serde1"] }
 fastrand = "2"

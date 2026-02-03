@@ -14,6 +14,7 @@ version.workspace = true
 [features]
 default = ["embed"]
 embed = ["dep:fastembed", "dep:hf-hub", "dep:text-splitter", "dep:tokenizers"]
+hip = ["ai00-core/hip"]
 
 [build-dependencies]
 winresource = "0.1.17"

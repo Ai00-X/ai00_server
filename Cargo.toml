@@ -35,10 +35,14 @@ path = "crates/ai00-core"
 # path = "../web-rwkv"
 default-features = false
 features = ["native"]
-version = "0.10.18"
+version = "0.10.19"
+
+[workspace.dependencies.hip-rwkv]
+path = "../../hip-rwkv"
 
 [patch.crates-io]
 hf-hub = { git = "https://github.com/cgisky1980/hf-hub.git", branch = "main" }
+web-rwkv = { path = "../../" }
 
 [profile.release]
 lto = false
