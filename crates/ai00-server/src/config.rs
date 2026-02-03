@@ -4,7 +4,7 @@ use std::{
 };
 
 use ai00_core::{
-    reload::{AdapterOption, BnfOption, Lora, Model, State, Tokenizer},
+    reload::{AdapterOption, Backend, BnfOption, Lora, Model, State, Tokenizer},
     ReloadRequest,
 };
 use derivative::Derivative;
@@ -41,6 +41,7 @@ impl TryFrom<Config> for ReloadRequest {
                     precision,
                     token_chunk_size,
                     max_batch,
+                    backend,
                 },
             mut lora,
             mut state,
@@ -72,6 +73,7 @@ impl TryFrom<Config> for ReloadRequest {
             tokenizer_path,
             bnf,
             adapter,
+            backend,
         })
     }
 }

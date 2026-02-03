@@ -33,6 +33,9 @@ pub struct Model {
     /// Number of states that are cached on GPU.
     #[derivative(Default(value = "8"))]
     pub max_batch: usize,
+    /// Backend to use for inference (`WebGpu` or `Hip`).
+    #[serde(default)]
+    pub backend: Backend,
 }
 
 /// Low-rank adaptor.
@@ -91,6 +94,13 @@ pub enum Precision {
     #[default]
     Fp16,
     Fp32,
+}
+
+#[derive(Debug, Default, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, ToSchema)]
+pub enum Backend {
+    #[default]
+    WebGpu,
+    Hip,
 }
 
 #[derive(Debug, Default, Clone, Copy, Serialize, Deserialize, ToSchema)]

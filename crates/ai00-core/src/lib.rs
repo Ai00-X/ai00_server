@@ -11,7 +11,7 @@ use futures::future::join_all;
 use half::f16;
 use itertools::Itertools;
 use memmap2::Mmap;
-use reload::{AdapterOption, BnfOption, Precision};
+use reload::{AdapterOption, Backend, BnfOption, Precision};
 use safetensors::SafeTensors;
 use salvo::oapi::ToSchema;
 use serde::{de::DeserializeSeed, Deserialize, Serialize};
@@ -228,6 +228,9 @@ pub struct ReloadRequest {
     pub bnf: BnfOption,
     /// Adapter selection.
     pub adapter: AdapterOption,
+    /// Backend to use for inference (`WebGpu` or `Hip`).
+    #[serde(default)]
+    pub backend: Backend,
 }
 
 #[derive(Debug, Default, Clone, Serialize, Deserialize, ToSchema)]

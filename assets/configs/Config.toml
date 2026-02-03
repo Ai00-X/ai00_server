@@ -1,4 +1,5 @@
 [model]
+# backend = "WebGpu"                                     # Backend for inference ("WebGpu" or "Hip"). Omitting defaults to WebGpu.
 embed_device = "Cpu"                                   # Device to put the embed tensor ("Cpu" or "Gpu").
 max_batch = 8                                          # The maximum batches that are cached on GPU.
 name = "RWKV-x070-World-0.1B-v2.8-20241210-ctx4096.st" # Name of the model.
