@@ -36,6 +36,8 @@ use web_rwkv::{
 
 use crate::{run::GenerateContext, sampler::Sampler};
 
+#[cfg(feature = "hip")]
+pub mod hip_state;
 pub mod reload;
 pub mod run;
 pub mod sampler;
