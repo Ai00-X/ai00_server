@@ -26,9 +26,20 @@ use web_rwkv::{
         model::{ModelInfo, State},
         Runtime,
     },
-    tensor::{kind::ReadWrite, TensorCpu, TensorGpu, TensorShape},
+    tensor::{kind::ReadWrite, TensorCpu, TensorGpu, TensorInit, TensorShape},
     tokenizer::Tokenizer,
 };
+
+/// Backend for softmax computation.
+///
+/// The WebGPU path uses the wgpu Context for GPU-accelerated softmax.
+/// The HIP path uses hip-rwkv's GPU softmax kernel on AMD hardware.
+#[derive(Clone)]
+pub enum SoftmaxBackend {
+    WebGpu(Context),
+    #[cfg(feature = "hip")]
+    Hip,
+}
 
 use crate::{
     load_model_state,
@@ -371,7 +382,9 @@ struct RuntimeSender {
 #[derive(Derivative, Clone)]
 #[derivative(Debug)]
 struct CoreRuntime {
-    context: Context,
+    /// WebGPU context, present for the WebGPU backend. The HIP backend
+    /// does not need a wgpu context and sets this to `None`.
+    context: Option<Context>,
     info: ModelInfo,
     reload: Arc<ReloadRequest>,
     #[derivative(Debug = "ignore")]
@@ -412,7 +425,11 @@ impl CoreRuntime {
                 let prefab = cbor4ii::serde::from_slice::<InitState>(&data);
                 let state = match (st, prefab) {
                     (Ok(model), _) => {
-                        let data = load_model_state(&self.context, &self.info, model).await?;
+                        let context = self
+                            .context
+                            .as_ref()
+                            .ok_or_else(|| anyhow::anyhow!("loading state files from SafeTensors requires a WebGPU context"))?;
+                        let data = load_model_state(context, &self.info, model).await?;
                         InitState {
                             name,
                             id,
@@ -682,7 +699,7 @@ impl CoreRuntime {
                 data[*token as usize] += *bias;
             }
 
-            self.context.tensor_from_data([num_vocab, 1, 1, 1], data)?
+            TensorCpu::from_data([num_vocab, 1, 1, 1], data)?
         };
 
         // compute probabilities
@@ -1163,7 +1180,7 @@ async fn infer(
 
 async fn softmax(
     reload: Arc<ReloadRequest>,
-    context: Context,
+    backend: SoftmaxBackend,
     receiver: Receiver<SoftmaxBatch>,
 ) -> Result<()> {
     let mut batches = Vec::with_capacity(reload.max_batch);
@@ -1175,8 +1192,23 @@ async fn softmax(
             batches.push(batch);
         }
 
-        let input = batches.iter().map(|batch| batch.input.clone()).collect();
-        let output = web_rwkv::runtime::softmax::softmax(&context, input).await?;
+        let input: Vec<TensorCpu<f32>> =
+            batches.iter().map(|batch| batch.input.clone()).collect();
+
+        let output = match &backend {
+            SoftmaxBackend::WebGpu(context) => {
+                web_rwkv::runtime::softmax::softmax(context, input).await?
+            }
+            #[cfg(feature = "hip")]
+            SoftmaxBackend::Hip => {
+                // GPU softmax on HIP device -- synchronous but runs in its own task
+                tokio::task::spawn_blocking(move || {
+                    hip_rwkv::hip::softmax_hip_batch(input)
+                        .map_err(|e| anyhow::anyhow!("HIP softmax error: {}", e))
+                })
+                .await??
+            }
+        };
 
         for (batch, tensor) in batches.iter().zip_eq(output.into_iter()) {
             let _ = batch.sender.send(tensor);
@@ -1190,7 +1222,7 @@ async fn softmax(
 }
 
 pub async fn run(
-    context: Context,
+    softmax_backend: SoftmaxBackend,
     runtime: Weak<dyn Runtime<Rnn> + Send + Sync>,
     state: Arc<dyn State + Send + Sync>,
     receiver: Receiver<GenerateContext>,
@@ -1225,6 +1257,14 @@ pub async fn run(
         Arc::new(Mutex::new(caches))
     };
 
+    // Extract the wgpu Context from the softmax backend if available.
+    // The HIP backend does not have a wgpu context.
+    let context = match &softmax_backend {
+        SoftmaxBackend::WebGpu(ctx) => Some(ctx.clone()),
+        #[cfg(feature = "hip")]
+        SoftmaxBackend::Hip => None,
+    };
+
     let max_batch = reload.max_batch;
     let runtime = {
         let infer = {
@@ -1234,7 +1274,7 @@ pub async fn run(
         };
         let softmax = {
             let (sender, receiver) = flume::unbounded();
-            tokio::spawn(softmax(reload.clone(), context.clone(), receiver));
+            tokio::spawn(softmax(reload.clone(), softmax_backend, receiver));
             sender
         };
         let sender = RuntimeSender { infer, softmax };

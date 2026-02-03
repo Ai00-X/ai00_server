@@ -341,11 +341,12 @@ impl TryFrom<StateValue> for InitState {
     }
 }
 
-fn list_adapters() -> AdapterList {
+async fn list_adapters() -> AdapterList {
     let backends = Backends::all();
     let instance = web_rwkv::wgpu::Instance::default();
     let list = instance
         .enumerate_adapters(backends)
+        .await
         .into_iter()
         .map(|adapter| adapter.get_info())
         .map(|info| format!("{} ({:?})", info.name, info.backend))
@@ -361,6 +362,7 @@ async fn create_context(adapter: AdapterOption, info: &ModelInfo) -> Result<Cont
         AdapterOption::Economical => instance.adapter(PowerPreference::LowPower).await,
         AdapterOption::Manual(selection) => Ok(instance
             .enumerate_adapters(backends)
+            .await
             .into_iter()
             .nth(selection)
             .ok_or(ContextError::RequestAdapterFailed)?),
@@ -559,10 +561,81 @@ async fn load_runtime(
     }
 }
 
+/// A stub ModelSerialize implementation for the HIP backend.
+///
+/// HIP models are loaded from SafeTensors and cannot be serialized to the
+/// CBOR prefab format. Attempting to save will return an error.
+#[cfg(feature = "hip")]
+struct HipModelStub;
+
+#[cfg(feature = "hip")]
+impl ModelSerialize for HipModelStub {
+    fn serialize(&self, _file: std::fs::File) -> Result<()> {
+        bail!("HIP backend does not support model serialization (save)")
+    }
+}
+
+/// Load an RWKV model using the HIP backend (AMD GPU via ROCm).
+///
+/// Only supports V7 models. Loads the model weights into HIP device memory
+/// via `Rwkv7Hip::load`, then creates a `HipRuntime` for inference and a
+/// `HipStateAdapter` for state management.
+///
+/// Returns the same tuple shape as `load_runtime` so both backends can be
+/// used interchangeably in the Reload handler.
+#[cfg(feature = "hip")]
+async fn load_runtime_hip(
+    info: &ModelInfo,
+    request: &ReloadRequest,
+) -> Result<(
+    Vec<InitState>,
+    Arc<dyn Runtime<Rnn> + Send + Sync>,
+    Arc<dyn State + Send + Sync>,
+    Arc<dyn ModelSerialize + Send + Sync>,
+)> {
+    use web_rwkv::runtime::model::ModelVersion;
+
+    if info.version != ModelVersion::V7 {
+        bail!(
+            "HIP backend only supports RWKV v7 models, got {:?}",
+            info.version
+        );
+    }
+
+    let model_path = request.model_path.clone();
+    let token_chunk_size = request.token_chunk_size;
+    let max_batch = request.max_batch;
+
+    // Load model weights on a blocking thread (file I/O + GPU upload)
+    let hip_model = tokio::task::spawn_blocking(move || {
+        hip_rwkv::hip::Rwkv7Hip::load(&model_path)
+    })
+    .await?
+    .map_err(|e| anyhow::anyhow!("HIP model load failed: {}", e))?;
+
+    // Create runtime with configuration matching the request
+    let config = hip_rwkv::hip::HipRuntimeConfig::new(token_chunk_size, max_batch);
+    let hip_runtime = hip_rwkv::hip::HipRuntime::with_config(hip_model, config)
+        .map_err(|e| anyhow::anyhow!("HIP runtime init failed: {}", e))?;
+
+    let runtime = Arc::new(hip_runtime);
+    let state: Arc<dyn State + Send + Sync> =
+        Arc::new(hip_state::HipStateAdapter::new(runtime.clone(), max_batch));
+    let model: Arc<dyn ModelSerialize + Send + Sync> = Arc::new(HipModelStub);
+
+    // HIP path does not support loading initial states from SafeTensors files
+    // (that requires a wgpu Context). Return empty states list.
+    let states = Vec::new();
+
+    log::info!("HIP runtime created: max_batch={}, chunk_size={}", max_batch, token_chunk_size);
+
+    Ok((states, runtime, state, model))
+}
+
 async fn process(env: Arc<RwLock<Environment>>, request: ThreadRequest) -> Result<()> {
     match request {
         ThreadRequest::Adapter(sender) => {
-            let _ = sender.send(list_adapters());
+            let _ = sender.send(list_adapters().await);
         }
         ThreadRequest::Info(sender) => {
             let env = env.read().await;
@@ -598,16 +671,35 @@ async fn process(env: Arc<RwLock<Environment>>, request: ThreadRequest) -> Resul
                 log::info!("{:#?}", info);
                 log::info!("model type: {:?}", load);
 
-                let context = create_context(request.adapter, &info).await?;
-                log::info!("{:#?}", context.adapter.get_info());
-
                 let mut env = env.write().await;
                 let _ = std::mem::take(&mut *env);
 
                 let tokenizer = Arc::new(load_tokenizer(&request.tokenizer_path).await?);
 
-                let (states, runtime, state, model) =
-                    load_runtime(&context, &info, &request, load).await?;
+                // Dispatch based on backend selection
+                let (states, runtime, state, model, softmax_backend) = match request.backend {
+                    Backend::WebGpu => {
+                        let context = create_context(request.adapter, &info).await?;
+                        log::info!("{:#?}", context.adapter.get_info());
+
+                        let (states, runtime, state, model) =
+                            load_runtime(&context, &info, &request, load).await?;
+                        let softmax_backend = crate::run::SoftmaxBackend::WebGpu(context);
+                        (states, runtime, state, model, softmax_backend)
+                    }
+                    #[cfg(feature = "hip")]
+                    Backend::Hip => {
+                        log::info!("loading model with HIP backend");
+                        let (states, runtime, state, model) =
+                            load_runtime_hip(&info, &request).await?;
+                        let softmax_backend = crate::run::SoftmaxBackend::Hip;
+                        (states, runtime, state, model, softmax_backend)
+                    }
+                    #[cfg(not(feature = "hip"))]
+                    Backend::Hip => {
+                        bail!("HIP backend requested but the 'hip' feature is not enabled");
+                    }
+                };
 
                 let reload = Arc::new(*request);
                 let info = RuntimeInfo {
@@ -621,7 +713,7 @@ async fn process(env: Arc<RwLock<Environment>>, request: ThreadRequest) -> Resul
                     let runtime = Arc::downgrade(&runtime);
                     let (sender, receiver) = flume::unbounded();
                     tokio::spawn(crate::run::run(
-                        context,
+                        softmax_backend,
                         runtime,
                         state,
                         receiver,
