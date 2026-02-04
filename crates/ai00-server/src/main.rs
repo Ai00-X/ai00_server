@@ -186,6 +186,14 @@ async fn main() {
     #[cfg(not(feature = "embed"))]
     let embed: Option<()> = None;
 
+    #[cfg(not(feature = "hip"))]
+    if config.model.backend == ai00_core::reload::Backend::Hip {
+        panic!(
+            "Config requests backend = \"Hip\" but this binary was compiled without the 'hip' feature.\n\
+             Rebuild with: cargo build --release --features hip"
+        );
+    }
+
     match config.clone().try_into() {
         Ok(request) => {
             let request = ThreadRequest::Reload {

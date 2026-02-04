@@ -201,22 +201,22 @@ impl State for HipStateAdapter {
         TensorCpu::from_data(shape, data).expect("failed to create init state tensor")
     }
 
-    fn load(&self, tensor: TensorCpu<f32>, _batch: usize) -> Result<(), TensorError> {
+    fn load(&self, tensor: TensorCpu<f32>, batch: usize) -> Result<(), TensorError> {
         let head_size = self.info.head_size;
         tensor.check_shape([self.info.n_embd, head_size + 2, self.info.n_layer, 1])?;
 
         let hip_state = self.tensor_to_hip_state(&tensor)?;
         self.runtime
-            .load_state(&hip_state)
-            .map_err(|e| Self::hip_error(format!("load_state failed: {}", e)))
+            .load_state_batch(batch, &hip_state)
+            .map_err(|e| Self::hip_error(format!("load_state_batch failed: {}", e)))
     }
 
-    fn back(&self, _batch: usize) -> BoxFuture<'_, Result<TensorCpu<f32>, TensorError>> {
+    fn back(&self, batch: usize) -> BoxFuture<'_, Result<TensorCpu<f32>, TensorError>> {
         Box::pin(async move {
             let hip_state = self
                 .runtime
-                .get_state()
-                .map_err(|e| Self::hip_error(format!("get_state failed: {}", e)))?;
+                .get_state_batch(batch)
+                .map_err(|e| Self::hip_error(format!("get_state_batch failed: {}", e)))?;
             self.hip_state_to_tensor(&hip_state)
         })
     }

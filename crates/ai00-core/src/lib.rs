@@ -642,16 +642,22 @@ async fn load_runtime_hip(
     let max_batch = request.max_batch;
 
     // Load model weights on a blocking thread (file I/O + GPU upload)
+    log::info!("[hip] loading model weights from {:?}...", model_path);
     let hip_model = tokio::task::spawn_blocking(move || {
-        hip_rwkv::hip::Rwkv7Hip::load(&model_path)
+        log::info!("[hip] spawn_blocking: calling Rwkv7Hip::load...");
+        let result = hip_rwkv::hip::Rwkv7Hip::load(&model_path);
+        log::info!("[hip] spawn_blocking: Rwkv7Hip::load returned {:?}", result.is_ok());
+        result
     })
     .await?
     .map_err(|e| anyhow::anyhow!("HIP model load failed: {}", e))?;
 
+    log::info!("[hip] model loaded, creating runtime...");
     // Create runtime with configuration matching the request
     let config = hip_rwkv::hip::HipRuntimeConfig::new(token_chunk_size, max_batch);
     let hip_runtime = hip_rwkv::hip::HipRuntime::with_config(hip_model, config)
         .map_err(|e| anyhow::anyhow!("HIP runtime init failed: {}", e))?;
+    log::info!("[hip] runtime created successfully");
 
     let runtime = Arc::new(hip_runtime);
     let state: Arc<dyn State + Send + Sync> =
@@ -705,10 +711,14 @@ async fn process(env: Arc<RwLock<Environment>>, request: ThreadRequest) -> Resul
                 log::info!("{:#?}", info);
                 log::info!("model type: {:?}", load);
 
+                log::info!("[reload] acquiring env write lock...");
                 let mut env = env.write().await;
+                log::info!("[reload] env write lock acquired, clearing env...");
                 let _ = std::mem::take(&mut *env);
 
+                log::info!("[reload] loading tokenizer from {:?}...", &request.tokenizer_path);
                 let tokenizer = Arc::new(load_tokenizer(&request.tokenizer_path).await?);
+                log::info!("[reload] tokenizer loaded, dispatching backend {:?}...", request.backend);
 
                 // Dispatch based on backend selection
                 let (states, runtime, state, model, softmax_backend) = match request.backend {
@@ -779,6 +789,15 @@ async fn process(env: Arc<RwLock<Environment>>, request: ThreadRequest) -> Resul
                         sender.send(false)
                     }
                 };
+            } else {
+                // Fire-and-forget initial load: log errors from the background task
+                tokio::spawn(async move {
+                    match handle.await {
+                        Ok(Ok(())) => log::info!("[reload] background load completed successfully"),
+                        Ok(Err(err)) => log::error!("[reload] background load FAILED: {err:#?}"),
+                        Err(join_err) => log::error!("[reload] background task panicked: {join_err:#?}"),
+                    }
+                });
             }
         }
         ThreadRequest::Unload => {
