@@ -76,7 +76,8 @@ def convert_file(pt_filename: str, sf_filename: str, rename={}, transpose_names=
             }
 
     dirname = os.path.dirname(sf_filename)
-    os.makedirs(dirname, exist_ok=True)
+    if dirname:
+        os.makedirs(dirname, exist_ok=True)
     serialize_file(loaded, sf_filename, metadata={"format": "pt"})
     # reloaded = load_file(sf_filename)
     # for k in loaded:
