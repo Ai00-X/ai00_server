@@ -7,7 +7,7 @@ use std::{
 
 use ai00_core::ThreadRequest;
 use anyhow::{anyhow, bail, Result};
-use clap::{command, CommandFactory, Parser};
+use clap::{CommandFactory, Parser};
 use memmap2::Mmap;
 use salvo::{
     affix_state,
@@ -185,6 +185,14 @@ async fn main() {
         });
     #[cfg(not(feature = "embed"))]
     let embed: Option<()> = None;
+
+    #[cfg(not(feature = "hip"))]
+    if config.model.backend == ai00_core::reload::Backend::Hip {
+        panic!(
+            "Config requests backend = \"Hip\" but this binary was compiled without the 'hip' feature.\n\
+             Rebuild with: cargo build --release --features hip"
+        );
+    }
 
     match config.clone().try_into() {
         Ok(request) => {

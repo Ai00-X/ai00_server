@@ -14,6 +14,7 @@ version.workspace = true
 [features]
 default = ["embed"]
 embed = ["dep:fastembed", "dep:hf-hub", "dep:text-splitter", "dep:tokenizers"]
+hip = ["ai00-core/hip"]
 
 [build-dependencies]
 winresource = "0.1.17"
@@ -45,12 +46,12 @@ web-rwkv.workspace = true
 
 [dependencies.fastembed]
 optional = true
-version = "=4.4.0"
+version = "4"
 
 [target.'cfg(windows)'.dependencies.fastembed]
 features = ["ort-load-dynamic"]
 optional = true
-version = "=4.4.0"
+version = "4"
 
 [dependencies.hf-hub]
 optional = true
@@ -78,3 +79,6 @@ features = [
     "sse",
 ]
 workspace = true
+
+[dev-dependencies]
+reqwest = { version = "0.12", features = ["json"] }

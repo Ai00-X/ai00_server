@@ -1,7 +1,8 @@
 [model]
+# backend = "WebGpu"                                     # Backend for inference ("WebGpu" or "Hip"). Omitting defaults to WebGpu.
 embed_device = "Cpu"                                   # Device to put the embed tensor ("Cpu" or "Gpu").
 max_batch = 8                                          # The maximum batches that are cached on GPU.
-name = "RWKV-x070-World-0.1B-v2.8-20241210-ctx4096.st" # Name of the model.
+name = "rwkv7-g1a-0.1b-20250728-ctx4096.st"            # Name of the model.
 path = "assets/models"                                 # Path to the folder containing all models.
 precision = "Fp16"                                     # Precision for intermediate tensors ("Fp16" or "Fp32"). "Fp32" yields better outputs but slower.
 quant = 0                                              # Layers to be quantized.

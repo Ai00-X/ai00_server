@@ -1,0 +1,30 @@
+[model]
+backend = "Hip"
+max_batch = 4
+name = "rwkv7-g1a-0.1b-20250728-ctx4096.st"
+path = "assets/models"
+token_chunk_size = 128
+stop = ["\n\n"]
+
+[tokenizer]
+path = "assets/tokenizer/rwkv_vocab_v20230424.json"
+
+[bnf]
+enable_bytes_cache = true
+start_nonterminal = "start"
+
+[adapter]
+Auto = {}
+
+[listen]
+acme = false
+domain = "local"
+ip = "0.0.0.0"
+force_pass = true
+port = 65531
+slot = "permisionkey"
+tls = false
+
+[[listen.app_keys]]
+app_id = "admin"
+secret_key = "ai00_is_good"

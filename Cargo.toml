@@ -32,10 +32,14 @@ tokio = { version = "1", features = ["full"] }
 path = "crates/ai00-core"
 
 [workspace.dependencies.web-rwkv]
-# path = "../web-rwkv"
+git = "https://github.com/Nintorac/hip-rwkv.git"
+branch = "main"
 default-features = false
 features = ["native"]
-version = "0.10.18"
+
+[workspace.dependencies.hip-rwkv]
+git = "https://github.com/Nintorac/hip-rwkv.git"
+branch = "main"
 
 [patch.crates-io]
 hf-hub = { git = "https://github.com/cgisky1980/hf-hub.git", branch = "main" }

@@ -41,6 +41,7 @@ impl TryFrom<Config> for ReloadRequest {
                     precision,
                     token_chunk_size,
                     max_batch,
+                    backend,
                 },
             mut lora,
             mut state,
@@ -72,6 +73,7 @@ impl TryFrom<Config> for ReloadRequest {
             tokenizer_path,
             bnf,
             adapter,
+            backend,
         })
     }
 }
@@ -136,6 +138,10 @@ pub enum EmbeddingModel {
     ClipVitB32,
     /// jinaai/jina-embeddings-v2-base-code
     JinaEmbeddingsV2BaseCode,
+    /// BAAI/bge-large-zh-v1.5
+    BGELargeZHV15,
+    /// lightonai/modernbert-embed-large
+    ModernBertEmbedLarge,
 }
 
 #[cfg(feature = "embed")]

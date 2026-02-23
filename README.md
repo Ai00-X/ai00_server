@@ -40,6 +40,7 @@ QQ Group for communication: 30920262
 
 *   Based on the `RWKV` model, it has high performance and accuracy
 *   Supports `Vulkan` inference acceleration, you can enjoy GPU acceleration without the need for `CUDA`! Supports AMD cards, integrated graphics, and all GPUs that support `Vulkan`
+*   Supports `HIP` backend for native AMD GPU acceleration via ROCm (RDNA 3/3.5/4 and newer)
 *   No need for bulky `pytorch`, `CUDA` and other runtime environments, it's compact and ready to use out of the box!
 *   Compatible with OpenAI's ChatGPT API interface
 
@@ -101,6 +102,65 @@ QQ Group for communication: 30920262
     ```
     
 6.  Open the browser and visit the WebUI at http://localhost:65530 (https://localhost:65530 if `tls` is enabled)
+
+### 🔥 HIP Backend (AMD GPUs)
+
+The HIP backend provides native AMD GPU acceleration via ROCm, bypassing the Vulkan/WebGPU layer for lower overhead on supported hardware. It uses rocBLAS for GEMM operations and custom HIP kernels for RWKV-specific ops (WKV attention, layer norm, etc.).
+
+#### Prerequisites
+
+*   An AMD GPU with ROCm support (RDNA 3/3.5/4 or newer recommended)
+*   [ROCm](https://rocm.docs.amd.com/) installed with `libamdhip64` and `librocblas` available
+*   `hipcc` on your PATH
+
+Verify your setup:
+
+```bash
+$ hipcc --version
+$ rocminfo | head -20
+```
+
+#### Build with HIP
+
+Build with the `hip` feature flag (and disable the default `embed` feature unless you need it):
+
+```bash
+$ cargo build --release --features hip --no-default-features
+```
+
+Or with both HIP and embedding support:
+
+```bash
+$ cargo build --release --features "hip,embed"
+```
+
+#### Configure
+
+A sample HIP config is provided at [`assets/configs/Config.hip.toml`](./assets/configs/Config.hip.toml). The key difference from the default config is `backend = "Hip"`:
+
+```toml
+[model]
+backend = "Hip"
+max_batch = 4
+name = "your-model.st"
+path = "/path/to/models"
+token_chunk_size = 128
+```
+
+#### Run
+
+```bash
+$ ./target/release/ai00-server --config assets/configs/Config.hip.toml
+```
+
+The server starts the same OpenAI-compatible API on the configured port. All endpoints (`/api/oai/v1/chat/completions`, `/api/oai/v1/completions`, etc.) work identically regardless of backend.
+
+#### Notes
+
+*   The HIP backend currently supports RWKV v7 models only
+*   FP16 I/O with FP32 state accumulation is used for accuracy
+*   On APUs (e.g., Ryzen AI MAX), unified memory enables zero-copy weight loading
+*   If you encounter rocBLAS errors at startup, ensure your ROCm version matches the system's GPU architecture
 
 ### 📒Convert the Model
 

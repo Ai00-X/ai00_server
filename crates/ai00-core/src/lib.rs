@@ -11,7 +11,7 @@ use futures::future::join_all;
 use half::f16;
 use itertools::Itertools;
 use memmap2::Mmap;
-use reload::{AdapterOption, BnfOption, Precision};
+use reload::{AdapterOption, Backend, BnfOption, Precision};
 use safetensors::SafeTensors;
 use salvo::oapi::ToSchema;
 use serde::{de::DeserializeSeed, Deserialize, Serialize};
@@ -36,6 +36,8 @@ use web_rwkv::{
 
 use crate::{run::GenerateContext, sampler::Sampler};
 
+#[cfg(feature = "hip")]
+pub mod hip_state;
 pub mod reload;
 pub mod run;
 pub mod sampler;
@@ -110,7 +112,9 @@ pub enum Environment {
     Loaded {
         info: RuntimeInfo,
         runtime: Arc<dyn Runtime<Rnn> + Send + Sync>,
-        model: Arc<dyn ModelSerialize + Send + Sync>,
+        /// The serializable model handle.  `None` for backends that do not
+        /// support model serialization (e.g. HIP).
+        model: Option<Arc<dyn ModelSerialize + Send + Sync>>,
         sender: Sender<GenerateContext>,
     },
     #[default]
@@ -228,6 +232,9 @@ pub struct ReloadRequest {
     pub bnf: BnfOption,
     /// Adapter selection.
     pub adapter: AdapterOption,
+    /// Backend to use for inference (`WebGpu` or `Hip`).
+    #[serde(default)]
+    pub backend: Backend,
 }
 
 #[derive(Debug, Default, Clone, Serialize, Deserialize, ToSchema)]
@@ -336,15 +343,29 @@ impl TryFrom<StateValue> for InitState {
     }
 }
 
-fn list_adapters() -> AdapterList {
+async fn list_adapters() -> AdapterList {
     let backends = Backends::all();
     let instance = web_rwkv::wgpu::Instance::default();
-    let list = instance
+    #[allow(unused_mut)]
+    let mut list: Vec<String> = instance
         .enumerate_adapters(backends)
+        .await
         .into_iter()
         .map(|adapter| adapter.get_info())
         .map(|info| format!("{} ({:?})", info.name, info.backend))
         .collect();
+
+    #[cfg(feature = "hip")]
+    {
+        if let Ok(count) = hip_rwkv::hip::get_device_count() {
+            for id in 0..count {
+                let name = hip_rwkv::hip::get_device_name(id)
+                    .unwrap_or_else(|_| format!("HIP Device {}", id));
+                list.push(format!("{} (HIP)", name));
+            }
+        }
+    }
+
     AdapterList(list)
 }
 
@@ -356,6 +377,7 @@ async fn create_context(adapter: AdapterOption, info: &ModelInfo) -> Result<Cont
         AdapterOption::Economical => instance.adapter(PowerPreference::LowPower).await,
         AdapterOption::Manual(selection) => Ok(instance
             .enumerate_adapters(backends)
+            .await
             .into_iter()
             .nth(selection)
             .ok_or(ContextError::RequestAdapterFailed)?),
@@ -554,10 +576,113 @@ async fn load_runtime(
     }
 }
 
+/// Convert HIP model info into the shared `ModelInfo` type.
+///
+/// This constructs a `ModelInfo` from `Rwkv7ModelInfo` and `LoraDims` so that
+/// the HIP backend can populate `RuntimeInfo` with correct model metadata.
+/// The `ModelCustomInfo::V7` variant is populated from the LoRA dimensions.
+///
+/// Currently the reload path extracts `ModelInfo` directly from the SafeTensors
+/// file via `Loader::info()`, so this function is not called in the main flow.
+/// It is provided as a public bridge for cases where `ModelInfo` needs to be
+/// constructed solely from the HIP model (e.g., verification, alternative load
+/// paths, or when the SafeTensors header is unavailable).
+#[cfg(feature = "hip")]
+pub fn hip_to_model_info(
+    hip_info: &hip_rwkv::hip::Rwkv7ModelInfo,
+    lora_dims: &hip_rwkv::hip::LoraDims,
+) -> ModelInfo {
+    use web_rwkv::runtime::{model::ModelCustomInfo, v7};
+
+    ModelInfo {
+        version: ModelVersion::V7,
+        num_layer: hip_info.n_layer,
+        num_emb: hip_info.n_embd,
+        num_hidden: hip_info.n_hidden,
+        num_vocab: hip_info.n_vocab,
+        num_head: hip_info.n_head,
+        custom: ModelCustomInfo::V7(v7::CustomInfo {
+            w: lora_dims.w_dim,
+            a: lora_dims.a_dim,
+            g: lora_dims.g_dim,
+            v: lora_dims.v_dim.unwrap_or(0),
+        }),
+    }
+}
+
+/// Load an RWKV model using the HIP backend (AMD GPU via ROCm).
+///
+/// Only supports V7 models. Loads the model weights into HIP device memory
+/// via `Rwkv7Hip::load`, then creates a `HipRuntime` for inference and a
+/// `HipStateAdapter` for state management.
+///
+/// Does not return a serializable model handle because HIP models cannot be
+/// saved to CBOR prefab format.  The caller should set `model = None` in
+/// `Environment::Loaded`.
+#[cfg(feature = "hip")]
+async fn load_runtime_hip(
+    info: &ModelInfo,
+    request: &ReloadRequest,
+) -> Result<(
+    Vec<InitState>,
+    Arc<dyn Runtime<Rnn> + Send + Sync>,
+    Arc<dyn State + Send + Sync>,
+)> {
+    use web_rwkv::runtime::model::ModelVersion;
+
+    if info.version != ModelVersion::V7 {
+        bail!(
+            "HIP backend only supports RWKV v7 models, got {:?}",
+            info.version
+        );
+    }
+
+    let model_path = request.model_path.clone();
+    let token_chunk_size = request.token_chunk_size;
+    let max_batch = request.max_batch;
+
+    // Load model weights on a blocking thread (file I/O + GPU upload)
+    log::info!("[hip] loading model weights from {:?}...", model_path);
+    let hip_model = tokio::task::spawn_blocking(move || {
+        log::info!("[hip] spawn_blocking: calling Rwkv7Hip::load...");
+        let result = hip_rwkv::hip::Rwkv7Hip::load(&model_path);
+        log::info!(
+            "[hip] spawn_blocking: Rwkv7Hip::load returned {:?}",
+            result.is_ok()
+        );
+        result
+    })
+    .await?
+    .map_err(|e| anyhow::anyhow!("HIP model load failed: {}", e))?;
+
+    log::info!("[hip] model loaded, creating runtime...");
+    // Create runtime with configuration matching the request
+    let config = hip_rwkv::hip::HipRuntimeConfig::new(token_chunk_size, max_batch);
+    let hip_runtime = hip_rwkv::hip::HipRuntime::with_config(hip_model, config)
+        .map_err(|e| anyhow::anyhow!("HIP runtime init failed: {}", e))?;
+    log::info!("[hip] runtime created successfully");
+
+    let runtime = Arc::new(hip_runtime);
+    let state: Arc<dyn State + Send + Sync> =
+        Arc::new(hip_state::HipStateAdapter::new(runtime.clone(), max_batch));
+
+    // HIP path does not support loading initial states from SafeTensors files
+    // (that requires a wgpu Context). Return empty states list.
+    let states = Vec::new();
+
+    log::info!(
+        "HIP runtime created: max_batch={}, chunk_size={}",
+        max_batch,
+        token_chunk_size
+    );
+
+    Ok((states, runtime, state))
+}
+
 async fn process(env: Arc<RwLock<Environment>>, request: ThreadRequest) -> Result<()> {
     match request {
         ThreadRequest::Adapter(sender) => {
-            let _ = sender.send(list_adapters());
+            let _ = sender.send(list_adapters().await);
         }
         ThreadRequest::Info(sender) => {
             let env = env.read().await;
@@ -593,16 +718,45 @@ async fn process(env: Arc<RwLock<Environment>>, request: ThreadRequest) -> Resul
                 log::info!("{:#?}", info);
                 log::info!("model type: {:?}", load);
 
-                let context = create_context(request.adapter, &info).await?;
-                log::info!("{:#?}", context.adapter.get_info());
-
+                log::info!("[reload] acquiring env write lock...");
                 let mut env = env.write().await;
+                log::info!("[reload] env write lock acquired, clearing env...");
                 let _ = std::mem::take(&mut *env);
 
+                log::info!(
+                    "[reload] loading tokenizer from {:?}...",
+                    &request.tokenizer_path
+                );
                 let tokenizer = Arc::new(load_tokenizer(&request.tokenizer_path).await?);
+                log::info!(
+                    "[reload] tokenizer loaded, dispatching backend {:?}...",
+                    request.backend
+                );
 
-                let (states, runtime, state, model) =
-                    load_runtime(&context, &info, &request, load).await?;
+                // Dispatch based on backend selection
+                let (states, runtime, state, model, softmax_backend) = match request.backend {
+                    Backend::WebGpu => {
+                        let context = create_context(request.adapter, &info).await?;
+                        log::info!("{:#?}", context.adapter.get_info());
+
+                        let (states, runtime, state, model) =
+                            load_runtime(&context, &info, &request, load).await?;
+                        let softmax_backend = crate::run::SoftmaxBackend::WebGpu(context);
+                        (states, runtime, state, Some(model), softmax_backend)
+                    }
+                    #[cfg(feature = "hip")]
+                    Backend::Hip => {
+                        log::info!("loading model with HIP backend");
+                        let (states, runtime, state) = load_runtime_hip(&info, &request).await?;
+                        let softmax_backend = crate::run::SoftmaxBackend::Hip;
+                        // HIP backend does not support model serialization (Save)
+                        (states, runtime, state, None, softmax_backend)
+                    }
+                    #[cfg(not(feature = "hip"))]
+                    Backend::Hip => {
+                        bail!("HIP backend requested but the 'hip' feature is not enabled");
+                    }
+                };
 
                 let reload = Arc::new(*request);
                 let info = RuntimeInfo {
@@ -616,7 +770,7 @@ async fn process(env: Arc<RwLock<Environment>>, request: ThreadRequest) -> Resul
                     let runtime = Arc::downgrade(&runtime);
                     let (sender, receiver) = flume::unbounded();
                     tokio::spawn(crate::run::run(
-                        context,
+                        softmax_backend,
                         runtime,
                         state,
                         receiver,
@@ -647,6 +801,17 @@ async fn process(env: Arc<RwLock<Environment>>, request: ThreadRequest) -> Resul
                         sender.send(false)
                     }
                 };
+            } else {
+                // Fire-and-forget initial load: log errors from the background task
+                tokio::spawn(async move {
+                    match handle.await {
+                        Ok(Ok(())) => log::info!("[reload] background load completed successfully"),
+                        Ok(Err(err)) => log::error!("[reload] background load FAILED: {err:#?}"),
+                        Err(join_err) => {
+                            log::error!("[reload] background task panicked: {join_err:#?}")
+                        }
+                    }
+                });
             }
         }
         ThreadRequest::Unload => {
@@ -656,7 +821,10 @@ async fn process(env: Arc<RwLock<Environment>>, request: ThreadRequest) -> Resul
         }
         ThreadRequest::Save { request, sender } => {
             let env = env.read().await;
-            if let Environment::Loaded { model, .. } = &*env {
+            if let Environment::Loaded {
+                model: Some(model), ..
+            } = &*env
+            {
                 log::info!("serializing model into {:?}", &request.path);
                 let model = model.clone();
                 let handle = tokio::task::spawn_blocking(move || {
@@ -672,6 +840,9 @@ async fn process(env: Arc<RwLock<Environment>>, request: ThreadRequest) -> Resul
                         sender.send(false)
                     }
                 };
+            } else {
+                log::warn!("[save] model does not support serialization");
+                let _ = sender.send(false);
             }
         }
     };
