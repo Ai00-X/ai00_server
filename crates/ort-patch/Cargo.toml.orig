@@ -1,0 +1,105 @@
+[workspace]
+members = [
+	'ort-sys',
+	'examples/async-gpt2-api',
+	'examples/custom-ops',
+	'examples/gpt2',
+	'examples/model-info',
+	'examples/yolov8',
+	'examples/phi-3-vision',
+	'examples/modnet',
+	'examples/sentence-transformers',
+	'examples/training'
+]
+default-members = [
+	'.',
+	'examples/async-gpt2-api',
+	'examples/custom-ops',
+	'examples/gpt2',
+	'examples/model-info',
+	'examples/yolov8',
+	'examples/modnet',
+	'examples/sentence-transformers'
+]
+exclude = [ 'examples/cudarc' ]
+
+[package]
+name = "ort"
+description = "A safe Rust wrapper for ONNX Runtime 1.20 - Optimize and accelerate machine learning inference & training"
+version = "2.0.0-rc.9"
+edition = "2021"
+rust-version = "1.70"
+license = "MIT OR Apache-2.0"
+repository = "https://github.com/pykeio/ort"
+homepage = "https://ort.pyke.io/"
+readme = "README.md"
+keywords = [ "machine-learning", "ai", "ml" ]
+categories = [ "algorithms", "mathematics", "science", "science" ]
+authors = [
+	"pyke.io <contact@pyke.io>",
+	"Nicolas Bigaouette <nbigaouette@gmail.com>"
+]
+include = [ "src/", "benches/", "LICENSE-APACHE", "LICENSE-MIT", "README.md" ]
+
+[profile.release]
+opt-level = 3
+lto = true
+strip = true
+codegen-units = 1
+
+[package.metadata.docs.rs]
+features = [ "ndarray", "half", "training", "fetch-models", "load-dynamic", "copy-dylibs" ]
+targets = ["x86_64-unknown-linux-gnu"]
+rustdoc-args = [ "--cfg", "docsrs" ]
+
+[features]
+default = [ "ndarray", "half", "download-binaries", "copy-dylibs" ]
+
+training = [ "ort-sys/training" ]
+
+fetch-models = [ "ureq", "sha2" ]
+download-binaries = [ "ort-sys/download-binaries" ]
+load-dynamic = [ "libloading", "ort-sys/load-dynamic" ]
+copy-dylibs = [ "ort-sys/copy-dylibs" ]
+
+cuda = [ "ort-sys/cuda" ]
+tensorrt = [ "ort-sys/tensorrt" ]
+openvino = [ "ort-sys/openvino" ]
+onednn = [ "ort-sys/onednn" ]
+directml = [ "ort-sys/directml" ]
+nnapi = [ "ort-sys/nnapi" ]
+coreml = [ "ort-sys/coreml" ]
+xnnpack = [ "ort-sys/xnnpack" ]
+rocm = [ "ort-sys/rocm" ]
+acl = [ "ort-sys/acl" ]
+armnn = [ "ort-sys/armnn" ]
+tvm = [ "ort-sys/tvm" ]
+migraphx = [ "ort-sys/migraphx" ]
+rknpu = [ "ort-sys/rknpu" ]
+vitis = [ "ort-sys/vitis" ]
+cann = [ "ort-sys/cann" ]
+qnn = [ "ort-sys/qnn" ]
+
+[dependencies]
+ndarray = { version = "0.16", optional = true }
+ort-sys = { version = "2.0.0-rc.9", path = "ort-sys" }
+libloading = { version = "0.8", optional = true }
+
+ureq = { version = "2.1", optional = true, default-features = false, features = [ "tls" ] }
+sha2 = { version = "0.10", optional = true }
+tracing = { version = "0.1", default-features = false, features = [ "std" ] }
+half = { version = "2.1", optional = true }
+
+[dev-dependencies]
+anyhow = "1.0"
+ureq = "2.1"
+image = "0.25"
+test-log = { version = "0.2", default-features = false, features = [ "trace" ] }
+tracing-subscriber = { version = "0.3", default-features = false, features = [ "env-filter", "fmt" ] }
+glassbench = "0.4"
+tokio = { version = "1.36", features = [ "test-util" ] }
+tokio-test = "0.4.3"
+
+[[bench]]
+name = "squeezenet"
+harness = false

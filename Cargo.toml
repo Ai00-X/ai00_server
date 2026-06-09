@@ -39,6 +39,7 @@ version = "0.10.20"
 
 [patch.crates-io]
 hf-hub = { git = "https://github.com/cgisky1980/hf-hub.git", branch = "main" }
+ort = { path = "crates/ort-patch" }
 
 [profile.release]
 lto = false

@@ -1,0 +1,236 @@
+use std::{
+	ffi::CString,
+	marker::PhantomData,
+	ptr::{self, NonNull}
+};
+
+use super::{
+	DummyOperator, Operator, ShapeInferenceContext,
+	io::InputOutputCharacteristic,
+	kernel::{Kernel, KernelAttributes, KernelContext}
+};
+use crate::{error::IntoStatus, extern_system_fn};
+
+#[repr(C)] // <- important! a defined layout allows us to store extra data after the `OrtCustomOp` that we can retrieve later
+pub(crate) struct BoundOperator<O: Operator> {
+	implementation: ort_sys::OrtCustomOp,
+	name: CString,
+	execution_provider_type: Option<CString>,
+	_operator: PhantomData<O>
+}
+
+#[allow(non_snake_case, clippy::unnecessary_cast)]
+impl<O: Operator> BoundOperator<O> {
+	pub(crate) fn new(name: CString, execution_provider_type: Option<CString>) -> Self {
+		Self {
+			implementation: ort_sys::OrtCustomOp {
+				version: ort_sys::ORT_API_VERSION,
+				GetStartVersion: Some(BoundOperator::<O>::GetStartVersion),
+				GetEndVersion: Some(BoundOperator::<O>::GetEndVersion),
+				CreateKernel: None,
+				CreateKernelV2: Some(BoundOperator::<O>::CreateKernelV2),
+				GetInputCharacteristic: Some(BoundOperator::<O>::GetInputCharacteristic),
+				GetInputMemoryType: Some(BoundOperator::<O>::GetInputMemoryType),
+				GetInputType: Some(BoundOperator::<O>::GetInputType),
+				GetInputTypeCount: Some(BoundOperator::<O>::GetInputTypeCount),
+				GetName: Some(BoundOperator::<O>::GetName),
+				GetExecutionProviderType: Some(BoundOperator::<O>::GetExecutionProviderType),
+				GetOutputCharacteristic: Some(BoundOperator::<O>::GetOutputCharacteristic),
+				GetOutputType: Some(BoundOperator::<O>::GetOutputType),
+				GetOutputTypeCount: Some(BoundOperator::<O>::GetOutputTypeCount),
+				GetVariadicInputHomogeneity: Some(BoundOperator::<O>::GetVariadicInputHomogeneity),
+				GetVariadicInputMinArity: Some(BoundOperator::<O>::GetVariadicInputMinArity),
+				GetVariadicOutputHomogeneity: Some(BoundOperator::<O>::GetVariadicOutputHomogeneity),
+				GetVariadicOutputMinArity: Some(BoundOperator::<O>::GetVariadicOutputMinArity),
+				GetAliasMap: None,
+				ReleaseAliasMap: None,
+				GetMayInplace: None,
+				ReleaseMayInplace: None,
+				InferOutputShapeFn: if O::get_infer_shape_function().is_some() {
+					Some(BoundOperator::<O>::InferOutputShapeFn)
+				} else {
+					None
+				},
+				KernelCompute: None,
+				KernelComputeV2: Some(BoundOperator::<O>::ComputeKernelV2),
+				KernelDestroy: Some(BoundOperator::<O>::KernelDestroy)
+			},
+			name,
+			execution_provider_type,
+			_operator: PhantomData
+		}
+	}
+
+	unsafe fn safe<'a>(op: *const ort_sys::OrtCustomOp) -> &'a BoundOperator<O> {
+		&*op.cast()
+	}
+
+	extern_system_fn! {
+		pub(crate) unsafe fn CreateKernelV2(
+			_: *const ort_sys::OrtCustomOp,
+			_: *const ort_sys::OrtApi,
+			info: *const ort_sys::OrtKernelInfo,
+			kernel_ptr: *mut *mut ort_sys::c_void
+		) -> *mut ort_sys::OrtStatus {
+			let kernel = match O::create_kernel(&KernelAttributes::new(info)) {
+				Ok(kernel) => kernel,
+				e => return e.into_status()
+			};
+			*kernel_ptr = (Box::leak(Box::new(kernel)) as *mut O::Kernel).cast();
+			Ok(()).into_status()
+		}
+	}
+
+	extern_system_fn! {
+		pub(crate) unsafe fn ComputeKernelV2(kernel_ptr: *mut ort_sys::c_void, context: *mut ort_sys::OrtKernelContext) -> *mut ort_sys::OrtStatus {
+			let context = KernelContext::new(context);
+			O::Kernel::compute(unsafe { &mut *kernel_ptr.cast::<O::Kernel>() }, &context).into_status()
+		}
+	}
+
+	extern_system_fn! {
+		pub(crate) unsafe fn KernelDestroy(op_kernel: *mut ort_sys::c_void) {
+			drop(Box::from_raw(op_kernel.cast::<O::Kernel>()));
+		}
+	}
+
+	extern_system_fn! {
+		pub(crate) unsafe fn GetName(op: *const ort_sys::OrtCustomOp) -> *const ort_sys::c_char {
+			let safe = Self::safe(op);
+			safe.name.as_ptr()
+		}
+	}
+	extern_system_fn! {
+		pub(crate) unsafe fn GetExecutionProviderType(op: *const ort_sys::OrtCustomOp) -> *const ort_sys::c_char {
+			let safe = Self::safe(op);
+			safe.execution_provider_type.as_ref().map(|c| c.as_ptr()).unwrap_or_else(ptr::null)
+		}
+	}
+
+	extern_system_fn! {
+		pub(crate) unsafe fn GetStartVersion(_: *const ort_sys::OrtCustomOp) -> ort_sys::c_int {
+			O::min_version()
+		}
+	}
+	extern_system_fn! {
+		pub(crate) unsafe fn GetEndVersion(_: *const ort_sys::OrtCustomOp) -> ort_sys::c_int {
+			O::max_version()
+		}
+	}
+
+	extern_system_fn! {
+		pub(crate) unsafe fn GetInputMemoryType(_: *const ort_sys::OrtCustomOp, index: usize) -> ort_sys::OrtMemType {
+			O::inputs()[index].memory_type.into()
+		}
+	}
+	extern_system_fn! {
+		pub(crate) unsafe fn GetInputCharacteristic(_: *const ort_sys::OrtCustomOp, index: usize) -> ort_sys::OrtCustomOpInputOutputCharacteristic {
+			O::inputs()[index].characteristic.into()
+		}
+	}
+	extern_system_fn! {
+		pub(crate) unsafe fn GetOutputCharacteristic(_: *const ort_sys::OrtCustomOp, index: usize) -> ort_sys::OrtCustomOpInputOutputCharacteristic {
+			O::outputs()[index].characteristic.into()
+		}
+	}
+	extern_system_fn! {
+		pub(crate) unsafe fn GetInputTypeCount(_: *const ort_sys::OrtCustomOp) -> usize {
+			O::inputs().len()
+		}
+	}
+	extern_system_fn! {
+		pub(crate) unsafe fn GetOutputTypeCount(_: *const ort_sys::OrtCustomOp) -> usize {
+			O::outputs().len()
+		}
+	}
+	extern_system_fn! {
+		pub(crate) unsafe fn GetInputType(_: *const ort_sys::OrtCustomOp, index: usize) -> ort_sys::ONNXTensorElementDataType {
+			O::inputs()[index]
+				.r#type
+				.map(|c| c.into())
+				.unwrap_or(ort_sys::ONNXTensorElementDataType::ONNX_TENSOR_ELEMENT_DATA_TYPE_UNDEFINED)
+		}
+	}
+	extern_system_fn! {
+		pub(crate) unsafe fn GetOutputType(_: *const ort_sys::OrtCustomOp, index: usize) -> ort_sys::ONNXTensorElementDataType {
+			O::outputs()[index]
+				.r#type
+				.map(|c| c.into())
+				.unwrap_or(ort_sys::ONNXTensorElementDataType::ONNX_TENSOR_ELEMENT_DATA_TYPE_UNDEFINED)
+		}
+	}
+	extern_system_fn! {
+		pub(crate) unsafe fn GetVariadicInputMinArity(_: *const ort_sys::OrtCustomOp) -> ort_sys::c_int {
+			O::inputs()
+				.into_iter()
+				.find(|c| c.characteristic == InputOutputCharacteristic::Variadic)
+				.and_then(|c| c.variadic_min_arity)
+				.unwrap_or(1)
+				.try_into()
+				.expect("input minimum arity overflows i32")
+		}
+	}
+	extern_system_fn! {
+		pub(crate) unsafe fn GetVariadicInputHomogeneity(_: *const ort_sys::OrtCustomOp) -> ort_sys::c_int {
+			O::inputs()
+				.into_iter()
+				.find(|c| c.characteristic == InputOutputCharacteristic::Variadic)
+				.and_then(|c| c.variadic_homogeneity)
+				.unwrap_or(false)
+				.into()
+		}
+	}
+	extern_system_fn! {
+		pub(crate) unsafe fn GetVariadicOutputMinArity(_: *const ort_sys::OrtCustomOp) -> ort_sys::c_int {
+			O::outputs()
+				.into_iter()
+				.find(|c| c.characteristic == InputOutputCharacteristic::Variadic)
+				.and_then(|c| c.variadic_min_arity)
+				.unwrap_or(1)
+				.try_into()
+				.expect("output minimum arity overflows i32")
+		}
+	}
+	extern_system_fn! {
+		pub(crate) unsafe fn GetVariadicOutputHomogeneity(_: *const ort_sys::OrtCustomOp) -> ort_sys::c_int {
+			O::outputs()
+				.into_iter()
+				.find(|c| c.characteristic == InputOutputCharacteristic::Variadic)
+				.and_then(|c| c.variadic_homogeneity)
+				.unwrap_or(false)
+				.into()
+		}
+	}
+
+	extern_system_fn! {
+		pub(crate) unsafe fn InferOutputShapeFn(_: *const ort_sys::OrtCustomOp, ctx: *mut ort_sys::OrtShapeInferContext) -> *mut ort_sys::OrtStatus {
+			let mut ctx = ShapeInferenceContext {
+				ptr: ctx
+			};
+			O::get_infer_shape_function().expect("missing infer shape function")(&mut ctx).into_status()
+		}
+	}
+}
+
+pub(crate) struct ErasedBoundOperator(NonNull<()>);
+
+unsafe impl Send for ErasedBoundOperator {}
+
+impl ErasedBoundOperator {
+	pub(crate) fn new<O: Operator>(bound: BoundOperator<O>) -> Self {
+		ErasedBoundOperator(NonNull::from(unsafe {
+			// horrible horrible horrible horrible horrible horrible horrible horrible horrible
+			&mut *(Box::leak(Box::new(bound)) as *mut _ as *mut ())
+		}))
+	}
+
+	pub(crate) fn op_ptr(&self) -> *mut ort_sys::OrtCustomOp {
+		self.0.as_ptr().cast()
+	}
+}
+
+impl Drop for ErasedBoundOperator {
+	fn drop(&mut self) {
+		drop(unsafe { Box::from_raw(self.0.as_ptr().cast::<BoundOperator<DummyOperator>>()) });
+	}
+}
